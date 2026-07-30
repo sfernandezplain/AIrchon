@@ -1,0 +1,136 @@
+lockfile_version: '1'
+generated_at: '2026-07-30T11:43:39.899596+00:00'
+dependencies: []
+deployments:
+- kind: project-relative
+  target: agents
+  value: .agents/skills/airchon
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: agents
+  value: .agents/skills/airchon/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:88d3fbd8c5f584fee97d97e98a7b5e82d911b735233114e2be25ee674e5e2205
+- kind: project-relative
+  target: agents
+  value: .agents/skills/airchon/references/harnesses/agent-loop-implementations.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:dbf941e48a2a3139a852ff925842e7ab6a0bf60d3452fdf500a0bc494265c6be
+- kind: project-relative
+  target: agents
+  value: .agents/skills/airchon/references/harnesses/agent-loop.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:74e6ef6b66d3f5e920c9abdd64284e5d6b63ecbb19d45745b31848144d852d04
+- kind: project-relative
+  target: agents
+  value: .agents/skills/airchon/references/harnesses/index.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:4d6ddb7deb3977af79ad91555ec8f9e2dbd2ac2cad537299bd831bd3f2adb530
+- kind: project-relative
+  target: agents
+  value: .agents/skills/airchon/references/harnesses/instruction-context-budget.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:0d851fa2b4d1142615c5640b46579ab078ff89f53aaefa0bb92209dee1fc3b5d
+- kind: project-relative
+  target: agents
+  value: .agents/skills/airchon/references/harnesses/mcp-integration.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:b1569099c5dc0bee4838ef7fbab53d6096eb79f1278d0a55692a97a96f50dde9
+- kind: project-relative
+  target: agents
+  value: .agents/skills/airchon/references/harnesses/memory-management.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:d27559323f5404548ecd9aa20d701a5da2b77ad8af3c658c32956b59c00c1bf0
+- kind: project-relative
+  target: claude
+  value: .claude/agents/airchon-mentor.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:0f1c41a2d4390a00bcfe9102e8dd01bdb5c121c0bc48ef0f831afea00a5fd4f8
+- kind: project-relative
+  target: claude
+  value: .claude/skills/airchon
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/airchon/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:88d3fbd8c5f584fee97d97e98a7b5e82d911b735233114e2be25ee674e5e2205
+- kind: project-relative
+  target: copilot
+  value: .github/agents/airchon-mentor.agent.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:0f1c41a2d4390a00bcfe9102e8dd01bdb5c121c0bc48ef0f831afea00a5fd4f8
+local_deployed_files:
+- .agents/skills/airchon
+- .agents/skills/airchon/SKILL.md
+- .agents/skills/airchon/references/harnesses/agent-loop-implementations.md
+- .agents/skills/airchon/references/harnesses/agent-loop.md
+- .agents/skills/airchon/references/harnesses/index.md
+- .agents/skills/airchon/references/harnesses/instruction-context-budget.md
+- .agents/skills/airchon/references/harnesses/mcp-integration.md
+- .agents/skills/airchon/references/harnesses/memory-management.md
+- .claude/agents/airchon-mentor.md
+- .claude/skills/airchon
+- .claude/skills/airchon/SKILL.md
+- .github/agents/airchon-mentor.agent.md
+local_deployed_file_hashes:
+  .agents/skills/airchon/SKILL.md: sha256:88d3fbd8c5f584fee97d97e98a7b5e82d911b735233114e2be25ee674e5e2205
+  .agents/skills/airchon/references/harnesses/agent-loop-implementations.md: sha256:dbf941e48a2a3139a852ff925842e7ab6a0bf60d3452fdf500a0bc494265c6be
+  .agents/skills/airchon/references/harnesses/agent-loop.md: sha256:74e6ef6b66d3f5e920c9abdd64284e5d6b63ecbb19d45745b31848144d852d04
+  .agents/skills/airchon/references/harnesses/index.md: sha256:4d6ddb7deb3977af79ad91555ec8f9e2dbd2ac2cad537299bd831bd3f2adb530
+  .agents/skills/airchon/references/harnesses/instruction-context-budget.md: sha256:0d851fa2b4d1142615c5640b46579ab078ff89f53aaefa0bb92209dee1fc3b5d
+  .agents/skills/airchon/references/harnesses/mcp-integration.md: sha256:b1569099c5dc0bee4838ef7fbab53d6096eb79f1278d0a55692a97a96f50dde9
+  .agents/skills/airchon/references/harnesses/memory-management.md: sha256:d27559323f5404548ecd9aa20d701a5da2b77ad8af3c658c32956b59c00c1bf0
+  .claude/agents/airchon-mentor.md: sha256:0f1c41a2d4390a00bcfe9102e8dd01bdb5c121c0bc48ef0f831afea00a5fd4f8
+  .claude/skills/airchon/SKILL.md: sha256:88d3fbd8c5f584fee97d97e98a7b5e82d911b735233114e2be25ee674e5e2205
+  .github/agents/airchon-mentor.agent.md: sha256:0f1c41a2d4390a00bcfe9102e8dd01bdb5c121c0bc48ef0f831afea00a5fd4f8

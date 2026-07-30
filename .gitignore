@@ -1,0 +1,10 @@
+
+# APM dependencies
+apm_modules/
+.claude/
+.agents/
+.github/
+
+.copilot/
+.vscode/
+.mcp.json

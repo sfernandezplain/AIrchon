@@ -1,0 +1,12 @@
+name: AIrchon
+version: 1.0.0
+description: APM project for AIrchon -- a conversational AI agent-harness mentor
+author: Sergi Fernandez
+targets:
+- claude
+- copilot
+dependencies:
+  apm: []
+  mcp: []
+includes: auto
+scripts: {}
