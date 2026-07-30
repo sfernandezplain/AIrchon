@@ -4,30 +4,57 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-An APM (Agent Package Manager) project. It packages two primitives
+An APM (Agent Package Manager) project. It packages three primitives
 that work together:
 
 - **`airchon-mentor`** (`.apm/agents/airchon-mentor.agent.md`) -- a
-  standalone custom agent that does the actual mentoring: a
-  conversational mentor on how AI agent harnesses (Claude Code,
-  GitHub Copilot CLI, OpenCode, and agent-harness engineering
-  generally) actually work internally. Deploys to both Claude Code
-  and Copilot CLI as a flat `.agent.md` file (agents have a real
-  per-target deploy path on both).
+  standalone custom agent that answers/explains: a conversational
+  mentor on how AI agent harnesses (Claude Code, GitHub Copilot CLI,
+  OpenCode, and agent-harness engineering generally) actually work
+  internally. READ-ONLY on the wiki-book (`references/harnesses/`)
+  and the sources -- it holds no `Write`/`Edit` tool. When a question
+  isn't covered by the book yet, it researches the sources live and
+  answers IN SITU (in the conversation), but never persists that
+  research to the book. Deploys to both Claude Code and Copilot CLI
+  as a flat `.agent.md` file.
+- **`airchon-author`** (`.apm/agents/airchon-author.agent.md`) -- a
+  standalone custom agent that populates the book: researches a topic
+  for real and writes/updates the one `references/harnesses/*.md`
+  page the request needs, keeping `index.md` current. It is the ONLY
+  primitive in this project holding `Write`/`Edit` scoped to the
+  wiki-book. Its reply to the user is a short confirmation of what it
+  wrote, not a full mentoring-style explanation (that's
+  `airchon-mentor`'s job). Deploys to both Claude Code and Copilot CLI
+  the same way.
 - **`airchon`** (`.apm/skills/airchon/SKILL.md`) -- a thin router
-  skill with no mentoring logic of its own. Its only job is to be
-  DISCOVERY-invocable and `/airchon`-invocable, and on every
-  invocation call the `airchon-mentor` agent via the Agent tool and
-  return its answer. Skills only have a deploy mechanism on Claude
-  Code (`.claude/skills/<name>/`) -- Copilot CLI has no equivalent
-  skill bundle path -- so this router only actually reaches Claude
-  Code; `airchon-mentor` itself is what keeps Copilot covered.
+  skill with no mentoring or authoring logic of its own. Its only job
+  is to be DISCOVERY-invocable and `/airchon`-invocable, classify
+  authoring intent vs. the conversational default (B2 CONDITIONAL
+  DISPATCH), call exactly ONE of `airchon-mentor` / `airchon-author`
+  via the Agent tool, and return its answer. Skills only have a
+  deploy mechanism on Claude Code (`.claude/skills/<name>/`) --
+  Copilot CLI has no equivalent skill bundle path -- so this router
+  only actually reaches Claude Code; the two agents themselves are
+  what keep Copilot covered.
 
 This split exists because a skill deploying to Copilot at all is not
-possible, but a bare agent deploying to Copilot works fine -- so the
-mentor's real logic and its wiki-book both live on the agent side,
-and the skill is purely a discovery/routing convenience layered on
-top for Claude Code.
+possible, but a bare agent deploying to Copilot works fine -- so both
+mentor's and author's real logic live on the agent side, and the
+skill is purely a discovery/routing convenience layered on top for
+Claude Code.
+
+**Mentor vs. author (2026-07-30 split, at the operator's request):**
+the original combined agent both answered questions AND wrote to the
+wiki-book -- a DESCRIPTION CONJUNCTION / MULTI-LENS BODY smell (R1
+SPLIT trigger in genesis terms) once the operator asked for the
+read/write boundary to be real. `airchon-mentor` kept the name and
+the default/most-invoked conversational role; `airchon-author` is the
+new sibling that owns persistence. The single-writer interlock on
+`references/harnesses/**` is enforced STRUCTURALLY (mentor's tool
+list omits `Write`/`Edit`), not just by instruction in the persona
+body -- see `CHANGELOG.md`'s 2026-07-30 "Split `airchon-mentor` into
+read-only mentor + write-only author" entry for the full design
+rationale (genesis handoff packet was scratch-only, not committed).
 
 **Provenance:** what is now `airchon-mentor` + `airchon` and their
 wiki-book were originally built inside the AgentXRay repo as
@@ -54,24 +81,28 @@ was meant to be a router, not a replacement for the agent. Do not
 assume any doc dated before that point still describes the current
 shape.
 
-## Source of truth: `.apm/agents/airchon-mentor.agent.md` + `.apm/skills/airchon/SKILL.md`
+## Source of truth: `.apm/agents/airchon-mentor.agent.md` + `.apm/agents/airchon-author.agent.md` + `.apm/skills/airchon/SKILL.md`
 
 ```
 apm.yml                                    APM project manifest (name, targets, dependencies)
 apm.lock.yaml                              Resolved/locked dependency versions (generated by `apm install`)
-.apm/agents/airchon-mentor.agent.md        Canonical, authored source for the mentor agent -- does the real work
+.apm/agents/airchon-mentor.agent.md        Canonical, authored source for the mentor agent -- read-only Q&A
+.apm/agents/airchon-author.agent.md        Canonical, authored source for the author agent -- the only writer to the wiki-book
 .apm/skills/airchon/SKILL.md               Canonical, authored source for the thin router skill
-references/harnesses/                      The wiki-book airchon-mentor writes/reads -- project root, NOT under .apm/
-<deploy-root>/agents/airchon-mentor.*      Deployed copy of the agent -- gitignored, regenerated, NEVER hand-edited
-<deploy-root>/skills/airchon/               Deployed copy of the skill -- gitignored, regenerated, NEVER hand-edited
+references/harnesses/                      The wiki-book -- mentor reads it, author writes it -- project root, NOT under .apm/
+<deploy-root>/agents/airchon-mentor.*      Deployed copy of the mentor agent -- gitignored, regenerated, NEVER hand-edited
+<deploy-root>/agents/airchon-author.*      Deployed copy of the author agent -- gitignored, regenerated, NEVER hand-edited
+<deploy-root>/skills/airchon/               Deployed copy of the router skill -- gitignored, regenerated, NEVER hand-edited
 ```
 
 **Always edit `.apm/agents/airchon-mentor.agent.md`,
-`.apm/skills/airchon/SKILL.md`, and `references/harnesses/*.md`
-directly.** `.claude/`, `.agents/`, and `.github/` are gitignored
-build output -- a plain file copy (not a symlink;
-Windows/`core.symlinks=false` makes junctions unsafe). After editing
-any of them, run:
+`.apm/agents/airchon-author.agent.md`, `.apm/skills/airchon/SKILL.md`,
+and `references/harnesses/*.md` directly.** `.claude/`, `.agents/`,
+and `.github/` are gitignored build output -- a plain file copy (not
+a symlink; Windows/`core.symlinks=false` makes junctions unsafe).
+Only `airchon-author` should ever hand-edit or be instructed to edit
+`references/harnesses/*.md` -- `airchon-mentor` is read-only there by
+design (no `Write`/`Edit` tool). After editing any of the above, run:
 
 ```bash
 apm install
@@ -83,20 +114,21 @@ here) is the command that deploys both `.apm/agents/*.agent.md` and
 `.apm/skills/*` to each active target's own path.
 
 **Why the wiki-book is back at the project root, not inside the skill
-bundle.** The agent (not the skill) owns the wiki-book now, and the
-agent is a bare standalone agent always invoked with this repo as the
-working directory -- so, same reasoning as the very first version of
-this project, there is no deployed-copy path to resolve; the fixed
-path `references/harnesses/` is correct on every invocation, on either
-harness. If the skill ever needs its own wiki-book content
-independent of the agent, that would need to live under
+bundle.** The agents (not the skill) own the wiki-book now --
+`airchon-author` writes it, `airchon-mentor` reads it -- and both are
+bare standalone agents always invoked with this repo as the working
+directory -- so, same reasoning as the very first version of this
+project, there is no deployed-copy path to resolve; the fixed path
+`references/harnesses/` is correct on every invocation, on either
+harness, for either agent. If the skill ever needs its own wiki-book
+content independent of the agents, that would need to live under
 `.apm/skills/airchon/references/` instead and get a deployed-copy
 resolution step in the skill's own instructions -- not needed today
 since the skill has no content of its own.
 
 Verified live via this project's own `apm.lock.yaml` after running
-`apm install`: the agent deploys to `.claude/agents/` and
-`.github/agents/` (both targets); the skill deploys to
+`apm install`: both agents deploy to `.claude/agents/` and
+`.github/agents/` (both targets, 4 files); the skill deploys to
 `.claude/skills/airchon/` and `.agents/skills/airchon/` (no
 `.github/skills/...` entry -- Copilot never gets a skill copy).
 Re-check `apm.lock.yaml` after any future `apm install` rather than
@@ -124,8 +156,9 @@ The **skill's** frontmatter (`.apm/skills/airchon/SKILL.md`) uses
 `tools: [A, B, C]` bracket syntax -- see the discord `access`/
 `configure` skills or `claude-security`'s `SKILL.md` in the official
 plugin marketplace for the live-verified format. The router's
-`allowed-tools` scopes the Agent tool to the one agent it's allowed to
-call: `Agent(airchon-mentor)`.
+`allowed-tools` scopes the Agent tool to the two agents it's allowed
+to call: `Agent(airchon-mentor)` and `Agent(airchon-author)` -- the
+router picks exactly one per invocation, never both.
 
 After adding or editing either, always verify it actually appears in
 the next "New agent types are now available" / "The following skills
@@ -135,19 +168,22 @@ registration.
 
 ## Cross-harness requirement
 
-Whatever `airchon-mentor` researches and writes to the wiki-book must
-be honest about which harness(es) a claim actually applies to -- that
-discipline is encoded directly in the agent's own GROUNDING DISCIPLINE
-and SOURCE AUTHORITY sections, not restated here. This project's
-`apm.yml` declares `targets: claude, copilot` -- the agent genuinely
-reaches both; the router skill only reaches Claude Code (see above).
-OpenCode is a harness the mentor researches and writes about, not a
-deploy target of this project either way.
+Whatever either agent asserts -- `airchon-mentor` answering in situ,
+`airchon-author` writing to the wiki-book -- must be honest about
+which harness(es) a claim actually applies to -- that discipline is
+encoded directly (and duplicated verbatim, deliberately -- see
+`CHANGELOG.md`) in each agent's own GROUNDING DISCIPLINE and SOURCE
+AUTHORITY sections, not restated here. This project's `apm.yml`
+declares `targets: claude, copilot` -- both agents genuinely reach
+both; the router skill only reaches Claude Code (see above). OpenCode
+is a harness the agents research and write about, not a deploy target
+of this project either way.
 
 ## Running tests
 
 There are none yet -- this project has no scripts, no `node:test`
-suite, and no evals harness. `airchon-mentor` is prose/research-driven,
-not deterministic-probe-driven the way `xray` is; if that changes,
-add a `dev/` maintainer area following AgentXRay's own precedent
-rather than putting test/eval assets under `.apm/`.
+suite, and no evals harness. `airchon-mentor` and `airchon-author` are
+prose/research-driven, not deterministic-probe-driven the way `xray`
+is; if that changes, add a `dev/` maintainer area following
+AgentXRay's own precedent rather than putting test/eval assets under
+`.apm/`.

@@ -1,3 +1,67 @@
+## 2026-07-30 -- Split `airchon-mentor` into read-only mentor + write-only author
+
+Ran through the `genesis` design skill (handoff packet in the
+session's scratchpad, not committed here -- this project has no
+`plan.md` convention yet) to split the single combined agent into
+two, at the operator's request: "mentor that will answer or explain
+any question the user has and author that will populate the book,
+mentor can access the book and the sources but cannot modify the
+book, if something is not in the book it has to check on the sources
+and made a response in situ."
+
+- **R1 SPLIT confirmed structurally**, not just requested: the old
+  combined description mixed two verbs ("mentors conversationally"
+  AND "writing/updating a shared wiki-book") with two different
+  write-permission profiles -- a DESCRIPTION CONJUNCTION / MULTI-LENS
+  BODY trigger, not a premature split.
+- **`.apm/agents/airchon-mentor.agent.md` narrowed to read-only.**
+  Dropped `Write` and `Edit` from `tools:` -- structurally, not just
+  by instruction, so the "never modifies the book" constraint holds
+  even if the persona body were ignored. Its WIKI-BOOK PROCEDURE now
+  reads the book first, and when a topic isn't covered, researches
+  the sources live and answers IN SITU (in the conversation) instead
+  of persisting anything -- the live research is real, it just never
+  reaches `references/harnesses/`.
+- **New `.apm/agents/airchon-author.agent.md`.** Carries the
+  research-and-write half of the old WIKI-BOOK PROCEDURE verbatim in
+  spirit: researches a topic for real, writes/updates exactly the one
+  page the request needs, keeps `index.md` current. It is now the
+  ONLY agent in this project holding Write/Edit scoped to the
+  wiki-book. Its reply to the user is a short confirmation of what it
+  wrote and the sources it used -- not a full mentoring-style
+  explanation, to avoid overlapping `airchon-mentor`'s job.
+- **`.apm/skills/airchon/SKILL.md` router upgraded to a real B2
+  CONDITIONAL DISPATCH.** It used to always call `airchon-mentor`;
+  it now classifies authoring intent ("write this up", "add this to
+  the wiki-book", "update the page on X", ...) vs. the conversational
+  default, and calls exactly one of the two agents -- never both.
+  `allowed-tools` grew to `Agent(airchon-mentor), Agent(airchon-
+  author)`. Defaults to `airchon-mentor` on ambiguity.
+- **GROUNDING DISCIPLINE + SOURCE AUTHORITY duplicated verbatim**
+  across both new agent files rather than extracted to a shared
+  asset (R3 EXTRACT trigger considered and rejected): both personas
+  genuinely need the full epistemic contract present in their own
+  loaded text with no extra Read-tool round trip on every turn: the
+  two files will change together on the rare occasion sourcing rules
+  change, which is a small, bounded cost against paying a mandatory
+  extra tool call on every single invocation forever.
+- **Frontmatter descriptions trimmed post-draft** (mentor 1188 ->
+  1003 chars, author -> 906 chars) to stay clear of the 1024-char
+  MODULE ENTRYPOINT cap even though that cap is formally an
+  agentskills.io SKILL.md rule and these are agent files, not
+  SKILL.md containers -- kept as a discipline anyway since these
+  descriptions are still dispatcher-preloaded text.
+- No `apm.yml`/manifest edit needed: `includes: auto` already
+  auto-discovers new files under `.apm/agents/`; verified via
+  `apm install` that the new agent deployed to both `.claude/agents/`
+  and `.github/agents/` alongside the existing one (4 files = 2
+  agents x 2 targets).
+- **Known pre-existing IDE lint noise, not a new regression:** the
+  editor flags `tools:`/`model:` values on the Copilot-target deploy
+  as "unknown" -- this is the same generic tool/model vocabulary the
+  combined agent already used before this split; not something this
+  change introduced.
+
 ## 2026-07-30 -- Split back into agent (`airchon-mentor`) + thin router skill (`airchon`)
 
 - **Restored `.apm/agents/airchon-mentor.agent.md`** at the operator's

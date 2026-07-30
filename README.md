@@ -15,6 +15,24 @@
 
 ---
 
+## 🏛️ Why "AIrchon"
+
+The name fuses **AI** with **Archon** (Greek *árchōn*, ἄρχων --
+"ruler," "first one," the one who governs). In the old mythic sense,
+an Archon is a gatekeeper: a power that stands between people and
+higher knowledge and hoards it. AIrchon takes that authority and turns
+it inside out -- it is the archon that opens the gate instead of
+guarding it. Sovereign not because it withholds the source, but
+because it always names one.
+
+That inversion is the axiom the whole project stands on: **true
+intelligence is not a proprietary privilege, it is a universal
+birthright.** Every claim AIrchon makes is traceable back to a name, a
+document, a repository -- authority earned by citation, never by
+gatekeeping. The name is the motto, compressed to one word.
+
+---
+
 ## 👑 The Manifesto
 
 AIrchon was born from a refusal to accept shallow docs, walled
