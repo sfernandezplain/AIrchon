@@ -9,6 +9,28 @@ harness's mechanism is assumed to describe the other's.
 
 ## 1. Claude Code (Agent SDK docs)
 
+```mermaid
+sequenceDiagram
+    participant Caller as SDK caller
+    participant Harness as Claude Code (Agent SDK loop)
+    participant Claude as Claude
+    participant Tools as Tools
+
+    Caller->>Harness: prompt
+    Harness->>Claude: system prompt + tool defs + history (SystemMessage "init")
+    loop each turn
+        Claude->>Harness: AssistantMessage (text and/or tool calls)
+        alt tool calls requested
+            Harness->>Tools: execute (hooks may intercept before execution)
+            Tools-->>Harness: tool results
+            Harness->>Claude: UserMessage (tool results appended)
+        else no tool calls
+            Harness->>Caller: ResultMessage (subtype "success")
+        end
+    end
+    Note over Harness,Claude: max_turns / max_budget_usd end the loop early with<br/>ResultMessage subtype "error_max_turns" / "error_max_budget_usd"
+```
+
 VERIFIED (`code.claude.com/docs/en/agent-sdk/agent-loop`, fetched
 2026-07-30): the SDK "runs the same execution loop that powers Claude
 Code." The loop-at-a-glance is five stages: **receive prompt** (system
@@ -58,6 +80,15 @@ public source" -- do not fill that gap with OpenCode's or any other
 harness's mechanism.
 
 ## 2. OpenCode
+
+```mermaid
+flowchart TD
+    P[Primary agent] -->|Task tool| S[Subagent, specialized]
+    P --> C{Step limit reached?}
+    C -->|No| P
+    C -->|Yes| Inj["MAX_STEPS_PROMPT injected<br/>(packages/core/src/session/runner/max-steps.ts)"]
+    Inj --> Force[Tools disabled; model forced to a text-only summarization turn]
+```
 
 BEST CURRENT UNDERSTANDING, UNCONFIRMED (`opencode.ai/docs/`, the
 top-level docs page, fetched 2026-07-30): this page covers install,

@@ -13,6 +13,15 @@ see [agent-loop-implementations.md](agent-loop-implementations.md).
 
 ## 1. The loop, as commonly taught
 
+```mermaid
+stateDiagram-v2
+    [*] --> Thought
+    Thought --> Action: model decides the next step
+    Action --> Observation: tool executes, result appended to the prompt
+    Observation --> Thought: re-enter the cycle (e.g. to correct an error)
+    Observation --> [*]: objective fulfilled, while-loop exits
+```
+
 VERIFIED (Hugging Face Agents Course, Unit 1, "Agent steps and
 structure", fetched 2026-07-30): the cycle is named
 **Thought -> Action -> Observation**, and the course defines each step

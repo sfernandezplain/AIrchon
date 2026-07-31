@@ -18,6 +18,18 @@ tool primitive. Copilot CLI has both: instruction *files* in the repo
 to the model as tool calls (`store_memory`, `vote_memory`) with
 GitHub-account/repository scoping. Both VERIFIED, see below.
 
+```mermaid
+flowchart LR
+    subgraph CC["Claude Code"]
+        CM["CLAUDE.md hierarchy (on disk, human-authored)"] --> Ctx1[Context window]
+        AM["Auto memory: MEMORY.md index + topic files (on disk, agent-authored)"] --> Ctx1
+    end
+    subgraph GH["Copilot CLI"]
+        IF["Instruction files: copilot-instructions.md, AGENTS.md, CLAUDE.md (on disk)"] --> Ctx2[Context window]
+        SM["Copilot Memory (server-side service)"] -->|"store_memory / vote_memory tool calls"| Ctx2
+    end
+```
+
 ---
 
 ## 1. Claude Code
@@ -48,6 +60,14 @@ an action regardless of what the model decides, the documented answer
 is a `PreToolUse` hook, not a memory file.
 
 ### 1.2 CLAUDE.md: locations and load order
+
+```mermaid
+flowchart TD
+    M["Managed policy CLAUDE.md<br/>(macOS/Linux/WSL/Windows fixed paths)"] --> U["User instructions<br/>~/.claude/CLAUDE.md"]
+    U --> P["Project instructions<br/>./CLAUDE.md or ./.claude/CLAUDE.md"]
+    P --> L["Local instructions<br/>./CLAUDE.local.md"]
+    L --> Ctx["Concatenated into context:<br/>broadest first, nearest-to-launch-dir read last"]
+```
 
 Four scopes, listed by the docs in load order, broadest first:
 
@@ -181,6 +201,20 @@ memories" / "Recalled 2 memories" in the UI are auto memory writes and
 reads.
 
 ### 1.7 Compaction interaction -- the load-bearing table
+
+```mermaid
+stateDiagram-v2
+    state "Before compaction" as Before
+    state "After compaction" as After
+    Before --> After: auto-compact or /compact fires
+
+    state After {
+        [*] --> Reinjected: "root CLAUDE.md, unscoped rules,<br/>auto memory -- re-read from disk"
+        [*] --> Lost: "paths:-scoped rules, nested CLAUDE.md --<br/>lost until a matching file is read again"
+        [*] --> Capped: "invoked skill bodies --<br/>5,000 tok/skill, 25,000 total, oldest dropped first"
+        [*] --> Unchanged: "system prompt, output style --<br/>not part of message history"
+    }
+```
 
 From the context-window page, verbatim in substance:
 
@@ -350,6 +384,22 @@ the CLI applies the identical ordering is BEST CURRENT UNDERSTANDING,
 UNCONFIRMED. I did not find a CLI-specific precedence statement.
 
 ### 2.2 Copilot Memory: a real, server-side memory service
+
+```mermaid
+sequenceDiagram
+    participant Svc as Copilot Memory service
+    participant CLI as Copilot CLI
+    participant M as Model
+
+    Svc-->>CLI: repo-level facts + user-level preferences (session start, refreshed every 30 min)
+    CLI->>M: injected into the prompt
+    M->>CLI: store_memory(fact, scope)
+    CLI->>M: permission prompt, showing scope (user, or owner/repo)
+    M->>Svc: write fact/preference, on approval
+    Svc-->>CLI: citation validated against the current branch on later use
+    M->>CLI: vote_memory(relevance), throttled per response/interaction
+    Note over Svc: unused fact or preference auto-deleted after 28 days;<br/>successful validated use resets the timer
+```
 
 This is the genuine architectural difference. Per
 `docs.github.com/en/copilot/concepts/agents/copilot-memory` (public

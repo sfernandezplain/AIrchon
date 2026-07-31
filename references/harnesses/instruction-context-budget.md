@@ -28,6 +28,23 @@ instruction files (`.claude/rules/` with `paths:` on Claude Code,
 `.github/instructions/*.instructions.md` with `applyTo:` on Copilot CLI)
 and skills.
 
+```mermaid
+flowchart TD
+    subgraph Tier1["Tier 1 -- always loaded at session start"]
+        CC1["Claude Code: CLAUDE.md hierarchy +<br/>unscoped .claude/rules/*.md"]
+        GH1["Copilot CLI: copilot-instructions.md,<br/>AGENTS.md, CLAUDE.md"]
+    end
+    subgraph Tier2["Tier 2 -- loaded when a matching file is touched"]
+        CC2["Claude Code: .claude/rules/*.md<br/>with paths: glob"]
+        GH2["Copilot CLI: .github/instructions/*.instructions.md<br/>with applyTo: glob"]
+    end
+    subgraph Tier3["Tier 3 -- loaded only when invoked"]
+        CC3["Claude Code skills: body loads on use"]
+        GH3["Copilot CLI skills: SKILL.md injected on use"]
+    end
+    Tier1 --> Tier2 --> Tier3
+```
+
 ---
 
 ## 1. Claude Code

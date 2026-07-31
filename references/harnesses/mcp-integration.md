@@ -18,6 +18,20 @@ fetched 2026-07-30. VERIFIED.
 
 ### 1.1 Config sources and scopes
 
+```mermaid
+flowchart TD
+    A["Same server name (or same endpoint, for plugins/connectors)<br/>requested"] --> B{Defined in local scope?}
+    B -->|Yes| Z1[Connect using the whole local entry]
+    B -->|No| C{Defined in project .mcp.json?}
+    C -->|Yes| Z2[Connect using the whole project entry]
+    C -->|No| D{Defined in user scope ~/.claude.json?}
+    D -->|Yes| Z3[Connect using the whole user entry]
+    D -->|No| E{Provided by a plugin?}
+    E -->|Yes| Z4[Connect using the plugin entry, matched by endpoint]
+    E -->|No| F{Inherited from a claude.ai connector?}
+    F -->|Yes| Z5[Connect using the connector entry]
+```
+
 Three scopes, all using the same `mcpServers` object shape:
 
 | Scope | Loads in | Shared with team | Stored in |
@@ -105,6 +119,24 @@ For sandboxing filesystem access, Claude Code answers the MCP
 v2.1.203).
 
 ### 1.6 Tool-calling semantics
+
+```mermaid
+sequenceDiagram
+    participant CC as Claude Code
+    participant MCP as MCP server
+    participant M as Claude (model)
+
+    CC->>MCP: tools/list
+    MCP-->>CC: tool names + server instructions (full schemas deferred by default)
+    CC->>M: names + instructions only (ENABLE_TOOL_SEARCH default: all deferred)
+    M->>CC: ToolSearch call, when a matching need arises
+    CC->>M: full schema for the matched tool(s)
+    M->>CC: tool call with arguments
+    CC->>MCP: tools/call
+    MCP-->>CC: result (or a persisted-to-disk file reference, if oversized)
+    CC->>M: result appended to the conversation
+    Note over CC,MCP: alwaysLoad: true on a server entry skips deferral for that server<br/>and blocks startup until it connects (5s timeout)
+```
 
 **Callable tool name.** A plain configured server's tools are callable as
 `mcp__<server-name>__<tool-name>`. A plugin-bundled server's tools are
@@ -205,6 +237,18 @@ lowercase filename) read via `gh api` on 2026-07-30, authoritative for
 its own behaviour-change history. VERIFIED.
 
 ### 2.1 Config sources and precedence
+
+```mermaid
+flowchart TD
+    W[Working directory] -->|walk upward| R[Repository root]
+    R --> F1{.mcp.json found in a directory along the walk?}
+    F1 -->|Yes| U1[Use .mcp.json; closer to cwd wins on a name conflict]
+    F1 -->|No| F2{.github/mcp.json found?}
+    F2 -->|Yes| U2[Use .github/mcp.json]
+    F2 -->|No| H[Fall back to user-level ~/.copilot/mcp-config.json]
+    U1 --> P[Project-level definitions take precedence over user-level]
+    U2 --> P
+```
 
 User-level: `~/.copilot/mcp-config.json`. The whole `~/.copilot`
 directory relocates if `COPILOT_HOME` is set (default `~/.copilot` on
