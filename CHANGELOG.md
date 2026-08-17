@@ -1,3 +1,58 @@
+## 2026-08-17 -- `airchon-mentor` gains read-only project-harness review
+
+Ran through the `genesis` design skill (handoff packet in the
+session's scratchpad, not committed here) at the operator's request:
+"airchon mentor can read project files to respond the user how to do
+better and more proper agent harness / railguarding / flow /
+performance." This reverses, for `airchon-mentor` only, the
+2026-07-30 split's "never audits a user's own skill/persona files"
+restriction.
+
+- **R1 SPLIT checked and rejected.** The new capability reuses the
+  same grounding corpus (the wiki-book + external harness docs), same
+  output shape (conversational prose, no artifacts), same audience
+  (a human, directly), and the same read-only tool surface as the
+  existing mentor role -- only the TARGET changes (the user's own
+  project, in addition to the general case), not a second lens or a
+  second side effect. No sibling agent warranted.
+- **`.apm/agents/airchon-mentor.agent.md` updated.** Frontmatter
+  `description` now also triggers on a request to review or improve
+  the user's own project's agent-harness setup (trimmed to 1,013
+  chars to stay under the 1024-char cap after the addition). Body
+  gained a new PROJECT-HARNESS REVIEW PROCEDURE section (read the
+  named files first via Glob/Read/Grep -- a claim about the project
+  is VERIFIED only once actually read this session, never inferred;
+  map the concern to the relevant wiki-book pages; answer as an
+  explicit comparison, tagged throughout). BOUNDARY reworded: still
+  no `Write`/`Edit` anywhere, still never touches
+  `references/harnesses/**`, and now explicitly never runs `genesis`'s
+  own formal design/refactor process (mandatory diagrams,
+  severity-rubric findings, a persisted handoff packet) -- flagged as
+  a MEDIUM SoC finding (conceptual overlap with `genesis`) during
+  design, mitigated by naming `genesis` as the escape hatch for
+  redesign-grade requests rather than improvising a lighter version
+  of it. Reviewing the user's general application code outside
+  agent-harness configuration remains explicitly out of scope.
+- **`.apm/agents/airchon-author.agent.md` BOUNDARY line updated**,
+  wording only -- it previously claimed "same boundary as
+  `airchon-mentor`" on auditing project files, which is now stale;
+  reworded to note the asymmetry explicitly. No capability change to
+  `airchon-author` itself; it still never reads a project's own
+  harness config for advisory purposes, and remains the sole writer
+  to the wiki-book.
+- **`.apm/skills/airchon/SKILL.md` description updated** to name the
+  new trigger for discovery-dispatch accuracy; router classification
+  LOGIC unchanged -- a project-review request already fell under the
+  existing conversational default branch to `airchon-mentor`.
+- **No tool-surface change.** `airchon-mentor` already held
+  `Read`/`Glob`/`Grep`; the change is a persona-scoping (prompt)
+  boundary shift, not a new tool grant.
+- **No evals harness added** for this edit (this project still has
+  none, per the "Running tests" section) -- a lightweight evals plan
+  (2-3 content evals showing a before/after delta, ~4 trigger evals)
+  was recorded in the session's scratchpad handoff packet as design
+  rationale only, not shipped as a file.
+
 ## 2026-07-30 -- Split `airchon-mentor` into read-only mentor + write-only author
 
 Ran through the `genesis` design skill (handoff packet in the

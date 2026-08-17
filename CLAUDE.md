@@ -15,8 +15,15 @@ that work together:
   and the sources -- it holds no `Write`/`Edit` tool. When a question
   isn't covered by the book yet, it researches the sources live and
   answers IN SITU (in the conversation), but never persists that
-  research to the book. Deploys to both Claude Code and Copilot CLI
-  as a flat `.agent.md` file.
+  research to the book. Since 2026-08-17 it may ALSO read (never
+  edit) the operator's own project's agent-harness configuration --
+  skills, agent/persona files, hooks, permission/sandboxing config,
+  orchestration/workflow definitions -- and advise on guardrails,
+  control flow, or performance against the same wiki-book/sources
+  corpus; it explicitly does not run the separate `genesis` skill's
+  formal design/refactor process (diagrams, severity findings) itself
+  -- see `CHANGELOG.md`'s 2026-08-17 entry. Deploys to both Claude
+  Code and Copilot CLI as a flat `.agent.md` file.
 - **`airchon-author`** (`.apm/agents/airchon-author.agent.md`) -- a
   standalone custom agent that populates the book: researches a topic
   for real and writes/updates the one `references/harnesses/*.md`

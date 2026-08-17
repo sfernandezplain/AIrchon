@@ -156,7 +156,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:fcb180a2830d05763f3ec08d01244a2ec0fa4dfb331c2247ac521aa7252f3e19
+  content_hash: sha256:7b9db0b28b51d36f26e46e1692ec015aef3272e73e12bb6529163f05e3a3f514
 - kind: project-relative
   target: agents
   value: .agents/skills/airchon/references/harnesses/agent-loop-implementations.md
@@ -219,7 +219,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:b546cfedf2bfb1e789564a97dd35e40eb9ba1720e64a054e57735461c603149e
+  content_hash: sha256:f41a3519facd903b6feafc64ceaf4900119ab96e538acd8d02bb16080bc54755
 - kind: project-relative
   target: claude
   value: .claude/agents/airchon-mentor.md
@@ -228,7 +228,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:5f6bffc081796db26ab4e4dee7abb5c01e6f4df3840c55af570f682214afa124
+  content_hash: sha256:fdeb4492c0401fd54806648effaa73b223ebbf69e370f0da50d156e7290bc932
 - kind: project-relative
   target: claude
   value: .claude/skills/airchon
@@ -246,7 +246,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:fcb180a2830d05763f3ec08d01244a2ec0fa4dfb331c2247ac521aa7252f3e19
+  content_hash: sha256:7b9db0b28b51d36f26e46e1692ec015aef3272e73e12bb6529163f05e3a3f514
 - kind: project-relative
   target: claude
   value: .claude/skills/genesis
@@ -831,7 +831,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:b546cfedf2bfb1e789564a97dd35e40eb9ba1720e64a054e57735461c603149e
+  content_hash: sha256:f41a3519facd903b6feafc64ceaf4900119ab96e538acd8d02bb16080bc54755
 - kind: project-relative
   target: copilot
   value: .github/agents/airchon-mentor.agent.md
@@ -840,7 +840,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:5f6bffc081796db26ab4e4dee7abb5c01e6f4df3840c55af570f682214afa124
+  content_hash: sha256:fdeb4492c0401fd54806648effaa73b223ebbf69e370f0da50d156e7290bc932
 local_deployed_files:
 - .agents/skills/airchon
 - .agents/skills/airchon/SKILL.md
@@ -857,15 +857,15 @@ local_deployed_files:
 - .github/agents/airchon-author.agent.md
 - .github/agents/airchon-mentor.agent.md
 local_deployed_file_hashes:
-  .agents/skills/airchon/SKILL.md: sha256:fcb180a2830d05763f3ec08d01244a2ec0fa4dfb331c2247ac521aa7252f3e19
+  .agents/skills/airchon/SKILL.md: sha256:7b9db0b28b51d36f26e46e1692ec015aef3272e73e12bb6529163f05e3a3f514
   .agents/skills/airchon/references/harnesses/agent-loop-implementations.md: sha256:dbf941e48a2a3139a852ff925842e7ab6a0bf60d3452fdf500a0bc494265c6be
   .agents/skills/airchon/references/harnesses/agent-loop.md: sha256:74e6ef6b66d3f5e920c9abdd64284e5d6b63ecbb19d45745b31848144d852d04
   .agents/skills/airchon/references/harnesses/index.md: sha256:4d6ddb7deb3977af79ad91555ec8f9e2dbd2ac2cad537299bd831bd3f2adb530
   .agents/skills/airchon/references/harnesses/instruction-context-budget.md: sha256:0d851fa2b4d1142615c5640b46579ab078ff89f53aaefa0bb92209dee1fc3b5d
   .agents/skills/airchon/references/harnesses/mcp-integration.md: sha256:b1569099c5dc0bee4838ef7fbab53d6096eb79f1278d0a55692a97a96f50dde9
   .agents/skills/airchon/references/harnesses/memory-management.md: sha256:d27559323f5404548ecd9aa20d701a5da2b77ad8af3c658c32956b59c00c1bf0
-  .claude/agents/airchon-author.md: sha256:b546cfedf2bfb1e789564a97dd35e40eb9ba1720e64a054e57735461c603149e
-  .claude/agents/airchon-mentor.md: sha256:5f6bffc081796db26ab4e4dee7abb5c01e6f4df3840c55af570f682214afa124
-  .claude/skills/airchon/SKILL.md: sha256:fcb180a2830d05763f3ec08d01244a2ec0fa4dfb331c2247ac521aa7252f3e19
-  .github/agents/airchon-author.agent.md: sha256:b546cfedf2bfb1e789564a97dd35e40eb9ba1720e64a054e57735461c603149e
-  .github/agents/airchon-mentor.agent.md: sha256:5f6bffc081796db26ab4e4dee7abb5c01e6f4df3840c55af570f682214afa124
+  .claude/agents/airchon-author.md: sha256:f41a3519facd903b6feafc64ceaf4900119ab96e538acd8d02bb16080bc54755
+  .claude/agents/airchon-mentor.md: sha256:fdeb4492c0401fd54806648effaa73b223ebbf69e370f0da50d156e7290bc932
+  .claude/skills/airchon/SKILL.md: sha256:7b9db0b28b51d36f26e46e1692ec015aef3272e73e12bb6529163f05e3a3f514
+  .github/agents/airchon-author.agent.md: sha256:f41a3519facd903b6feafc64ceaf4900119ab96e538acd8d02bb16080bc54755
+  .github/agents/airchon-mentor.agent.md: sha256:fdeb4492c0401fd54806648effaa73b223ebbf69e370f0da50d156e7290bc932

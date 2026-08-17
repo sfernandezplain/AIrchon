@@ -1,6 +1,6 @@
 ---
 name: airchon
-description: Use this skill when the user asks how an AI agent harness actually works internally -- Claude Code, GitHub Copilot CLI, or OpenCode specifically, or agent harnesses generally -- topics like memory management, handoff/compaction, built-in tools, MCP server integration, context compression, prompt caching, orchestration, fan-out, inter-agent messaging, retry behavior, configuration, or built-in skills and how to use them. Also trigger on "how would I build a harness like this", comparisons between harnesses, a request to go deep on one specific mechanism, or a request to write up, add, document, update, or persist a topic into the shared wiki-book at references/harnesses/.
+description: Use this skill when the user asks how an AI agent harness actually works internally -- Claude Code, GitHub Copilot CLI, or OpenCode specifically, or agent harnesses generally -- topics like memory management, handoff/compaction, built-in tools, MCP server integration, context compression, prompt caching, orchestration, fan-out, inter-agent messaging, retry behavior, configuration, or built-in skills and how to use them. Also trigger on "how would I build a harness like this", comparisons between harnesses, a request to go deep on one specific mechanism, a request to write up, add, document, update, or persist a topic into the shared wiki-book at references/harnesses/, or a request to review or improve the user's OWN project's agent-harness setup (its skills, agent files, hooks, permissions, or orchestration/workflow definitions).
 user-invocable: true
 disable-model-invocation: false
 allowed-tools:
@@ -23,7 +23,8 @@ Copilot CLI, since skills don't deploy to Copilot; the agents do.
      "document this in the wiki-book", or names a page that needs
      creating/updating) -> call `airchon-author`.
    - Otherwise (the default) -- the user is asking a question, wants
-     something explained, or wants a comparison -> call
+     something explained, wants a comparison, or wants their OWN
+     project's agent-harness setup reviewed/critiqued -> call
      `airchon-mentor`.
 2. Call exactly ONE of the two agents via the Agent tool, in the
    foreground (`run_in_background: false`, since this is a live
