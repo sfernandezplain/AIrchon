@@ -13,6 +13,24 @@ Written LAZY, on demand, as real questions need each topic -- not
 pre-built speculatively. A missing page below is real follow-up work,
 not an oversight.
 
+## Reader proficiency tiers
+
+[Reader proficiency tiers: Slumberer -> Gnostic -> Demiurge -> Archon](reader-proficiency-tiers.md) --
+written 2026-08-17, a meta-page rather than a harness-internals topic:
+classifies a reader into one of four named tiers from zero
+(Slumberer, clueless/vibecoding) to HERO (Archon, capable of building
+a harness that surpasses the existing ones), maps each tier's proven
+capacities to a concrete reading list drawn from the Topics table
+below (agent-topology.md + agent-loop.md for Slumberer->Gnostic; the
+21-page core-mechanics band for Gnostic->Demiurge; the 10-page
+design-space/original-survey band for Demiurge->Archon), and explains
+how the rubric is meant to be used to calibrate explanation depth and
+self-assess before attempting a from-scratch harness build. The tier
+names and the zero-to-hero structure are the operator's own original
+framework authored that session, not a researched claim -- see the
+page's own opening section for how that is held apart from this
+book's usual VERIFIED/BEST-CURRENT-UNDERSTANDING tagging.
+
 ## Topics
 
 Reading order note: [agent-topology.md](agent-topology.md) is written
