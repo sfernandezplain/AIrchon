@@ -1,0 +1,873 @@
+# Tool schema / interface design
+
+**Scope, and why this is a different page from `built-in-tools.md`.**
+[Built-in tools](built-in-tools.md) is an *inventory*: it names every
+tool Claude Code, Copilot CLI, and OpenCode ship, what each one does
+mechanically, and how each harness's permission system gates it. It
+does not ask, and this page does, the design question underneath that
+inventory: given that a tool is just a `name` + `description` +
+JSON-Schema `input_schema` triple handed to a model, what makes one
+authoring of that triple produce reliable tool-selection and
+argument-construction behavior, and another produce hallucinated
+arguments, wrong-tool selection, or silent failure the model can't
+recover from. Every concrete tool named below that this book has
+already documented mechanically is cross-referenced to
+[built-in-tools.md](built-in-tools.md) rather than re-described.
+
+**Relationship to [System-prompt / agent-instruction design as a
+craft](system-prompt-design-as-craft.md).** That page's §1.5 already
+establishes, from Anthropic's `building-effective-agents` post, the
+umbrella framing this page operates inside: tool definitions are
+*agent-computer interface (ACI) design*, deserving the same rigor as
+human-computer interface design, with a named self-test ("is it
+obvious how to use this tool... or would you need to think carefully
+about it?") and a documented poka-yoke example (requiring absolute
+filepaths eliminated a relative-path failure mode entirely by making
+the error structurally impossible, rather than documenting a rule).
+That page's §2 also already treats few-shot *examples in prose* versus
+*prose constraints* as a system-prompt-level authoring tension. This
+page does not re-derive either finding -- it picks up one level lower,
+at the schema and interface itself: how a parameter is typed and named,
+what a tool's response payload should contain, how many distinct tools
+a capability should be split across, and what a tool should return on
+failure so the calling model can self-correct. Where the two pages
+share a citation (Anthropic's `define-tools`/`building-effective-agents`
+guidance, the Gorilla paper), each page grounds its own claim from that
+source independently rather than borrowing the other's fetch.
+
+Every claim below is tagged VERIFIED (fetched fresh this session from a
+named, authoritative source) or BEST CURRENT UNDERSTANDING,
+UNCONFIRMED. Claude Code, Copilot CLI, and OpenCode are three separate
+products from three separate organizations; a mechanism confirmed for
+one is never assumed for another without its own citation. Sources and
+fetch dates are listed in full at the bottom.
+
+---
+
+## 1. JSON Schema authoring for tool parameters
+
+### 1.1 What the schema itself is, and what a harness/API actually requires of it
+
+VERIFIED, `platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools`,
+fetched fresh this session -- a client tool definition sent to the
+Claude API is exactly three required fields plus optional ones: `name`
+(matching the regex `^[a-zA-Z0-9_-]{1,64}$`), `description` ("a
+detailed plaintext description of what the tool does, when it should
+be used, and how it behaves"), and `input_schema` ("a
+[JSON Schema](https://json-schema.org/) object defining the expected
+parameters for the tool"). The API's own tool-use system prompt
+literally embeds this triple verbatim into the model's context --
+Anthropic's docs quote the constructed template directly: `"Here are
+the functions available in JSONSchema format: {{ TOOL DEFINITIONS IN
+JSON SCHEMA }}"` -- meaning the schema is not metadata consumed by some
+separate validation layer before the model ever sees it; the model
+reads the literal JSON Schema text as part of its own prompt and
+reasons about it the same way it would reason about any other
+structured text in context. This is the single fact that makes schema
+*readability*, not just schema *validity*, a genuine design lever: a
+schema a human engineer finds clear is more likely to be a schema the
+model interprets correctly, because the model is reading the same
+document a human reviewer would.
+
+VERIFIED, the same source's worked example pair -- the docs contrast a
+"good" and a "poor" definition for an identical `get_stock_price` tool.
+The poor version's `description` is one line ("Gets the stock price for
+a ticker") and its `ticker` parameter has no `description` field at
+all; the good version's `description` runs four sentences covering what
+the tool does, its input constraints ("a valid symbol for a publicly
+traded company on a major US stock exchange like NYSE or NASDAQ"), what
+it returns ("the latest trade price in USD"), when to use it, and an
+explicit negative boundary ("It will not provide any other information
+about the stock or company"), and its `ticker` parameter carries its
+own `description` ("The stock ticker symbol, e.g. AAPL for Apple
+Inc."). The docs' own verdict on the pair: "The poor description is too
+brief and leaves Claude with many open questions about the tool's
+behavior and usage." The load-bearing structural point this pair
+establishes is that *parameter-level* descriptions are not
+optional decoration on top of a good tool-level description -- both
+carry independent information the model uses, and the poor example is
+poor specifically because it lacks both, not just one.
+
+```mermaid
+flowchart TD
+    A["Tool call issued by the model"] --> B{"strict: true set\non the tool definition?"}
+    B -->|No default path| C["Best-effort JSON generation --\nmodel may emit wrong type\n('2' instead of 2) or omit\na required field"]
+    B -->|Yes| D["Grammar-constrained sampling:\ntoken sampling itself is restricted\nto schema-valid continuations"]
+    C --> E["Caller must validate + retry\non malformed input"]
+    D --> F["input always matches input_schema;\nname always a valid tool name --\nno validate-and-retry loop needed"]
+```
+
+### 1.2 Strict mode: schema authoring as a hard guarantee, not just a hint
+
+VERIFIED, `platform.claude.com/docs/en/agents-and-tools/tool-use/strict-tool-use`,
+fetched fresh this session -- setting `"strict": true` on a tool
+definition "guarantees Claude's tool inputs match your JSON Schema by
+constraining the model's token sampling to schema-valid outputs (a
+technique called grammar-constrained sampling)". The docs are explicit
+about what this closes off relative to the default path: "Without
+strict mode, Claude might return incompatible types (`"2"` instead of
+`2`) or omit required fields, breaking your functions and causing
+runtime errors" -- with strict mode, "Functions receive correctly-typed
+arguments every time" and there is "no need to validate and retry tool
+calls." This reframes schema authoring itself as a design decision with
+teeth: a schema written loosely (optional fields the author actually
+needs, string types standing in for what should be an `integer` or
+`enum`) is a loose *contract* under default sampling, but becomes a
+hard *constraint* the moment `strict: true` is set, so any ambiguity
+baked into the schema becomes a guaranteed-enforced ambiguity rather
+than a probabilistic one. Two authoring implications follow directly
+from the docs' own guidance: (1) `additionalProperties: false` is used
+in every strict-mode example given, closing off the model inventing
+extra keys; (2) enumerations are used aggressively even for values a
+human might type as free text -- the docs' own `search_flights` example
+constrains `passengers` to `enum: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]`
+rather than leaving it an unconstrained `integer`, trading schema
+verbosity for eliminating an entire class of out-of-range or
+wrong-format input by construction -- the same poka-yoke logic
+[system-prompt-design-as-craft.md](system-prompt-design-as-craft.md)
+§1.5 documents Anthropic recommending at the prompt level, applied here
+directly to the schema's own type system. A stated caveat worth
+carrying forward: strict-mode schemas are compiled into grammars and
+cached separately from message content for up to 24 hours, and
+Anthropic's own HIPAA guidance states plainly that PHI "must not be
+included in tool schema definitions" -- property names, `enum` values,
+`const` values, and `pattern` regexes are held to a different data-
+handling standard than the model's actual prompts and responses, a
+genuine security-adjacent authoring constraint specific to schema
+content rather than tool behavior.
+
+### 1.3 `input_examples`: schema-attached demonstration, distinct from prose few-shot
+
+VERIFIED, same `define-tools` source -- a tool definition can carry an
+optional `input_examples` array, "an array of example input objects to
+help Claude understand how to use the tool," each one schema-validated
+against the tool's own `input_schema` at request time (an invalid
+example "returns a 400 error"). This is a structurally different
+mechanism from the few-shot prose examples
+[system-prompt-design-as-craft.md](system-prompt-design-as-craft.md)
+§2.1 documents Anthropic recommending inside a system prompt's
+`<examples>` block: those are free-text demonstrations of a *behavior
+pattern* the model reads as prose; `input_examples` are literal,
+schema-conformant JSON objects attached directly to one tool's
+definition, validated mechanically rather than by the model's own
+judgment, and explicitly scoped to "tools with complex inputs, nested
+objects, or format-sensitive parameters" rather than every tool.
+Anthropic's stated guidance keeps the two mechanisms in a clear
+priority order rather than presenting them as substitutes: "Clear
+descriptions are most important, but for tools with complex inputs...
+you can use the `input_examples` field" -- i.e. `input_examples` is a
+targeted supplement for a genuinely hard-to-specify-in-prose input
+shape (the `New York, NY` example demonstrating that `unit` is
+optional, rather than the docs trying to state that fact in prose), not
+a first-line substitute for a well-written `description`. A stated
+limitation: `input_examples` "work on user-defined and Anthropic-schema
+client tools, but not on server tools such as web search or code
+execution," and token cost is real but small -- "~20-50 tokens for
+simple examples, ~100-200 tokens for complex nested objects."
+
+### 1.4 Anthropic's other stated priorities for schema and response format
+
+VERIFIED, `anthropic.com/engineering/building-effective-agents`
+(already cited by [system-prompt-design-as-craft.md](system-prompt-design-as-craft.md)
+§1.5 for its ACI framing; the specific schema-format guidance below is
+this page's own read of the same fetch) -- three named format
+priorities that apply directly to how a schema's shape, not just its
+description text, is authored: give the model "enough tokens to
+'think' before it writes itself into a corner" (a schema that forces an
+early, terse, irreversible choice -- e.g. a single free-text field that
+must encode a complex decision in one shot -- performs worse than one
+letting the model reason across several simpler fields first); "keep
+the format close to what the model has seen naturally occurring in text
+on the internet" (idiosyncratic schema conventions the model was never
+trained on cost accuracy relative to conventions it has actually seen,
+such as common REST/GraphQL parameter-naming idioms); and eliminate
+"formatting overhead that requires precise counting or excessive
+escaping" (a parameter whose valid values require the model to count
+characters or manage nested-quote escaping invites exactly the class of
+error a schema redesign -- splitting into multiple simpler fields,
+using an `enum`, moving to a structured sub-object -- can eliminate
+structurally rather than by instruction).
+
+---
+
+## 2. Naming and description conventions that measurably affect tool-selection accuracy
+
+### 2.1 Anthropic's own naming and namespacing guidance
+
+VERIFIED, `define-tools`, fetched fresh this session -- two concrete,
+named conventions the docs state directly under "Best practices for
+tool definitions": **use meaningful namespacing in tool names** ("When
+your tools span multiple services or resources, prefix names with the
+service (for example, `github_list_prs`, `slack_send_message`). This
+makes tool selection unambiguous as your library grows, and is
+especially important when using [tool search]"); and **design tool
+responses to return only high-signal information** ("Return semantic,
+stable identifiers (for example, slugs or UUIDs) rather than opaque
+internal references, and include only the fields Claude needs to
+reason about its next step. Bloated responses waste context and make
+it harder for Claude to extract what matters.") The namespacing
+guidance is directly load-bearing for a scaling problem this book has
+already documented from a different angle:
+[mcp-integration.md](mcp-integration.md)'s discovery/registration
+mechanics and Claude Code's own `ToolSearch` tool (named in
+[built-in-tools.md](built-in-tools.md) §1.1 as a deferred-schema-loading
+mechanism) both exist because a large, flat tool namespace is a real
+tool-*selection* problem, not just a context-budget problem -- prefixing
+disambiguates which of several similarly-named tools across different
+MCP servers a given call should route to before the model even reasons
+about behavior.
+
+### 2.2 What the wider function-calling literature measures, and why it corroborates the naming/description claim
+
+VERIFIED, `gorilla.cs.berkeley.edu/leaderboard.html` and
+`gorilla.cs.berkeley.edu/blogs/8_berkeley_function_calling_leaderboard.html`,
+both fetched fresh this session -- the Berkeley Function-Calling
+Leaderboard (BFCL) is described on its own leaderboard page as
+evaluating "the LLM's ability to call functions (aka tools)
+accurately," built on an Abstract Syntax Tree (AST) evaluation method
+that, per the blog page, checks four things independently: **function
+matching** ("verifying the function name matches documentation"),
+**parameter validation** ("checking that all required parameters are
+present and no hallucinated parameters exist"), and **type and value
+matching** ("ensuring strict type compliance and value accuracy" across
+booleans, integers, floats, lists, strings, and dictionaries). Two of
+BFCL's named test categories are directly relevant to the
+naming/description claim rather than to argument formatting: **Function
+Relevance Detection**, which "tests whether the model correctly
+identifies when 'none of the provided functions are relevant' and
+appropriately 'output[s] to be no function call,'" and its counterpart
+category (evaluated through the same mechanism per the blog page's own
+account) checking whether a model "hallucinate[s] on its function and
+parameter to generate function code despite lacking the function
+information or instructions from the users to do so." Read together,
+these categories operationalize exactly the failure modes a
+poorly-named or poorly-described tool set produces in practice: a tool
+whose name or description overlaps ambiguously with another tool's, or
+whose description fails to state a clear negative boundary (the
+`get_stock_price` "good" example's explicit "It will not provide any
+other information about the stock or company" is precisely the kind of
+sentence that helps a model resolve this ambiguity correctly), pushes a
+model toward either wrongly abstaining when a real match exists or
+wrongly firing an irrelevant tool -- BFCL is the closest thing this
+book has found to an independent, standardized instrument actually
+measuring that exact failure surface, rather than a single vendor's own
+worked-example narrative. *BEST CURRENT UNDERSTANDING, UNCONFIRMED
+beyond what these two pages themselves state:* this session did not
+fetch BFCL's full per-category leaderboard scores or its underlying
+paper (`proceedings.mlr.press/v267/patil25a.html`, seen only as a
+search-result title, not fetched), so no specific accuracy delta
+attributable to naming/description quality is asserted here -- only the
+methodology and the qualitative failure-mode correspondence.
+
+### 2.3 The hallucinated-argument framing, cross-referenced rather than re-derived
+
+[System-prompt-design-as-craft.md](system-prompt-design-as-craft.md)
+§2.4 already establishes, from the Gorilla paper's own abstract
+(`arxiv.org/abs/2305.15334`, fetched in that page's own session, not
+re-fetched here), that prose-only tool descriptions are prone to two
+named failure modes -- "inability to generate accurate input arguments"
+and "tendency to hallucinate the wrong usage of an API call" -- and that
+grounding tool selection against retrieved, concrete documentation
+"substantially mitigates" the hallucination specifically. This page
+does not re-assert that citation as its own fresh finding; it notes
+only the direct implication for schema/description authoring
+specifically: a `strict: true` schema (§1.2 above) closes off the
+*malformed-argument* half of Gorilla's failure-mode pair by
+construction (the model cannot emit an incompatible type once sampling
+is grammar-constrained), but does nothing for the *wrong-tool-selection*
+half -- that half is squarely a naming/description-quality problem, not
+a schema-validation problem, which is why §2.1's namespacing and
+negative-boundary guidance and §2.2's BFCL relevance-detection
+category are the more directly relevant grounding for it than strict
+mode is.
+
+---
+
+## 3. The few-powerful-tools-vs-many-narrow-tools tradeoff
+
+### 3.1 Anthropic's stated consolidation guidance, and its own worked example
+
+VERIFIED, `define-tools` and `anthropic.com/engineering/writing-tools-for-agents`,
+both fetched fresh this session -- the `define-tools` page states the
+principle directly under "Best practices for tool definitions":
+"**Consolidate related operations into fewer tools.** Rather than
+creating a separate tool for every action (`create_pr`, `review_pr`,
+`merge_pr`), group them into a single tool with an `action` parameter.
+Fewer, more capable tools reduce selection ambiguity and make your tool
+surface easier for Claude to navigate." The companion engineering post
+states the same principle from the cost side rather than the ambiguity
+side: "More tools don't always lead to better outcomes," because agents
+have "limited context" unlike traditional software with abundant
+memory, and gives two concrete consolidation patterns as worked
+examples rather than abstractions -- collapsing separate `list_users`,
+`list_events`, and `create_event` functions into a single
+`schedule_event` tool handling multiple operations internally, and
+replacing a generic `read_logs` tool with a `search_logs` tool that
+"returns only relevant entries with context" instead of raw output the
+caller must filter itself, and a `get_customer_context` tool that
+compiles recent information in one call rather than requiring separate
+customer/transaction/note retrieval round-trips. The stated mechanism
+behind all three examples is the same: consolidation is not merely
+about reducing the *count* of tools in a menu, it is about moving
+selection and filtering logic that would otherwise cost the model
+several turns and several thousand tokens of intermediate reasoning
+into the tool's own server-side implementation, where it executes once,
+deterministically, and returns only what the model actually needs next.
+
+```mermaid
+flowchart LR
+    subgraph Narrow["Many narrow tools"]
+        direction TB
+        N1[create_pr]
+        N2[review_pr]
+        N3[merge_pr]
+    end
+    subgraph Mid["Real harness middle ground"]
+        direction TB
+        M1["OpenCode: one 'edit'\npermission key covers\nedit + write + patch"]
+        M2["Copilot CLI: default GitHub\nMCP server hides tools\ngh already covers"]
+    end
+    subgraph Few["Anthropic's own worked example"]
+        direction TB
+        F1["schedule_event(action, ...)\none tool, action parameter"]
+    end
+    Narrow -->|"reduces selection\nambiguity, docs' own claim"| Mid
+    Mid -->|"further collapse"| Few
+```
+
+### 3.2 Where the three harnesses actually sit on this spectrum -- a real, cross-referenced data point
+
+This is where the abstract tradeoff becomes concretely testable against
+this book's own prior inventory work, rather than staying a design
+opinion. [Built-in-tools.md](built-in-tools.md) §1.1 documents Claude
+Code shipping roughly thirty distinct built-in tool names in its
+`tools-reference` table; §3.1 documents OpenCode shipping a much
+shorter, roughly seventeen-entry list; and §2.1 documents Copilot CLI
+describing its own surface at two levels of granularity simultaneously
+-- six broad permission *kinds* (`shell`/`write`/`read`/`url`/`memory`/
+`MCP-SERVER`) sitting above a larger but less exhaustively enumerated
+set of *functional* tools named only piecemeal across changelog
+entries. Two specific, already-documented data points sharpen this
+comparison in opposite directions:
+
+- **OpenCode moved toward consolidation on exactly the axis Anthropic's
+  own guidance names.** [Built-in-tools.md](built-in-tools.md) §3.2
+  documents OpenCode's `permission` schema folding write, edit, and
+  patch operations under one `edit` key, with the page's own synthesis
+  noting this "ha\[s\] no stated counterpart in either Claude Code's or
+  Copilot CLI's documented permission vocabulary." Read through this
+  page's lens, that is a genuine instance of the `create_pr`/
+  `review_pr`/`merge_pr`-style consolidation Anthropic recommends,
+  applied not to the tool's own name but to the coarser layer of its
+  *permission* grouping -- three mechanically distinct write-shaped
+  operations (`write.ts`, `edit.ts`, `apply_patch.ts`, per this page's
+  own §5.3 source read below) governed by a single decision the model's
+  caller has to reason about, rather than three.
+- **Claude Code moved *away* from consolidation on its own todo/task
+  tooling, in the opposite direction from its own published API
+  guidance.** [Built-in-tools.md](built-in-tools.md) §1.1 documents the
+  `TodoWrite` -> `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`/
+  `TaskOutput`/`TaskStop` migration at v2.1.142 -- one consolidated
+  checklist tool split into six narrower, single-purpose ones. This is
+  worth naming as a genuine, sourced tension rather than smoothing it
+  over: the same organization that tells third-party API users to
+  collapse `create_pr`/`review_pr`/`merge_pr` into one `action`-
+  parameterized tool shipped its own flagship product moving a real
+  tool family the other way. *BEST CURRENT UNDERSTANDING, UNCONFIRMED*
+  as to why -- no source fetched in this session or
+  [built-in-tools.md](built-in-tools.md)'s own research states
+  Anthropic's internal reasoning for the split -- but the two cases are
+  plausibly reconcilable rather than contradictory: Anthropic's
+  consolidation guidance targets operations that are each individually
+  *complex* (a PR review has many possible shapes and side effects,
+  which is exactly the kind of judgment call the docs argue benefits
+  from being handled inside one tool's own logic rather than dispatched
+  by the model choosing among several similarly-shaped entry points),
+  whereas each `Task*` operation is a narrow, cheap, single-field CRUD
+  call against one already-well-defined object (a task's status, its
+  output, its existence) where a single parameterized tool would
+  arguably *reintroduce* the ambiguity consolidation is meant to
+  remove -- the model would still have to encode "which action" as a
+  string argument, which is a schema-level version of exactly the
+  free-text-field risk §1.4 documents Anthropic's own format-priority
+  guidance warning against. This page states that reconciliation as a
+  plausible reading, not a confirmed one.
+- **Copilot CLI's curated default GitHub MCP server tool list is a
+  product decision squarely on this axis, already documented
+  mechanically in [built-in-tools.md](built-in-tools.md) §2.1.** The
+  changelog's own stated reasoning -- "we've limited the list of tools
+  available to the default GitHub MCP server. In our tests, the model
+  will use the GitHub CLI, `gh` (if installed) in lieu of missing MCP
+  tools" -- is a direct, real-world instance of choosing *fewer* tools
+  deliberately to reduce selection surface, conditioned on an
+  environment fact (whether `gh` is already available) rather than
+  applied uniformly, which this page's abstract tradeoff framing would
+  predict as a rational response given `gh` itself already exposes a
+  large, well-known command surface the model can reach through the
+  `shell` tool instead.
+
+### 3.3 Scale changes the calculus: deferred schema loading as a third option
+
+The two poles this section has framed so far -- collapse into fewer
+tools, or accept a larger tool count -- are not the only response to
+tool-surface growth. [MCP-integration.md](mcp-integration.md) and
+[instruction-context-budget.md](instruction-context-budget.md) already
+document, and [built-in-tools.md](built-in-tools.md) §1.1 names
+directly, Claude Code's `ToolSearch`/`WaitForMcpServers` tools and (per
+the `define-tools` page's own "For the full set of optional properties"
+reference, VERIFIED this session) a `defer_loading` property on the
+tool-definition schema itself -- a third strategy that keeps a large
+tool count available to the model without paying its full context cost
+on every turn, by keeping a tool's full schema out of context until the
+model's own search step surfaces it as plausibly relevant. This
+directly changes which side of the consolidation tradeoff is
+correct for a given tool library: Anthropic's own consolidation
+argument (§3.1) is explicitly framed around a fixed context budget
+("agents have limited context... unlike traditional software with
+abundant memory") -- once deferred loading removes most of a large
+library's steady-state token cost, the argument for consolidating N
+narrow tools into one parameterized tool weakens specifically on the
+context-cost axis, though the selection-ambiguity half of the argument
+(a model still has to *choose* correctly among however many tools its
+search step surfaces) is untouched by deferred loading and still
+favors fewer, well-namespaced tools per §2.1's guidance. Cross-reference
+[caching.md](caching.md) for the adjacent, separately-documented finding
+that MCP tool *descriptions* specifically were capped at 2KB
+(Claude Code v2.1.84, per
+[system-prompt-design-as-craft.md](system-prompt-design-as-craft.md)
+§4.1) precisely because machine-generated (OpenAPI-derived) tool
+descriptions were found bloating context badly enough to need an
+enforced ceiling -- a second, independently-documented data point that
+schema/description size at scale is a real, shipped engineering
+concern, not a hypothetical one.
+
+---
+
+## 4. Idempotency and error-message design
+
+### 4.1 MCP's tool annotation vocabulary for idempotency, destructiveness, and openness
+
+VERIFIED, `modelcontextprotocol.io/docs/concepts/tools` (spec version
+2026-07-28) and `blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/`,
+both fetched fresh this session -- a tool definition's optional
+`annotations` field carries four boolean hints the specification
+defines precisely, each with a stated cautious default when the field
+is omitted:
+
+| Hint | Question it answers | Default when unspecified |
+|---|---|---|
+| `readOnlyHint` | "Does the tool modify its environment?" | `false` (assumed **not** read-only) |
+| `destructiveHint` | "If it does modify things, is the change destructive (as opposed to additive)?" | `true` (assumed **potentially destructive**) |
+| `idempotentHint` | "Can you safely call it again with the same arguments?" | `false` (assumed **not** safely repeatable) |
+| `openWorldHint` | "Does the tool interact with an open world of external entities, or is its domain closed?" | `true` (assumed **open-world**) |
+
+The blog post's own worked client-behavior table gives the concrete
+payoff for authoring these correctly: a client can "skip the
+confirmation dialogue" for `readOnlyHint: true`, "show a warning before
+executing" for `destructiveHint: true`, treat a call as "safe to retry
+on failure" for `idempotentHint: true`, and "scrutinise output for
+untrusted content" for `openWorldHint: true`. `idempotentHint`
+specifically is the annotation this page's brief names directly: a
+tool author who marks a genuinely repeatable operation (e.g. "set the
+thermostat to 72 degrees," which produces the same end state no matter
+how many times it is called with that argument) as idempotent lets a
+calling client retry a failed or ambiguous-outcome call automatically,
+without asking the model or the user to reason about whether a retry
+is safe; a tool author who marks a genuinely *non*-repeatable operation
+(e.g. "charge this card $10," which produces a different, cumulative
+end state on each call) the same way invites exactly the double-billing
+class of bug automatic retry logic exists to prevent. VERIFIED, the
+spec's own explicit caution, quoted directly by the blog: "annotations
+are not guaranteed to faithfully describe tool behaviour, and clients
+**must** treat them as untrusted unless they come from a trusted
+server" -- a server claiming `readOnlyHint: true` could, per the blog's
+own framing, still delete files, so a hint is a *risk-vocabulary*
+signal a client can use for UI/confirmation-prompt purposes, never a
+safety guarantee it can rely on for actual sandboxing decisions. This
+sits precisely alongside, and never substitutes for,
+[permissions-and-sandboxing.md](permissions-and-sandboxing.md)'s
+documented enforcement architecture -- an annotation is metadata a tool
+*author* asserts about their own tool, not a mechanism any of the three
+harnesses' own permission engines are documented (per that page's own
+research) to treat as authoritative on its own.
+
+**Stateful tools without protocol-level idempotency support.** The same
+MCP tools page gives non-normative but directly relevant guidance
+(VERIFIED, same fetch) for the specific case a tool needs to maintain
+state across calls that has no natural idempotent shape -- a shopping
+cart, an open browser session, a database transaction. Because "MCP has
+no protocol-level session," the documented pattern is an explicit
+*handle*: a creation tool (e.g. `create_basket`) returns an opaque
+identifier (`basket_id`) in its `structuredContent`, and the model
+carries that handle forward as an ordinary argument to subsequent calls
+(`add_item(basket_id, sku)`). The docs name four authoring
+considerations for designing such a handle: **authorization** (the
+server must re-validate the caller's rights against the handle on every
+call, since a handle is "a name, not a capability"); **opacity**
+(handles that encode internal structure "invite parsing or guessing";
+opaque identifiers do not -- directly the same "return semantic, stable
+identifiers... rather than opaque internal references" guidance §2.1
+documents from a different angle, though note the apparent tension: §2.1
+prefers semantic identifiers for *response* fields the model reasons
+about, while this guidance prefers *opaque* identifiers for a
+*capability handle* the model merely carries forward without
+inspecting -- the two are not actually in conflict once the distinct
+purpose of each identifier is separated out, but an author who
+conflates them risks either leaking exploitable structure in a handle
+or making a genuinely informative field needlessly cryptic); **lifetime**
+(a retention policy such as "baskets expire after 24 hours of
+inactivity" belongs in the *creation* tool's own description, "so the
+model can see it when deciding to create state" -- an authoring
+decision, not just an implementation detail); and **expiry errors** ("A
+call against an expired or unknown handle should return a tool
+execution error that says so, so the model can recover by creating a
+new one") -- which is the direct bridge into this section's next topic.
+
+### 4.2 MCP's two-tier error taxonomy: what a model can and cannot recover from
+
+```mermaid
+flowchart TD
+    A["tools/call request"] --> B{"Is the request itself malformed,\nor the tool name unknown?"}
+    B -->|Yes| C["Protocol error --\nJSON-RPC error object\n(e.g. code -32602)"]
+    B -->|No, request valid| D["Tool executes"]
+    D --> E{"Did execution succeed?"}
+    E -->|"No -- API failure, bad input\nvalue, business-logic error"| F["Tool execution error --\nresult with isError: true,\nactionable text in content"]
+    E -->|Yes| G["Normal result,\nisError: false"]
+    C -.->|"model less likely\nto self-correct"| H["Clients MAY surface to model"]
+    F -.->|"model CAN self-correct --\nretry with adjusted parameters"| I["Clients SHOULD surface to model"]
+```
+
+VERIFIED, `modelcontextprotocol.io/docs/concepts/tools`, fetched fresh
+this session -- the specification names and separates exactly two error
+reporting mechanisms, and states the recoverability distinction
+explicitly rather than leaving it implicit:
+
+- **Protocol errors** -- "issues with the request structure itself
+  that models are less likely to be able to fix": an unknown tool name,
+  a malformed request that fails the `CallToolRequest` schema, or a
+  server error. These surface as a standard JSON-RPC error object
+  (`{"error": {"code": -32602, "message": "Unknown tool:
+  invalid_tool_name"}}`), and the spec's own guidance to clients is
+  correspondingly weaker: they "**MAY** provide protocol errors to
+  language models, though these are less likely to result in successful
+  recovery."
+- **Tool execution errors** -- "actionable feedback that language
+  models can use to self-correct and retry with adjusted parameters":
+  an API failure, an input-validation error ("date in wrong format,
+  value out of range"), or a business-logic error. These are reported
+  *inside a normal tool result*, with `isError: true` and the actual
+  explanation in the result's `content` -- the spec's own worked
+  example returns exactly the shape a well-designed tool should
+  produce on a recoverable failure: `"Invalid departure date: must be
+  in the future. Current date is 08/08/2025."`, a sentence that states
+  what was wrong, why, and (implicitly, by naming the current date) what
+  a corrected retry would need to satisfy. The spec's guidance to
+  clients here is correspondingly stronger: they "**SHOULD** provide
+  tool execution errors to language models to enable self-correction."
+
+The authoring implication this taxonomy makes precise: whether a
+failure is worth spending words on inside the `content` text a model
+actually reads depends on which category it falls into. A malformed
+request the *client* sent (wrong JSON-RPC shape, an unknown tool name)
+is not something the *model* caused or can necessarily fix by
+rephrasing its own tool call, so investing in a rich, prose-explained
+protocol-error message has a lower expected payoff than investing that
+same authoring effort in the tool-execution-error path, which is
+squarely the model's own recoverable mistake and therefore the message
+the model will actually act on.
+
+### 4.3 A real, source-verified production example: OpenCode's `edit` tool error catalogue
+
+VERIFIED by direct source read this session, `github.com/anomalyco/opencode`
+`dev` branch, `packages/opencode/src/tool/tool.ts` and
+`packages/opencode/src/tool/edit.ts`, fetched via `gh api` (per this
+project's standing `dev`-branch caveat) -- this is the strongest
+concrete illustration this page can offer of tool-execution-error
+design actually shipping in a real, currently-open-source agent
+harness, because the source itself is inspectable end to end rather
+than reconstructed from documentation.
+
+**Schema-validation failure gets a purpose-built, model-facing error
+class.** Every tool's parameters are defined as an Effect `Schema`
+object with a `.annotate({ description: ... })` call on each field --
+`edit.ts`'s `Parameters` schema, for instance, carries a per-field
+description on `filePath` ("The absolute path to the file to modify"),
+`oldString` ("The text to replace"), `newString` ("The text to replace
+it with (must be different from oldString)"), and `replaceAll`
+("Replace all occurrences of oldString (default false)") -- directly
+the same parameter-level-description discipline §1.1 documents
+Anthropic's own docs recommending, arrived at independently in a
+different product's schema-authoring tooling. When a model calls a tool
+with arguments that fail this schema, `tool.ts` defines a dedicated
+`InvalidArgumentsError` class whose `message` getter is literally
+authored as model-facing recovery instruction rather than a raw
+validation-library dump: `"The ${this.tool} tool was called with
+invalid arguments: ${this.detail}.\nPlease rewrite the input so it
+satisfies the expected schema."` -- a two-sentence message that states
+what went wrong (invalid arguments, with the specific `detail` from the
+schema decoder) and what to do about it (rewrite the input), exactly
+the "actionable" shape §4.2's MCP-spec example and
+[system-prompt-design-as-craft.md](system-prompt-design-as-craft.md)'s
+Anthropic sourcing both converge on independently. A `Def` interface
+also exposes an optional `formatValidationError?(error): string` hook,
+letting an individual tool override the generic decoder-error text with
+a more specific, tool-appropriate message when the generic one would be
+too vague to act on.
+
+**The `edit` tool's own `replace()` function is a small catalogue of
+distinct, specific, actionable failure messages -- not one generic
+"edit failed" error.** Reading the source directly surfaces at least
+six functionally distinct thrown errors, each targeting a different
+root cause with wording chosen to tell the model exactly what changed
+about its next attempt:
+
+- `"No changes to apply: oldString and newString are identical."` --
+  guards a no-op call, stated as a fact about the *inputs*, not a
+  system failure.
+- `"oldString cannot be empty when editing an existing file. Provide
+  the exact text to replace, or use write for an intentional
+  full-file replacement."` -- notably names a *different tool*
+  (`write`) as the correct recovery path when the model's actual intent
+  was a full overwrite rather than a targeted edit, rather than simply
+  refusing the call.
+- `` `File ${filePath} not found` `` and `` `Path is a directory, not a
+  file: ${filePath}` `` -- two distinct messages for two distinct
+  preconditions, rather than one generic "invalid path" error, each
+  naming the specific path involved.
+- `"Could not find oldString in the file. It must match exactly,
+  including whitespace, indentation, and line endings."` -- the
+  no-match failure mode, worded to name the exact three properties
+  (whitespace, indentation, line endings) most likely to be silently
+  wrong in a copy-pasted `oldString`, directly steering the model's
+  next read-and-retry toward the actual likely cause.
+- `"Found multiple matches for oldString. Provide more surrounding
+  context to make the match unique."` -- the ambiguous-match failure
+  mode, with the recovery instruction (add more context) stated in the
+  same sentence as the diagnosis, the same shape as
+  [built-in-tools.md](built-in-tools.md) §1.4's independently-documented
+  Claude Code `Edit` tool refusal for an ambiguous match (which,
+  per that page, is refused rather than defaulted to "replace the
+  first occurrence" specifically to avoid a silent wrong-location edit)
+  -- two unrelated, independently-implemented harnesses converging on
+  the same design choice (refuse-and-explain over guess-and-succeed) for
+  the identical ambiguity failure mode.
+- `"Refusing replacement because the matched span is much larger than
+  oldString. Re-read the file and provide the full exact oldString for
+  the intended replacement."` -- a poka-yoke guard (`isDisproportionateMatch`)
+  against one of the tool's own internal fuzzy-matching strategies
+  (the file implements nine successively looser replacement strategies --
+  exact, line-trimmed, block-anchor with a Levenshtein-similarity
+  threshold, whitespace-normalized, indentation-flexible, escape-
+  normalized, trimmed-boundary, context-aware, and multi-occurrence --
+  before finally giving up) silently accepting a much-larger-than-
+  intended span as a false-positive match, refusing the edit and naming
+  the exact recovery action rather than applying a match the tool's own
+  fuzzy logic is not confident is what the model actually meant.
+
+**A structural idempotency observation this source read makes directly
+verifiable, not merely inferable from documentation.** Calling this
+`edit` tool twice with byte-identical arguments is *not* safely
+repeatable in the MCP-annotation sense of `idempotentHint: true` --
+the second call's `oldString` will no longer match the file's
+post-first-edit content (assuming the edit changed the matched span at
+all), so the tool's own no-match branch above fires on the second call
+rather than silently reapplying or silently no-op'ing. This is a
+concrete, source-verified instance of a broader point worth stating
+plainly: a targeted-replacement edit tool is *inherently* non-idempotent
+in the strict repeat-safely sense (each successful call changes the
+precondition the next identical call depends on), and the correct
+design response to that fact is not to fake idempotency but to make the
+tool's *failure on retry* itself informative -- a second identical call
+failing with "Could not find oldString in the file" is, read correctly,
+positive evidence the first call already succeeded, which is exactly
+the kind of signal §4.1's handle-expiry guidance names for a different
+kind of stateful tool ("A call against an expired or unknown handle
+should return a tool execution error that says so, so the model can
+recover") generalized to a tool whose own successful side effect is
+what invalidates a repeat call.
+
+### 4.4 Cross-reference: Claude Code's own Edit-tool error design, already documented mechanically
+
+[Built-in-tools.md](built-in-tools.md) §1.4 already documents Claude
+Code's `Edit` tool three-gate check (read-before-edit satisfied? does
+`old_string` match exactly? does it match exactly once or is
+`replace_all: true` set?) mechanically, including the specific refusal
+reasons at each gate ("read the file first," "no match," "ambiguous
+match") and the v2.1.208 hardening allowing a re-edit when `old_string`
+still matches unambiguously despite an intervening external change to
+the file. Read through this page's lens rather than re-derived, that
+mechanism is the same design pattern §4.3 documents for OpenCode's
+`edit` tool, arrived at independently by a different organization: a
+gated, refuse-with-a-specific-reason design rather than a
+best-effort-guess design, for the identical class of tool
+(exact-string-match file editing) where a wrong guess is much more
+costly than an explicit, actionable refusal.
+
+---
+
+## 5. Synthesis
+
+```mermaid
+flowchart TD
+    subgraph Schema["1. Schema authoring (S1)"]
+        S1["Tool-level + parameter-level\ndescriptions, both required"]
+        S2["strict: true -- schema becomes\na hard sampling constraint"]
+        S3["input_examples -- schema-attached,\nvalidated demonstration"]
+    end
+    subgraph Naming["2. Naming (S2)"]
+        N1["Service-prefixed namespacing\nresolves cross-server ambiguity"]
+        N2["Negative boundaries in description\nreduce wrong-tool selection"]
+    end
+    subgraph Granularity["3. Granularity (S3)"]
+        G1["Consolidate complex,\njudgment-heavy operations"]
+        G2["Keep narrow tools for\ncheap, well-defined CRUD"]
+        G3["Deferred loading changes the\ncontext-cost half of the tradeoff"]
+    end
+    subgraph Recovery["4. Idempotency + errors (S4)"]
+        R1["idempotentHint / destructiveHint --\nrisk vocabulary, untrusted by default"]
+        R2["Protocol error vs tool execution\nerror -- only the second is\nauthored for model recovery"]
+        R3["Refuse-with-a-specific-reason beats\nguess-and-maybe-succeed"]
+    end
+    Schema --> Naming --> Granularity --> Recovery
+```
+
+Pulling the four sections into one operational picture: a tool's
+*schema* determines whether the model's call can even be malformed
+(§1); its *name and description* determine whether the model picks the
+right tool at all, independent of whether the call it constructs is
+well-formed (§2); the *granularity* decision -- how many tools a
+capability is split across -- trades off selection ambiguity against
+context cost, and that tradeoff's correct answer is not fixed but
+shifts with both the operation's own complexity (Anthropic's
+consolidation guidance) and the harness's available scaling mechanisms
+(deferred loading) (§3); and *what a tool returns on failure*
+determines whether a wrong call becomes a one-turn self-correction or a
+dead end (§4). The single thread connecting all four to
+[system-prompt-design-as-craft.md](system-prompt-design-as-craft.md)'s
+sibling page is that both pages ultimately answer the same underlying
+question -- what text does the model actually read, and does that text
+give it what it needs to act correctly -- from two different layers of
+the same interface: that page from the instructions surrounding tool
+use, this page from the tool definitions and results themselves. Two
+real, independently-implemented harnesses (Claude Code's `Edit` gate
+refusals, OpenCode's `edit` tool's error catalogue) converging on the
+identical refuse-with-a-specific-actionable-reason design for the
+identical failure mode (ambiguous or non-matching string replacement)
+is, read across this page's sources, the strongest available evidence
+that error-message design specifically is not a stylistic preference
+but a convergent, empirically-motivated engineering response to the
+same underlying model-recovery problem MCP's own protocol-error/
+tool-execution-error split and Anthropic's "actionable... not opaque"
+guidance both name from the specification and API-guidance sides
+respectively.
+
+---
+
+## Sources
+
+All fetched fresh this session (2026-08-17) unless noted otherwise.
+
+**Anthropic (authoritative for Claude's documented tool-definition
+behavior and Anthropic's own recommended tool-design technique; not
+authoritative for any specific harness's undisclosed internal tool
+implementations):**
+- `https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools`
+  -- §1.1's schema/description/`input_schema` requirements and the
+  good-vs-poor worked example, §1.3's `input_examples` mechanism and
+  limitations, §2.1's namespacing and high-signal-response guidance,
+  §3.1's tool-consolidation guidance and `action`-parameter example,
+  §3.3's `defer_loading` property reference.
+- `https://platform.claude.com/docs/en/agents-and-tools/tool-use/strict-tool-use`
+  -- §1.2's grammar-constrained-sampling mechanism, the
+  type-coercion/missing-field failure modes it closes, the
+  `additionalProperties`/`enum` authoring pattern, and the PHI/schema-caching
+  caveat.
+- `https://www.anthropic.com/engineering/writing-tools-for-agents` --
+  §3.1's "more tools don't always lead to better outcomes" framing and
+  its `schedule_event`/`search_logs`/`get_customer_context`
+  consolidation examples.
+- `https://www.anthropic.com/engineering/building-effective-agents` --
+  §1.4's three schema-format priorities (thinking room before an
+  irreversible choice, internet-natural conventions, minimal
+  escaping/counting overhead); this page's own read of a fetch already
+  cited by [system-prompt-design-as-craft.md](system-prompt-design-as-craft.md)
+  §1.5 for its ACI framing.
+
+**Model Context Protocol (authoritative for the protocol's own
+documented tool-schema, tool-result, and error-handling specification;
+not authoritative for how any specific harness's own client
+implements or enforces it):**
+- `https://modelcontextprotocol.io/docs/concepts/tools` (specification
+  version 2026-07-28) -- §1.1's `inputSchema`/`outputSchema` requirements
+  and tool-name character rules, §4.1's four annotation hints and their
+  documented defaults, §4.1's stateful-tool/handle design guidance, and
+  §4.2's protocol-error-vs-tool-execution-error taxonomy and worked
+  examples.
+- `https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/`
+  -- §4.1's client-behavior-per-hint table and the "annotations...
+  must \[be treated\] as untrusted unless they come from a trusted
+  server" caveat.
+
+**Berkeley Function-Calling Leaderboard (authoritative for its own
+stated benchmark methodology and category definitions; not a source of
+any specific numeric accuracy claim in this page, since only its
+methodology pages, not its underlying paper or live scoreboard, were
+fetched this session):**
+- `https://gorilla.cs.berkeley.edu/leaderboard.html` -- §2.2's overview
+  statement of what BFCL measures and its version history (AST metric
+  at v1, enterprise/OSS functions at v2, multi-turn at v3, agentic
+  evaluation at v4).
+- `https://gorilla.cs.berkeley.edu/blogs/8_berkeley_function_calling_leaderboard.html`
+  -- §2.2's AST evaluation four-part breakdown (function matching,
+  parameter validation, type/value matching) and the Function Relevance
+  Detection / hallucination-on-irrelevant-functions category
+  definitions, quoted directly.
+
+**OpenCode (authoritative for its own documented behavior AND, unlike
+Claude Code and Copilot CLI, its own real implementation; `dev` branch,
+not a stable release tag):**
+- `https://github.com/anomalyco/opencode`, `dev` branch, fetched via
+  `gh api` this session -- full contents of
+  `packages/opencode/src/tool/tool.ts` (the `Def`/`Info` tool-definition
+  interface, the `InvalidArgumentsError` model-facing message design,
+  the `formatValidationError` override hook) and
+  `packages/opencode/src/tool/edit.ts` (the per-field schema
+  descriptions, the nine-strategy fuzzy-match cascade, and the six
+  distinct, quoted failure messages in §4.3).
+
+**This book's own prior, cross-referenced findings (not re-fetched or
+re-verified in this session; cited as already-established per this
+project's own cross-reference discipline):**
+- [built-in-tools.md](built-in-tools.md) §1.1/§1.4/§2.1/§3.2/§4 -- the
+  full built-in tool inventories and counts across all three harnesses,
+  Claude Code's `Edit` three-gate refusal mechanics, the `TodoWrite`->
+  `Task*` migration, Copilot CLI's curated-default-GitHub-MCP-server
+  changelog reasoning, and OpenCode's consolidated `edit` permission
+  key.
+- [system-prompt-design-as-craft.md](system-prompt-design-as-craft.md)
+  §1.5/§2.1/§2.4/§4.1 -- the ACI-design framing and poka-yoke example,
+  the few-shot-prose-example guidance (distinguished from this page's
+  §1.3 `input_examples`), the Gorilla-paper hallucinated-argument
+  framing (not re-fetched here), and Claude Code's v2.1.84 MCP
+  tool-description 2KB cap.
+- [mcp-integration.md](mcp-integration.md) and
+  [instruction-context-budget.md](instruction-context-budget.md) --
+  the discovery/registration and lazy-loading mechanics underlying
+  §3.3's deferred-schema-loading discussion.
+- [permissions-and-sandboxing.md](permissions-and-sandboxing.md) --
+  cited in §4.1 only to state the boundary that a tool annotation is
+  never a substitute for that page's own documented enforcement
+  architecture.
+
+**Not consulted this session, and therefore not cited above as
+grounding for any specific claim:** BFCL's underlying paper
+(`proceedings.mlr.press/v267/patil25a.html`) and its live per-category
+leaderboard scores (seen only as search-result titles, not fetched);
+any Copilot-CLI-specific first-party guidance on tool-schema or
+tool-description authoring technique (a targeted search this session
+surfaced only custom-agent *configuration* and MCP-server *selection*
+guidance -- e.g. `docs.github.com/en/copilot/reference/custom-agents-configuration`
+-- not a schema/description-authoring craft page comparable to
+Anthropic's `define-tools`/`writing-tools-for-agents`; treat the
+apparent absence of such a page as BEST CURRENT UNDERSTANDING,
+UNCONFIRMED-as-absent, not proven absent).

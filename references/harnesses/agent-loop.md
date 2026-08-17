@@ -3,7 +3,12 @@
 **Scope note.** This is a GENERAL-CONCEPTS page: the shared vocabulary
 underlying harness-specific questions, not a claim about how Claude
 Code or GitHub Copilot CLI implements anything. Neither harness has a
-section here on purpose. Any statement about a specific harness's loop
+section here on purpose. If you have not yet read
+[agent-topology.md](agent-topology.md), start there first -- it
+classifies what kinds of agentic systems exist (reactive vs.
+deliberative, single- vs. multi-agent, tool-augmented vs. autonomous)
+and where a single agent's Thought/Action/Observation loop sits among
+them, before this page grounds that loop's own mechanics. Any statement about a specific harness's loop
 (where its stop condition lives, how it formats tool results, what its
 turn boundaries are) needs that harness's own docs/repo citation and
 belongs on its own topic page. Treating a framework-general course as

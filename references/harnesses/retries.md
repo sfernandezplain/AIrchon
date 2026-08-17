@@ -184,8 +184,13 @@ backoff"), MCP server startup (v2.1.126, "MCP servers that hit a
 transient error during startup now auto-retry up to 3 times instead of
 staying disconnected"), MCP OAuth (v2.1.191, "discovery and token
 requests now retry once after transient network errors"), the
-auto-updater (v2.1.144, "retries transient network failures, reports
-specific error categories and OS error codes on failure"), remote managed
+auto-updater (v2.1.147, "retries transient network failures, reports
+specific error categories and OS error codes on failure" -- corrected
+from an earlier v2.1.144 mislabel here after a fresh re-fetch of
+`CHANGELOG.md` while researching
+[packaging-distribution-and-self-update.md](packaging-distribution-and-self-update.md);
+that page treats the auto-updater as a first-class topic and is the
+canonical citation for its full history), remote managed
 settings (v2.1.140, "Fixed remote managed settings not retrying on 401 —
 now retries once with a force-refreshed token"), and voice mode
 (v2.1.204, "Fixed voice dictation retrying in an unbounded loop when the
@@ -627,7 +632,9 @@ All fetched fresh 2026-07-31 unless noted otherwise.
   v2.1.98 429-`Retry-After`-as-minimum fix, v2.1.101 retry-indicator UX
   fixes, v2.1.110/2.1.111 non-streaming-fallback-retry-cap
   revert, v2.1.126 MCP startup auto-retry, v2.1.140 managed-settings
-  401-retry, v2.1.144 auto-updater retry hardening, v2.1.166
+  401-retry, v2.1.147 auto-updater retry hardening (see
+  [packaging-distribution-and-self-update.md](packaging-distribution-and-self-update.md)
+  for the full auto-update mechanism), v2.1.166
   `fallbackModel` and retry-once-on-fallback, v2.1.185 stream-stall hint
   timing, v2.1.186 `CLAUDE_CODE_MAX_RETRIES` cap at 15, v2.1.191 MCP
   capability-discovery and OAuth retry, v2.1.198 dropped-connection retry
