@@ -31,6 +31,21 @@ framework authored that session, not a researched claim -- see the
 page's own opening section for how that is held apart from this
 book's usual VERIFIED/BEST-CURRENT-UNDERSTANDING tagging.
 
+## Curriculum
+
+[Knowledge-path curriculum: a course skeleton for the three tier transitions](knowledge-path-curriculum.md) --
+written 2026-08-17, a curriculum scaffold (not a research page) expanding
+reader-proficiency-tiers.md's three flat reading lists into a teachable
+structure: for each transition (Slumberer->Gnostic, Gnostic->Demiurge,
+Demiurge->Archon), a transition overview, 3-5 learning objectives, a
+per-source-page module (key concepts + one comprehension-check question
++ one applied exercise), and a capstone synthesis task; the 21-page
+Gnostic->Demiurge band is further grouped into five thematic clusters
+(Memory & Context, Coordination & Multi-Agent, Transport & API, Config &
+Permissions, Skills & Tools) to make it navigable as a course. Every
+factual detail about what a source page covers is inherited from that
+page's own row below, not re-verified on the curriculum page itself.
+
 ## Topics
 
 Reading order note: [agent-topology.md](agent-topology.md) is written
