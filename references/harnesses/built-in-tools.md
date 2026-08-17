@@ -70,7 +70,31 @@ Note the `TodoWrite` -> `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`
 migration is itself a documented behavior change (v2.1.142), not a
 naming curiosity -- a subagent or hook written against `TodoWrite`
 before that version will silently interact with a disabled tool unless
-`CLAUDE_CODE_ENABLE_TASKS=0` is set.
+`CLAUDE_CODE_ENABLE_TASKS=0` is set. A second, later, and separate
+version boundary applies specifically on top of that migration: per
+`tools-reference`'s "Task tool availability" section (re-verified
+2026-08-17), as of v2.1.233 the entire family --  `TodoWrite` and all
+four `Task*` checklist tools -- is withheld by default on Opus 4.8,
+Sonnet 5, Fable 5, Mythos 5, and later versions of those model families
+specifically (those models "keep track of multi-step work without a
+written checklist," per the docs), re-enabled via
+`CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, an `--allowedTools`/`allowedTools`
+entry, or a `--tools`/`tools` list; background sessions and Claude Code
+on the web get the tools regardless of model. Do not conflate the two
+dates: v2.1.142 changed which tool is the *session-wide default*;
+v2.1.233 added a *model-conditional* withholding on top of whichever
+default applies. `TaskOutput` and `TaskStop` are a third, unrelated use
+of the "Task" name -- they control background Bash commands and
+background subagents/teammates (§1.3 below), not the checklist; and
+`CronCreate`/`CronDelete`/`CronList`'s "scheduled tasks" are a fourth,
+also-unrelated concept. See
+[Session & transcript persistence](session-persistence.md) §1.2 for
+which of `TodoWrite`/`Task*` actually persists to disk (`TodoWrite` does
+not, current versions only hold it in the message stream; the `Task*`
+family writes per-session state to `~/.claude/tasks/<session-id>/`,
+swept under the same `cleanupPeriodDays` retention as the rest of
+`~/.claude`) and for a live-reported UI bug where a resumed session's
+task-list panel doesn't visually reappear until the next write call.
 
 ### 1.2 Permission rule syntax
 
@@ -590,7 +614,8 @@ page -- treat as an open question, not a ruled-out one.
 
 | Source | Fetched | Authoritative for |
 |---|---|---|
-| `code.claude.com/docs/en/tools-reference` | 2026-07-30 | Claude Code's complete built-in tool list, permission-required column, per-tool behavior sections (Bash, Edit, Read, Glob, Grep, WebFetch, WebSearch, LSP, Monitor, PowerShell, NotebookEdit, Write, Agent, EndConversation), permission rule-format table |
+| `code.claude.com/docs/en/tools-reference` | 2026-07-30; "Task tool availability" section and full tool table re-fetched 2026-08-17 | Claude Code's complete built-in tool list, permission-required column, per-tool behavior sections (Bash, Edit, Read, Glob, Grep, WebFetch, WebSearch, LSP, Monitor, PowerShell, NotebookEdit, Write, Agent, EndConversation), permission rule-format table; the precise v2.1.233 `TodoWrite`/`Task*` model-gating boundary and the `TaskCreate`/`Task*`-vs-`TaskOutput`/`TaskStop`-vs-`CronCreate`/`Cron*` naming-overload point |
+| `code.claude.com/docs/en/agent-sdk/todo-tracking` | 2026-08-17 | `TodoWrite`'s message-stream-only persistence framing, the `TodoWrite`-to-`Task*` migration table, `CLAUDE_CODE_ENABLE_TODO_TOOLS`/`CLAUDE_CODE_ENABLE_TASKS` semantics |
 | `docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference` | 2026-07-30 | Copilot CLI's permission "kind" taxonomy (shell/write/read/url/memory/MCP-SERVER) and specifier examples |
 | `docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/allowing-tools` | 2026-07-30 | Copilot CLI's `--allow-tool`/`--deny-tool`/`--available-tools`/`--excluded-tools` semantics, persistence to `permissions-config.json`/`settings.json`, `/allow-all`/`/yolo`/`/reset-allowed-tools`, deny-over-allow precedence, read-only auto-allow |
 | `docs.github.com/copilot/concepts/agents/about-copilot-cli` | 2026-07-30 | Copilot CLI conceptual overview: shell/file access, Copilot Memory, MCP, custom agents |

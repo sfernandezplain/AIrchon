@@ -30,7 +30,11 @@ Sources for this section: `code.claude.com/docs/en/sessions`,
 `code.claude.com/docs/en/checkpointing`,
 `code.claude.com/docs/en/claude-directory`, and
 `github.com/anthropics/claude-code` `CHANGELOG.md`, all fetched
-2026-08-01. VERIFIED unless tagged otherwise.
+2026-08-01. §1.2 (added 2026-08-17) additionally draws on
+`code.claude.com/docs/en/agent-sdk/todo-tracking`, a re-fetch of
+`tools-reference` and `claude-directory`, and GitHub Issue #50656 --
+cited inline in that subsection and in the full Sources list at the
+bottom. VERIFIED unless tagged otherwise.
 
 ### 1.1 The transcript: one JSONL file per session, on disk from the first turn
 
@@ -57,10 +61,162 @@ subtree and aging out together: `projects/<project>/<session>/subagents/`
 §1.2 for their own addressing scheme) and
 `projects/<project>/<session>/tool-results/` (large tool outputs
 spilled out of the main JSONL to keep it manageable). `file-history/<session>/`
-sits alongside but is a separate mechanism (§1.4 below): pre-edit file
+sits alongside but is a separate mechanism (§1.5 below): pre-edit file
 snapshots, not conversation content.
 
-### 1.2 Session IDs and what resuming actually restores
+### 1.2 Task-tracking tool persistence: `TodoWrite` vs. the `Task*` family
+
+This subsection updates the page with a gap `airchon-mentor` found live in a
+prior conversation and flagged for `airchon-author` to research and persist,
+rather than answering it in situ from an unresourced page. Sources: the
+Agent SDK's `code.claude.com/docs/en/agent-sdk/todo-tracking` and
+`code.claude.com/docs/en/tools-reference` (its "Task tool availability"
+section specifically), both fetched fresh this session;
+`code.claude.com/docs/en/claude-directory`'s "Application data" tables,
+also fetched fresh this session and additionally corroborating what an
+earlier fetch of this same page (§1.6 below) had already found regarding
+`tasks/`; and GitHub Issue `anthropics/claude-code#50656`, fetched via
+`gh api` this session including its full timeline. VERIFIED unless tagged
+otherwise.
+
+[Built-in tools](built-in-tools.md) §1.1 already names `TodoWrite` and the
+`TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`/`TaskOutput`/`TaskStop`
+family as tools; this subsection covers what neither that page nor this
+one's own §1.6 (written 2026-08-01, before this gap was found) previously
+stated: which of them write anything to disk at all, where, and what that
+means for `--resume`/`--continue`.
+
+**`TodoWrite` writes nothing to disk on its own.** The Agent SDK's
+`todo-tracking` doc describes `TodoWrite` purely as message-stream content:
+"todo updates are reflected in the message stream" via `tool_use` blocks
+carrying the full `todos` array on every call, and the doc's entire
+monitoring-code pattern is built around watching that stream -- there is no
+mention anywhere on that page of a file, directory, or storage location
+`TodoWrite` writes to. This is corroborated independently, not merely
+assumed from absence: the `claude-directory` doc's own "Cleaned up
+automatically" table lists `todos/`, `statsig/`, and `logs/` together as
+"Legacy directories from older versions. No longer written," and the
+separate "what you lose if you delete it" table repeats the same three
+paths with "Nothing. Legacy directories not written by current versions."
+Read together, this means an *older* version of Claude Code did once
+persist todo-checklist state to `~/.claude/todos/`, and current versions
+have since stopped -- `TodoWrite` today really is transient message content
+only, not merely under-documented disk state.
+
+**The `Task*` family does write to disk, per-session.** The same
+`claude-directory` "Cleaned up automatically" table names `tasks/`
+directly: "Per-session task lists written by the task tools." This is a
+documented path, not an inference. GitHub Issue #50656 (filed 2026-04-19,
+titled "Task list UI not rendered after session resume") independently
+names the exact same path at session granularity while describing a real
+resume scenario: "Task data: persists correctly in
+`~/.claude/tasks/<session-id>/`, only the UI rendering is affected." No
+source fetched this session states the internal layout *within* that
+per-session directory (one JSON file per task versus one combined file for
+the whole list) -- treat "one JSON file per task" specifically as **BEST
+CURRENT UNDERSTANDING, UNCONFIRMED**; only the per-session *directory*
+path itself is documented and independently corroborated.
+
+```mermaid
+flowchart TD
+    TW["TodoWrite call<br/>(rewrites the whole todos array each time)"]
+    TW -->|"message-stream content only"| Stream["tool_use / tool_result blocks<br/>in the session JSONL transcript"]
+    TW -.->|"no direct disk write today"| NoDisk["(legacy versions once wrote<br/>~/.claude/todos/ -- no longer written)"]
+
+    TC["TaskCreate / TaskUpdate<br/>(patches one item by taskId)"]
+    TC --> Stream
+    TC --> TasksDir["~/.claude/tasks/&lt;session-id&gt;/<br/>per-session task-list files"]
+    TL["TaskList / TaskGet<br/>(read back current state)"]
+    TL -.->|reads| TasksDir
+
+    TasksDir -->|"survives across"| Resume["--resume / --continue / --fork-session<br/>(subject to cleanupPeriodDays / claude project purge,<br/>same as the rest of ~/.claude)"]
+```
+
+**Because `tasks/` is a real path under `~/.claude`, not a projection of the
+transcript, it is swept and purged exactly like everything else this page
+documents.** It sits in the same "Cleaned up automatically" table as
+`projects/<project>/<session>.jsonl` and `file-history/<session>/`, so it
+ages out under the same `cleanupPeriodDays` (default 30 days) as §1.6
+below describes, and `claude project purge`'s own printed deletion plan
+names it explicitly alongside `debug/` and `file-history/` entries ("Per-
+session `tasks/`, `debug/`, and `file-history/` entries"). The practical
+consequence for `--resume`/`--continue`: because task data lives in its
+own file(s) keyed to the session ID rather than being embedded as ordinary
+message content inside the session's own JSONL transcript, a resumed
+session's `TaskList` reflects exactly the same on-disk state as when the
+process exited -- it is not reconstructed from replaying the transcript.
+
+**Model-availability caveat, precisely versioned.** Per
+`tools-reference`'s "Task tool availability" section: "In Claude Code
+v2.1.233 and later, the following tools aren't available on Opus 4.8,
+Sonnet 5, Fable 5, Mythos 5, or later versions of those families unless
+you opt in: `TodoWrite`, `TaskCreate`, `TaskGet`, `TaskUpdate`, and
+`TaskList`" -- the documented rationale being that those specific model
+families "keep track of multi-step work without a written checklist," so
+Claude Code omits the tools' definitions and reminders to save context. On
+any other model (the docs name Opus 4.7 as an example), Claude Code
+provides the four `Task*` tools by default and `TodoWrite` only if you set
+`CLAUDE_CODE_ENABLE_TASKS=0`. To opt back in on a gated model: export
+`CLAUDE_CODE_ENABLE_TODO_TOOLS=1` before launch (every model and provider),
+name a tool in `--allowedTools`/the Agent SDK's `allowedTools` option, or
+list it in `--tools`/`tools`. Two environments bypass the model gate
+entirely regardless of model: background sessions (`claude agent`-style)
+and Claude Code on the web always provide the tools. This is a materially
+more precise version boundary than a prior draft of this book's coverage
+implied -- v2.1.142 (already cited in [Built-in tools](built-in-tools.md)
+§1.1) is the version `Task*` became the *session-wide default* over
+`TodoWrite`; v2.1.233 is a *separate, later* version gate that additionally
+withholds the whole family, `TodoWrite` included, from specific newer
+model families unless explicitly re-enabled. Do not conflate the two dates.
+
+**A genuine naming overload worth flagging explicitly** (three related
+uses of "Task," plus a fourth adjacent-but-differently-named concept),
+visible directly in `tools-reference`'s own tool table: `Task` as a
+prefix names three unrelated Claude Code mechanisms, not one.
+`TaskCreate`/`TaskGet`/
+`TaskList`/`TaskUpdate` are this subsection's checklist-tracking family.
+`TaskOutput` ("Retrieves output from a background task... deprecated in
+favor of `Read` on the task's output file path") and `TaskStop` ("Stops a
+running background task by ID... also accepts an agent-team teammate or a
+named background agent") instead control background Bash commands and
+background subagents/teammates -- an entirely different referent for
+"task," covered by [Built-in tools](built-in-tools.md) §1.3's Bash-
+backgrounding mechanics, not by anything in this subsection. `CronCreate`/
+`CronDelete`/`CronList` name a third, again-unrelated "scheduled tasks"
+concept (recurring or one-shot prompts, documented at
+`/docs/en/scheduled-tasks`), and §1.3 below's "what resumes" list names a
+fourth adjacent-but-distinct concept, the "active goal" (turn-count/timer/
+token-budget tracking, documented at `/docs/en/goal`). All four appear in
+the same tools-reference table and none is a synonym for another; a
+mention of "tasks" surviving a Claude Code resume needs the specific
+mechanism named, not assumed from the word alone.
+
+**A UI-rendering bug, not a data-loss bug -- and its real, checked-this-
+session status.** GitHub Issue #50656 reports that after `--resume`/
+`--continue`, the task-list UI panel does not visually reappear even
+though the underlying `~/.claude/tasks/<session-id>/` data is present and
+correct and a read-only `TaskList` call returns it accurately to the
+model -- only a subsequent `TaskCreate`/`TaskUpdate` write re-triggers the
+panel's render. The reporter's own root-cause theory, left in the issue
+as an unverified comment rather than a maintainer-confirmed fix, is that
+the panel's re-render is wired to fire on write events specifically, and
+loading persisted state from disk on resume does not synthesize an
+equivalent event. **Status, precisely, as of this session's fetch
+(2026-08-17):** the issue is `closed` with `state_reason: not_planned` --
+GitHub's stale-bot auto-closed it on 2026-05-26 for inactivity ("Closing
+for now -- inactive for too long"), which is not the same as a maintainer
+saying it was fixed or declining to fix it. A later comment, dated
+2026-07-21, reports the bug still reproduces on Claude Code v2.1.173 and
+states a changelog scan through v2.1.216 (2026-07-20) found no matching
+fix, requesting the issue be reopened. As of this fetch, it remains
+closed and has not been reopened. **BEST CURRENT UNDERSTANDING,
+UNCONFIRMED:** whether this is fixed on the version a given reader has
+installed -- the only two data points this session could find (a stale
+auto-close, and one unresolved reopen request three months later) both
+predate today, and no maintainer comment confirming or denying the bug's
+current state was found in the timeline.
+
+### 1.3 Session IDs and what resuming actually restores
 
 ```mermaid
 flowchart LR
@@ -131,7 +287,7 @@ in two terminals without forking, messages from both interleave into
 one transcript" -- there is no lock preventing this, only the
 recommendation to fork if you want independent histories.
 
-### 1.3 Branching/forking -- a genuinely new session ID, not a pointer
+### 1.4 Branching/forking -- a genuinely new session ID, not a pointer
 
 `/branch [name]` (optionally named; otherwise named after the first
 prompt, or -- as of v2.1.198 -- after the first prompt *before* a
@@ -170,7 +326,7 @@ entries, and anything that leaves those entries in an inconsistent
 state (a stale `parentID` chain, an orphaned `tool_use` from a rewind)
 can make the copy fail outright rather than silently degrade.
 
-### 1.4 Checkpointing/`/rewind` -- a parallel, file-snapshot mechanism, not the transcript
+### 1.5 Checkpointing/`/rewind` -- a parallel, file-snapshot mechanism, not the transcript
 
 Checkpoints are documented as a *distinct* system from the JSONL
 transcript, tracking file edits rather than conversation content:
@@ -204,7 +360,7 @@ menu gains a `/resume <session-id> (previous session)` entry at the top
 that reopens the pre-`/clear` session -- available only until you exit
 or resume something else.
 
-### 1.5 Retention, storage location, and how to make it disappear
+### 1.6 Retention, storage location, and how to make it disappear
 
 ```mermaid
 stateDiagram-v2
@@ -247,7 +403,7 @@ prints a credential, that value is written to
 are lowering `cleanupPeriodDays`, `CLAUDE_CODE_SKIP_PROMPT_HISTORY`, and
 permission rules that deny reads of credential files outright.
 
-### 1.6 A changelog-traced hardening history
+### 1.7 A changelog-traced hardening history
 
 Grepped the full `CHANGELOG.md` (2026-08-01) for
 `session|resume|continue|fork|rewind|transcript|checkpoint`. The
@@ -279,7 +435,7 @@ mechanism this page describes:
   historically hard to observe.
 - **Fork/branch structural integrity**: the fork-after-compaction
   lineage bug and the rewound-timeline `tool_use`-without-`tool_result`
-  fork failure, both cited in §1.3, plus "Fixed `/branch` rejecting
+  fork failure, both cited in §1.4, plus "Fixed `/branch` rejecting
   conversations with transcripts larger than 50MB" -- a hard size
   ceiling on the fork operation that was later lifted.
 - **Identity and addressing**: "Fixed `claude --resume <session-id>`
@@ -442,7 +598,7 @@ mechanism rather than a single shipped-once feature:
   and "Attached images and PDFs persist across session resume even if
   the source file is later changed or deleted" -- both point at the
   same design goal as Claude Code's model-pinning-on-resume behavior
-  (§1.2): a resumed session should reproduce the *original* inputs it
+  (§1.3): a resumed session should reproduce the *original* inputs it
   saw, not silently re-read a file that has since drifted.
 - **Store maintenance surfaced to the user**: "Keep `/chronicle
   reindex` responsive and show progress in the timeline" and "Improve
@@ -470,7 +626,7 @@ the current stable release -- flagged inline below, and OpenCode's repo
 carries no `CHANGELOG.md` (confirmed absent at repo root this session,
 consistent with what every prior page in this book citing OpenCode has
 found), so there is no behavior-change history to grep the way Claude
-Code's and Copilot CLI's own changelogs allow for §1.6/§2.4 above.
+Code's and Copilot CLI's own changelogs allow for §1.7/§2.4 above.
 
 ### 3.1 A live architecture change the docs and community writeups don't reflect yet
 
@@ -607,7 +763,7 @@ fork-of-a-fork.
 The forked session is a **fully independent row** in `SessionTable`
 from the moment `createNext()` returns -- there is no shared-storage
 optimization here (unlike Claude Code's `--fork-session`, which within
-one process reuses in-memory permission grants per §1.3): a fork is a
+one process reuses in-memory permission grants per §1.4): a fork is a
 genuine, separate copy of the relevant message and part rows, addressed
 by its own new session ID, from its first write.
 
@@ -661,7 +817,7 @@ snapshot ... on huge repos like chromium checkout the git add --all
 rebuilding the [index] is expensive"), so unchanged blobs are shared by
 reference rather than re-hashed and re-stored on every snapshot. This
 is OpenCode's structural equivalent of Claude Code's checkpoint file
-snapshots (§1.4) -- both exist to let a rewind-style undo restore file
+snapshots (§1.5) -- both exist to let a rewind-style undo restore file
 state independent of git commits the user makes -- but where Claude
 Code stores raw pre-edit file copies under `file-history/<session>/`,
 OpenCode reuses git's own object model as the snapshot substrate.
@@ -722,12 +878,15 @@ OpenCode.
 
 ## Sources
 
-All fetched 2026-08-01.
+Fetched 2026-08-01 unless dated 2026-08-17 below (the §1.2 task-tracking-
+persistence research added that date).
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `https://code.claude.com/docs/en/sessions` -- session storage model,
   `--continue`/`--resume`/`--fork-session`/`/branch` mechanics, what a
-  resumed session restores/doesn't, resume-from-summary dialog, session
+  resumed session restores/doesn't (including the "Active goal" and
+  "Scheduled tasks" resume-carryover lines re-verified 2026-08-17 for
+  §1.2's naming-overload point), resume-from-summary dialog, session
   picker shortcuts, naming, JSONL transcript path and format-stability
   warning, export/script interfaces, retention/location config table.
 - `https://code.claude.com/docs/en/how-claude-code-works` -- session
@@ -739,10 +898,34 @@ All fetched 2026-08-01.
 - `https://code.claude.com/docs/en/claude-directory` -- full application-data
   table (`cleanupPeriodDays`-swept paths vs. kept-indefinitely paths),
   plaintext-storage security note, `claude project purge` mechanics and
-  examples.
+  examples; re-fetched 2026-08-17 specifically for §1.2's `tasks/`
+  ("Per-session task lists written by the task tools") and `todos/`
+  ("Legacy directory from older versions. No longer written") table rows.
+- `https://code.claude.com/docs/en/agent-sdk/todo-tracking` -- fetched
+  2026-08-17 for §1.2: `TodoWrite`'s message-stream-only framing, the
+  `TodoWrite`-to-`Task*` migration table (`taskId`-keyed patches vs.
+  whole-array rewrites), the `CLAUDE_CODE_ENABLE_TODO_TOOLS`/
+  `CLAUDE_CODE_ENABLE_TASKS` opt-in/opt-out environment variables.
+- `https://code.claude.com/docs/en/tools-reference` -- its "Task tool
+  availability" section specifically re-fetched 2026-08-17 for §1.2's
+  precise v2.1.233 model-gating boundary (Opus 4.8/Sonnet 5/Fable 5/
+  Mythos 5 and later versions of those families), and its full tool
+  table re-checked the same date for the `TaskCreate`/`TaskGet`/
+  `TaskList`/`TaskUpdate` vs. `TaskOutput`/`TaskStop` vs. `CronCreate`/
+  `CronDelete`/`CronList` three-way "Task" naming-overload point.
+- `https://github.com/anthropics/claude-code` issue #50656 (via `gh api
+  repos/anthropics/claude-code/issues/50656` and its `/timeline`,
+  fetched 2026-08-17) -- §1.2's task-list-UI-panel-not-re-rendering-on-
+  resume report, its `~/.claude/tasks/<session-id>/` path corroboration,
+  and its full closure history (stale-bot auto-close with
+  `state_reason: not_planned` on 2026-05-26, a 2026-07-21 comment
+  reporting continued reproduction on v2.1.173 with no fix found through
+  a changelog scan to v2.1.216, unreopened as of this fetch). Authoritative
+  for this repo's own reported-behavior Issues, not for any underlying
+  implementation.
 - `https://github.com/anthropics/claude-code` `CHANGELOG.md` (via `gh api
   repos/anthropics/claude-code/contents/CHANGELOG.md`) -- the full
-  hardening history cited in §1.3 and §1.6: fork-after-compaction
+  hardening history cited in §1.4 and §1.7: fork-after-compaction
   lineage loss, malformed-transcript-entry crashes, corrupted-line
   skipping, transcript-write-failure warnings, 50MB fork-size limit and
   its removal, `CLAUDE_CODE_SESSION_ID` propagation to MCP servers on
@@ -810,5 +993,5 @@ among the three, its own real implementation):**
   again in §3.5 where the revert/unrevert mechanism itself was not found
   documented on `opencode.ai/docs`. OpenCode's repository carries no
   `CHANGELOG.md` (confirmed absent at repo root this session), so no
-  behavior-change history equivalent to §1.6/§2.4 could be produced for
+  behavior-change history equivalent to §1.7/§2.4 could be produced for
   this section.
