@@ -1,3 +1,153 @@
+## 2026-08-17 -- `teacher` reviewed via `genesis` for consistency, conciseness, navigability, coherence
+
+Ran the `genesis` skill's architect lens (SoC pass + compliance check,
+scoped to a review of an existing module rather than a new design) over
+`.apm/agents/teacher.agent.md` at the operator's request. Findings and
+fixes, most severe first:
+
+- **HIGH, coherence -- illustrative exam content pulled from the wrong
+  corpus.** All four per-tier essay-question examples in the Step 2
+  template, and the Step 7 log's example, tested `genesis`'s own design
+  vocabulary (truth #8 "plan before execution", R1 SPLIT/R2 FUSE/R3
+  EXTRACT/R4 INLINE, PANEL vs. PIPELINE, FAN-OUT + SYNTHESIZER) instead
+  of `references/harnesses/` -- the exact corpus this file's own
+  grounding rules (frontmatter, "Before You Start", the
+  Harness-Agnostic boundary) say every question must come from. Likely
+  origin: `teacher.agent.md` was itself drafted by running `genesis`'s
+  own Step 7b (per the original Step 7b commit message), and that
+  vocabulary bled into the placeholder examples. Since agents
+  pattern-match against concrete examples more than prose rules, a live
+  exam would likely have imitated these and drifted off-corpus. Fixed:
+  all five examples replaced with ones grounded in real, this-book
+  content (the ReAct loop's observation-append step, the documented
+  `TodoWrite`->`Task*` v2.1.142 migration, Claude Code's vs. Copilot
+  CLI's compaction mechanisms, the advanced-planning gap-analysis
+  finding).
+- **HIGH, coherence/functionality -- ungranted tools.** Frontmatter
+  listed `Task`, `readPage`, `openBrowserPage` -- none of which exist
+  anywhere in this book's own `built-in-tools.md` inventory of Claude
+  Code, Copilot CLI, or OpenCode (Claude Code's real names are
+  `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`/`TaskOutput`/
+  `TaskStop`/`TodoWrite`; no bare `Task`) -- while Step 3 instructs
+  using `TaskCreate` and `TodoWrite`, neither of which frontmatter
+  actually granted. Fixed: `tools: [Read, Write, TaskCreate, TodoWrite]`.
+- **MEDIUM, consistency -- contradictory fallback framing.**
+  "Multi-Harness Alignment" read as if `TodoWrite` were a fallback for
+  when Copilot CLI "lacks `TaskCreate`," contradicting Step 3's
+  unconditional one-tool-per-harness split. Fixed: reworded to match
+  Step 3 exactly.
+- **MEDIUM, prose navigability -- rule after the artifact it
+  governs.** "Sourcing Questions" and the Harness-Agnostic boundary
+  (added last turn) sat textually after the full Step 2 exam template,
+  so a reader met the artifact before the rule shaping it. Fixed:
+  moved both under "Step 2," ahead of the template.
+- **MEDIUM, coherence -- stale drafting scaffolding shipped in the
+  persona body.** An "Integration Notes" section addressed to whoever
+  was drafting the file ("after this agent is drafted, deploy it...",
+  "pending Step 7a portability review") had no equivalent in
+  `airchon-mentor`/`airchon-author`, loaded dead context on every
+  invocation, and referenced a decision (the router-skill question)
+  already resolved as deferred two entries above. Deleted.
+- **LOW, noted but not changed:** the Harness-Agnostic boundary is
+  deliberately restated three times across the file (Sourcing
+  Questions, Step 8, Constraints & Scope) -- a durability-over-
+  conciseness tradeoff already reasoned about when it was added, kept
+  as is. Added one clarifying parenthetical where "You do NOT create
+  courses" sat in mild tension with Step 8 naming a single next
+  exercise.
+
+## 2026-08-17 -- `teacher` grounds Q&A in the source pages; harness-agnostic/specific boundary added
+
+At the operator's request, tightened two things in
+`.apm/agents/teacher.agent.md` beyond the review/cleanup above:
+
+- **Grounding widened past the two curriculum meta-pages.** "Before
+  You Start" and "Sourcing Questions" now instruct Teacher to follow
+  `knowledge-path-curriculum.md`'s own module links out to the actual
+  `references/harnesses/*.md` topic pages (`agent-loop.md`,
+  `mcp-integration.md`, etc.) and write questions/answer keys from
+  what those pages say -- not from the curriculum's one-line "key
+  concepts" summary alone. The curriculum page itself already
+  disclaims re-verifying anything it cites (its own "What this page
+  is, and what it is not" section: factual claims are "inherited from
+  that source page's own grounding, not re-verified here"), so Teacher
+  citing only the curriculum was one inherited-claim hop further from
+  the source than the rest of this book tolerates.
+- **New BOUNDARY: exam Q&A and course/reading recommendations are
+  HARNESS-AGNOSTIC; exercises are HARNESS-SPECIFIC.** Formalizes a
+  distinction `knowledge-path-curriculum.md` already draws implicitly
+  (its Slumberer->Gnostic capstone explicitly bars naming a concrete
+  harness; its Gnostic->Demiurge band's defining exercise shape is a
+  named cross-harness trace) into an explicit rule for Teacher: a
+  question's "correct" answer must never collapse onto one harness's
+  specific syntax when the source page documents several side by
+  side, but a hands-on exercise must name a real harness (asking the
+  reader which one they use, if unknown) -- a cross-harness comparison
+  exercise still satisfies "harness-specific" since it names concrete
+  harnesses, just more than one. Restated in three places (Sourcing
+  Questions, Step 8's example output, Constraints & Scope) since this
+  is exactly the kind of rule that's easy to violate one tier or one
+  example at a time without a durable restatement.
+- Alumni Evaluator flow diagram (added in the entry above) and its
+  Step 1-8 prose were left factually unchanged by this edit; only the
+  grounding and harness-agnostic/specific instructions moved.
+
+## 2026-08-17 -- `teacher` reviewed; genesis handoff packet closed out and deleted
+
+Reviewed `.apm/agents/teacher.agent.md` (drafted earlier today, Step
+7b commit) against its own genesis handoff packet
+(`TEACHER-HANDOFF.md`, Steps 1-6) at the operator's request, closed
+out the documentation gap the Step 7b commit left behind, then
+deleted the handoff -- genesis handoff packets are scratch-only in
+this project, never committed (same convention already stated for the
+mentor/author split's own handoffs, and already exercised once before
+for `HANDOFF-missing-topics.md` in the wiki-book's gap-analysis work).
+This one reached the repo by mistake, bundled into the Step 7b commit
+alongside the agent it was drafted for.
+
+- **All five Step 6 "blocking" open questions verified resolved** in
+  the shipped agent -- none needed a code change, only confirmation:
+  - Score-boundary overlap at 7.0 / gap at 5-6 -- resolved with
+    contiguous, non-overlapping ranges (`0.0-5.99` Slumberer,
+    `6.0-7.0` Gnostic, `7.1-8.0` Demiurge, `8.1-10.0` Archon; safe
+    because every achievable score is a multiple of 0.25).
+  - Free-response scoring strategy -- resolved as an LLM-guided
+    rubric (full / half / no credit) with an explicit "err on the
+    side of credit" instruction, not pattern-matching or deferred
+    human review.
+  - Exam-generation approach -- resolved as dynamic per-session
+    generation (the handoff's own recommended MVP choice), grounded
+    in `knowledge-path-curriculum.md` rather than a pre-authored bank.
+  - FORCED-trigger timing -- resolved as a one-time cold-start check
+    (`.airchon/` exists, `level` missing), not a periodic re-check.
+  - `.airchon/level` file format -- resolved as a single-line tier
+    string, no metadata.
+- **Documentation close-out (the handoff's own Todo 10, skipped by
+  the Step 7b commit):** `CLAUDE.md` now documents `teacher` as this
+  project's fourth primitive (source-of-truth file tree, editing
+  instructions, `apm.lock.yaml` file-count, and "Running tests"
+  section all updated) -- it shipped with no `CLAUDE.md` update
+  originally. This entry is the corresponding `CHANGELOG.md` record.
+- **Deliberately left undone, not an oversight:** the handoff's Todo
+  8 (a Claude-Code-only router skill for `teacher`, mirroring
+  `airchon`'s relationship to `airchon-mentor`/`airchon-author`) and
+  Todo 9 (a validation/test suite) are net-new feature work outside
+  what this review pass was asked to do, and this project still has
+  no test harness at all regardless (see `CLAUDE.md`'s "Running
+  tests"). `teacher` ships today exactly as the handoff's own Target
+  Declaration described it -- "a bare agent, no skill partner on
+  Copilot" -- just without a Claude Code-only skill partner either.
+- **Current flow materialized as a mermaid diagram, in
+  `teacher.agent.md` itself** (its "Core Workflow: User-Classifying
+  Flow (Alumni Evaluator)" section), superseding the three draft
+  diagrams (component, sequence, state machine) that lived in the
+  now-deleted handoff and still showed the score-boundary defect as
+  unresolved. Kept alongside the operative instructions rather than
+  here, so it stays in sync with the agent it documents; this is the
+  first of this project's agent flows documented as a diagram --
+  `airchon-mentor`'s and `airchon-author`'s own flows remain
+  prose-only for now.
+
 ## 2026-08-17 -- `airchon-mentor` gains read-only project-harness review
 
 Ran through the `genesis` design skill (handoff packet in the
