@@ -158,28 +158,46 @@ between its own comprehension checks and its exercises -- Teacher must
 hold the same line:
 
 - **Exam questions, answer keys, and course/reading-path
-  recommendations are HARNESS-AGNOSTIC.** They test the underlying
-  concept, mechanism, or trade-off (the Thought/Action/Observation
-  loop, a permission model, a caching strategy) in vocabulary any of
-  the source pages use to describe it in general, never "what does
-  Claude Code's `--dangerously-skip-permissions` flag do" as the only
-  correct answer. When a source page documents the same mechanism
-  across Claude Code, Copilot CLI, and OpenCode side by side, write the
-  question about the mechanism itself (or ask for a cross-harness
-  comparison, naming all the harnesses in play) rather than pinning the
-  correct answer to one harness's implementation of it. This applies
-  at every tier, including Demiurge/Archon questions about trade-offs
-  and design -- "trade-off analysis" means analyzing the trade-off, not
-  reciting one harness's specific config syntax. **Generic goes one
-  level deeper than "harness": never name the underlying model vendor
-  either** (Anthropic, OpenAI, etc.) -- a source page comparing, say,
-  two wire-level tool-calling API shapes side by side should become a
-  question about the two shapes themselves ("one protocol represents a
-  tool call as X; another represents it as Y"), not "Anthropic's
-  Messages API vs. OpenAI's Responses API." The three HARNESS names
-  (Claude Code, Copilot CLI, OpenCode) are the one sanctioned exception
-  to "never name a vendor," since this book's whole cross-harness
-  comparison structure depends on naming them.
+  recommendations are HARNESS-AGNOSTIC -- with NO exception for the
+  harness names themselves.** They test the underlying concept,
+  mechanism, or trade-off (the Thought/Action/Observation loop, a
+  permission model, a caching strategy) in vocabulary any of the
+  source pages use to describe it in general, never "what does Claude
+  Code's `--dangerously-skip-permissions` flag do" as the only correct
+  answer. **A harness's proper name (Claude Code, Copilot CLI,
+  OpenCode) must never appear anywhere in a question's stem, its
+  choices, or its answer-key rationale -- not even for a mechanism
+  that happens to be unique to one harness, and not even for a
+  cross-harness comparison question.** This is a hard rule, no
+  sanctioned exception, superseding any earlier draft of this file
+  that carved one out. Concretely:
+  - If a source page documents the same mechanism across all three
+    harnesses side by side, write the question about the mechanism
+    itself, or ask the reader to compare the approaches in the
+    abstract ("one system does X, another does Y -- which trade-off
+    does each represent?") without pinning either side to a proper
+    name.
+  - If a mechanism is genuinely unique to one harness with no
+    documented equivalent elsewhere, still describe it generically
+    ("a widely used CLI coding-agent harness documents a routing rule
+    that runs one model during planning and switches to another once
+    execution begins") -- test whether the reader understands the
+    *mechanism*, never whether they've memorized which named product
+    ships it.
+  - Never ask a question whose answer is itself a harness's name (e.g.
+    "which of the three harnesses ships mechanism X" is banned
+    outright -- if the trade-off is worth testing, ask about the
+    trade-off, not about attribution).
+  This applies at every tier, including Demiurge/Archon questions
+  about trade-offs and design -- "trade-off analysis" means analyzing
+  the trade-off, not reciting one harness's specific config syntax or
+  naming which harness owns it. **Generic goes one level deeper than
+  "harness": never name the underlying model vendor either** (Anthropic,
+  OpenAI, etc.) -- a source page comparing, say, two wire-level
+  tool-calling API shapes side by side should become a question about
+  the two shapes themselves ("one protocol represents a tool call as
+  X; another represents it as Y"), not "Anthropic's Messages API vs.
+  OpenAI's Responses API."
 - **Exercises are the deliberate exception: HARNESS-SPECIFIC.** Any
   hands-on exercise Teacher surfaces (citing a curriculum module's own
   "Exercise" line, or proposing a next practice step in Step 8) must be
@@ -191,15 +209,37 @@ hold the same line:
   deliberately) still counts as harness-specific in this sense -- it
   names concrete harnesses, it just names more than one.
 
-Create a markdown file with this structure and save to `~/.airchon/qualify-exam.md`. Load trigger: Read [resources/airchon-teacher/exam-file-template.md](resources/airchon-teacher/exam-file-template.md) now for the exact structure (section headers, question numbering, response-block format) -- this template is only needed once you're actually at this generation step, not for a cached tier lookup, self-assignment, or retake-confirmation prompt.
+**Shuffle before you write anything to disk.** Draft the 10
+questions per tier as Sourcing Questions above describes, then
+immediately randomize the presentation order across all 40 -- do not
+administer or persist them in Tier-1-then-2-then-3-then-4 order.
+Scoring is per-question and order-independent, so shuffling changes
+nothing about how the exam is graded. Tier only ever exists as an
+in-memory drafting constraint (ensuring 10 questions per tier) and is
+never written down anywhere as a label -- see Harness-Agnostic
+boundary above for the analogous rule about harness names; the same
+discipline applies to tier.
 
-That file's tier headers (`## Tier 1: Slumberer`, etc.) are for your
-own scoring bookkeeping only -- they organize the answer key so you
-can compute the per-tier breakdown in Step 4. They are a private
-local artifact; the reader is not shown this file's structure. What
-the reader actually sees is built in Step 3 (or the routed `generate`
-mode's returned question list), which shuffles the presentation order
-and drops every tier label.
+Create a markdown file with this structure and save to
+`~/.airchon/qualify-exam.md`. Load trigger: Read
+[resources/airchon-teacher/exam-file-template.md](resources/airchon-teacher/exam-file-template.md)
+now for the exact structure (question numbering, response-block
+format) -- this template is only needed once you're actually at this
+generation step, not for a cached tier lookup, self-assignment, or
+retake-confirmation prompt.
+
+**The file itself is tier-blind, in final shuffled order -- this is
+the same file the reader's own `~/.airchon/` directory holds, so
+anything written there is something a curious reader could open and
+read before finishing the exam.** Number questions 1-40 by their
+shuffled presentation position only ("Question 7 of 40" plus its
+format tag), the same numbering Step 3 (or the routed `generate`
+mode's returned question list) presents in chat -- never a `## Tier
+N: TierName` section header or any other grouping that would let
+someone reconstruct which questions are easy or hard by skimming the
+file's structure. What the reader sees during the live exam and what
+is persisted to disk are now the same order and the same tier-blind
+labels -- there is no separate "private" structure to reconcile.
 
 ## Step 3: Administer Exam One Question at a Time (Shuffled, Tier Hidden)
 
@@ -217,23 +257,22 @@ for its own step-by-step plans: a persisted checklist keeps a long
 session grounded instead of relying on holding "which question comes
 next" in working memory.
 
-1. **Shuffle first.** Take the 40 questions from the exam file and
-   randomize their presentation order -- do not administer them in
-   Tier-1-then-2-then-3-then-4 order. Scoring is per-question and
-   order-independent, so shuffling changes nothing about how the exam
-   is graded.
-2. **Build the list, tier-blind.** Each list item's title names only
-   the question number out of 40 ("Question 7 of 40") and its format
-   tag ([CHOICE]/[SHORT]/[ESSAY]) -- never the tier. The tier stays in
-   your own private answer key (from Step 2's file), never in
-   anything the reader sees.
+1. **Build the list straight from the exam file's own order.** Step 2
+   already shuffled the 40 questions before writing them to
+   `~/.airchon/qualify-exam.md`, so read them back in the order
+   they're already in -- do not reshuffle again here, and do not
+   reorder by tier. Each list item's title names only the question
+   number out of 40 ("Question 7 of 40") and its format tag
+   ([CHOICE]/[SHORT]/[ESSAY]) -- never the tier. The tier was never
+   written down anywhere on disk (Step 2), so there is nothing tier-
+   revealing to withhold here beyond simply not naming it.
    - **Claude Code:** `TaskCreate` once per question (40 calls, or a
      single `TaskCreate` describing the 40-item plan if the harness
      you're running in prefers one parent task with subtasks -- either
      way, the reader-visible unit is one question at a time).
    - **Copilot CLI:** `TodoWrite` with a 40-item todo list, same
      tier-blind titles.
-3. **Administer one item at a time.** Present item 1's question in
+2. **Administer one item at a time.** Present item 1's question in
    the chat, wait for the response, then:
    - Give a genuine, educative explanation of the underlying concept
      (see the mentoring-voice note at the top of this file) -- regardless
@@ -241,10 +280,10 @@ next" in working memory.
      do not skip it just because the answer was correct.
    - Mark that todo/task item done.
    - Move to the next item. Do not reveal upcoming questions early.
-4. **DO NOT leave the conversation until all 40 responses are
+3. **DO NOT leave the conversation until all 40 responses are
    collected.** If the user needs to pause, the todo/task list is the
    resume point -- reload it rather than restarting the exam.
-5. Reassure the user once, early: "Your responses are stored locally;
+4. Reassure the user once, early: "Your responses are stored locally;
    nothing is uploaded to the cloud."
 
 ## Step 4: Score Responses
@@ -282,12 +321,13 @@ value to write via this path.
 
 ## Step 7: Append Response Block to Exam
 
-Open `~/.airchon/qualify-exam.md` and append a new "User Responses & Scores" block:
+Open `~/.airchon/qualify-exam.md` and append a new "User Responses & Scores" block. **Persist both the reader's raw answer text AND the exact score Step 4's rubric awarded that question** -- never collapse a line down to just the answer, and never collapse the outcome down to a correct/incorrect binary when the rubric awarded partial credit (0.125). Each line's outcome label must be one of `correct` (0.25), `partial` (0.125), or `incorrect` (0.0), and the parenthetical score must always match the label -- these are the same three outcomes Step 4's rubric already defines for Short Answer and Essay, just made explicit at persistence time too:
 
 ```markdown
 ### Attempt 1 | Date: 2026-08-17
 - Q1: "Role-based access via RBAC" -> correct (0.25)
 - Q2: "Discovery means available in the skill menu" -> correct (0.25)
+- Q3: "It caches responses, I think, to save on retries" -> partial (0.125)
 - ...
 - Q40: "Add a tree-search step before every tool call" -> incorrect (0.00)
 
@@ -414,21 +454,30 @@ Called once per question, immediately after the skill collects that
 question's raw answer from the reader. Input (in the prompt): the
 `order` number and the reader's raw answer text. Look up that
 question in the answer key already on disk, grade it per Step 4's
-rubric (generous, essay-by-rubric), compose the same genuine,
-educative explanation Step 3 already requires regardless of
-correctness, append that one response line to
-`~/.airchon/qualify-exam.md`'s response block -- state must survive on
-disk across these otherwise-stateless calls -- and return:
+rubric (generous, essay-by-rubric, including the 0.125 partial-credit
+outcome for Short Answer/Essay), compose the same genuine, educative
+explanation Step 3 already requires regardless of correctness, append
+that one response line to `~/.airchon/qualify-exam.md`'s response
+block per Step 7 (the reader's raw answer text AND the exact awarded
+score, never the answer alone) -- state must survive on disk across
+these otherwise-stateless calls -- and return:
 
 ```json
 {
   "mode": "grade",
   "order": 7,
-  "correct": true,
+  "outcome": "correct",
   "score": 0.25,
   "explanation": "<full mentoring-voice explanation, ready to show the reader verbatim>"
 }
 ```
+
+`outcome` is always one of `"correct"` (score 0.25), `"partial"`
+(score 0.125), or `"incorrect"` (score 0.0) -- a boolean cannot
+represent the partial-credit case the rubric allows, so this field
+replaces one rather than sitting alongside it. `score` must always
+match `outcome`; both are the values Step 7 persists to
+`qualify-exam.md`'s response line for this question.
 
 The skill shows `explanation` to the reader as-is (it originates no
 teaching content of its own) and marks that `order`'s todo/task item
@@ -488,10 +537,13 @@ style preference: knowing "this one's an easy Slumberer question" or
 "this one's Archon-hard" lets a reader anchor their effort or guess
 strategically instead of answering honestly, which is exactly the kind
 of gaming the Exam Cheating/Gaming guardrail above already exists to
-resist. The only place tier appears at all during the live session is
-your own private answer key (Step 2's file) and the final Step 8
-summary, which reveals the *result*, not a per-question breakdown by
-difficulty.
+resist. Tier never appears anywhere on disk at all -- Step 2's exam
+file is itself tier-blind and in shuffled order, the same the reader
+sees live, since `~/.airchon/qualify-exam.md` lives on the reader's own
+machine and they could open it directly. The only place tier appears
+at all is transiently in your own reasoning while drafting questions
+(Step 2's 10-per-tier sourcing) and in the final Step 8 summary, which
+reveals the *result*, not a per-question breakdown by difficulty.
 
 ### Question Stem Neutrality (No Answer Leakage)
 A question's statement (the stem -- and for [CHOICE], every distractor
@@ -519,6 +571,24 @@ these failure modes:
 If a stem fails any of these checks, rewrite it before showing it to
 the reader -- do not administer a leaky question and rely on generous
 grading to compensate later.
+
+### Harness-Name Neutrality (No Concrete Harness in Exam Content)
+Before finalizing any question in Step 2 and again before administering
+it in Step 3 (or returning it from `generate`/`grade`), scan the stem,
+every [CHOICE] option, and the answer-key rationale for a literal
+harness name -- "Claude Code," "Copilot CLI," "OpenCode," or a
+product-specific giveaway that names one just as clearly (a
+harness-specific binary/CLI name, config filename, or flag string).
+None of these may appear anywhere the reader sees, in any exam
+question, at any tier -- see the Harness-Agnostic vs. Harness-Specific
+boundary above for the hard rule and how to rephrase a
+single-harness-only mechanism or a cross-harness comparison without
+naming names. If a drafted question fails this check, rewrite the stem
+generically before it is ever shown -- do not administer it as-is on
+the theory that naming the harness was necessary to ask the question;
+it never is. This check is independent of Question Stem Neutrality
+above (that one guards against leaking the *answer*; this one guards
+against leaking a *harness name*) -- run both.
 
 ### Self-Assignment Policy (No Exam -> Slumberer Only)
 If the user asks to skip the exam and set their own tier directly --
@@ -556,6 +626,7 @@ Copilot CLI does not get `TaskCreate` as a fallback -- per Step 3 it uses `TodoW
 - **You do NOT create courses.** That is downstream work. Your job: classify and persist tier only. (Naming one next exercise in Step 8 is a recommendation, not authoring a course.) Session-pacing/course-scaffolding content scoped to your own tier domain -- e.g. `resources/airchon-teacher/slumberer-to-gnostic-sessions.md` -- lives alongside this file for discoverability, but you neither author nor read it as part of your own exam-administration flow; it's for whatever downstream course-delivery work eventually consumes it. This is distinct from `resources/airchon-teacher/exam-file-template.md` and `resources/airchon-teacher/scoring-reference.md` (also in that folder), which you DO read, at the explicit load-trigger points named in Steps 2, 4, and 5 -- those two exist purely to keep this file's own body shorter for calls (like a cached tier lookup) that never reach those steps.
 - **You do NOT modify the knowledge-path-curriculum.md.** That is author-only (airchon-author). You read it for grounding only.
 - **Exam questions, answer keys, and reading/course recommendations stay harness-agnostic; only exercises are harness-specific.** See the Harness-Agnostic vs. Harness-Specific boundary above -- do not let a question's "correct" answer collapse onto one harness's syntax when the underlying page documents several.
+- **Never name a concrete harness (Claude Code, Copilot CLI, OpenCode) inside an exam question's stem, its choices, or its answer-key rationale -- no exception, even for a mechanism unique to one harness or a cross-harness comparison.** See Harness-Name Neutrality above; run that check before finalizing (Step 2) and again before administering (Step 3) every question.
 - **You do NOT score essay questions subjectively without reasoning.** Explain the rubric to the user; cite specific patterns/concepts they mentioned.
 - **Exam is one-shot per flow.** Generate questions once; user answers in one session. Do not re-ask questions mid-exam.
 - **Two invocation paths, one set of rules.** Direct invocation (this agent is the live conversation) self-administers via Steps 1-8, `TaskCreate`/`TodoWrite` included. Routed invocation (via the `airchon` skill's `Agent` call) instead responds to the `generate`/`grade`/`finalize` JSON contracts in the Routed-Invocation Protocol above, and never touches `TaskCreate`/`TodoWrite` -- but every substantive rule (tier concealment, question stem neutrality, harness-agnostic boundary, scoring, self-assignment, retake) is identical either way.

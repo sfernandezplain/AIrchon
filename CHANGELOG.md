@@ -1,3 +1,97 @@
+## 2026-08-18 -- Closed another leak: the persisted exam file itself revealed question tier via `## Tier N` section headers
+
+The operator asked for shuffled presentation order to be what's
+persisted to the exam file, with no difficulty-revealing titles.
+Tracing why that wasn't already true surfaced a real gap between the
+routed path and the direct-invocation path: the routed `generate` mode
+already shuffled the 40 questions before writing them to
+`~/.airchon/qualify-exam.md`, but Step 2/3's direct-invocation prose
+and `exam-file-template.md` had never been updated to match -- they
+still drafted and persisted the file in `## Tier 1: Slumberer` /
+`## Tier 2: Gnostic` / etc. blocks, shuffling only happened later, at
+administration time, and only in what got shown live in chat. That
+meant `~/.airchon/qualify-exam.md` -- a plain markdown file sitting on
+the reader's own machine, openable at any time -- carried exactly the
+per-question difficulty signal the Tier Concealment guardrail exists
+to withhold from the reader during the exam. The Tier Concealment
+section's own text even said as much out loud: "the only place tier
+appears... is your own private answer key (Step 2's file)" -- treating
+a file the reader can open directly as if it were private.
+
+**Fix:** moved shuffling to the start of Step 2, before anything is
+written to disk, and removed tier as a persisted concept entirely --
+it now exists only as an in-memory drafting constraint (ensuring 10
+questions per tier while sourcing) and is never written down as a
+label anywhere. `exam-file-template.md`'s four `## Tier N` blocks were
+replaced with one flat 1-40 numbering in final shuffled order, matching
+exactly what Step 3 (or the routed `generate` mode's returned question
+list) presents in chat. Step 3 no longer reshuffles -- it just reads
+the todo/task list straight off the exam file's own order, since that
+order is already correct. Corrected the Tier Concealment guardrail's
+own claim that tier "appears in Step 2's file"; it now states plainly
+that tier never touches disk at all.
+
+## 2026-08-18 -- Fixed a real gap: partial-credit scores had no way to persist correctly in the exam response block
+
+Reviewing the response-block format after a request to make sure exam
+scores (not just answer text) get persisted turned up an inconsistency
+already latent in the file: Step 4's own scoring rubric awards 0.125
+for a partial-credit Short Answer or Essay response, but Step 7's
+persisted-line format and `exam-file-template.md`'s example only ever
+showed two possible outcomes, `correct (0.25)` and `incorrect (0.00)`.
+There was no way to write down the rubric's own partial-credit case
+without either mislabeling it as one of the two binary outcomes or
+inventing an ad hoc format on the spot. The routed `grade` mode's JSON
+contract had the same defect one level up: it returned a boolean
+`correct` field, which structurally cannot represent a three-way
+outcome.
+
+**Fix:** made every layer explicitly three-way. Step 7's response-block
+format now documents `correct` (0.25) / `partial` (0.125) / `incorrect`
+(0.0) as the three valid line labels, with the parenthetical score
+always matching the label, and `exam-file-template.md`'s example gained
+a `partial (0.125)` row. The routed `grade` mode's JSON contract
+replaced the boolean `correct` field with a three-state `outcome`
+field (`"correct"` / `"partial"` / `"incorrect"`) alongside the
+existing `score` field, since a boolean can't carry the middle case --
+both together are exactly what Step 7 persists to disk for that
+question.
+
+## 2026-08-18 -- Closed a real leak: exam questions were naming concrete harnesses despite the Harness-Agnostic boundary already documented
+
+Caught live, mid-exam: `airchon-teacher`'s `generate` mode produced a
+40-question exam where roughly a third of the items (Q3, Q6, Q8, Q10,
+Q17, Q22, Q26, Q30, Q31, Q36, Q38-40) named "Claude Code" outright as
+the subject of a single-harness recall question -- e.g. "Claude Code
+documents a special model alias that..." The persona file's own
+Harness-Agnostic vs. Harness-Specific boundary already existed, but its
+wording granted an explicit "sanctioned exception" letting the three
+harness proper names (Claude Code, Copilot CLI, OpenCode) appear in
+exam content, on the theory that the book's cross-harness comparison
+structure depends on naming them. In practice that exception swallowed
+the rule: most single-harness-only mechanisms got asked as "what does
+Claude Code do" trivia rather than as a generic mechanism question,
+which is exactly the harness-specific-recall pattern the boundary was
+supposed to prevent.
+
+**Fix:** removed the sanctioned exception entirely. The
+Harness-Agnostic vs. Harness-Specific BOUNDARY section in
+`airchon-teacher.agent.md` now states a hard, no-exception rule: a
+harness's proper name must never appear in a question's stem, its
+choices, or its answer-key rationale, even for a mechanism unique to
+one harness (describe it generically instead -- "a widely used CLI
+coding-agent harness documents...") and even for a cross-harness
+comparison (describe both sides abstractly rather than naming either).
+Added a new "Harness-Name Neutrality" guardrail, run alongside the
+existing "Question Stem Neutrality" check at both draft time (Step 2)
+and administration time (Step 3/`generate`/`grade`), and added a
+corresponding bullet to Constraints & Scope. Exercises remain the one
+deliberate harness-specific surface (Step 8) -- unchanged, since a
+hands-on exercise is supposed to be concrete to the reader's own
+harness; only exam questions/answer keys were ever meant to be
+harness-agnostic, and now actually are, with no carve-out left to
+re-trigger this.
+
 ## 2026-08-18 -- Root-caused and fixed: `apm install` was silently deploying `airchon-teacher/resources/` as five bogus agents
 
 The operator pasted one of the two YAML parse warnings `apm install`
