@@ -1,3 +1,377 @@
+## 2026-08-18 -- `/genesis` review of `airchon-teacher.agent.md` + `airchon/SKILL.md`: five findings, all fixed
+
+At the operator's request ("check the teacher agent and the skill for
+coherence, conciseness an compliant of PROSE contrainsts"), ran the
+genesis review discipline (classic-principles table, PROSE axes, the
+eight durable LLM truths, refactor-pattern triggers R1-R5, and the
+MODULE ENTRYPOINT canonical spec) against both files as they stood
+after the routed-invocation redesign above, rather than reviewing from
+memory -- measured actual line/char/token counts and grepped for
+non-ASCII rather than eyeballing. Operator chose to fix everything
+immediately rather than leave it as a report.
+
+**HIGH -- missing resume/reload discipline in the routed exam
+pipeline.** The routed protocol persists state to disk specifically so
+the stateless `grade`/`finalize` calls can recover it, but neither file
+said what happens if the ~42-call loop is interrupted mid-exam
+(compaction, restart) -- a real gap in the design from the entry
+above, not a pre-existing issue. Fixed: both files gained a "resume
+after interruption" paragraph -- the skill re-derives position from
+its own tasklist's done/pending items; `airchon-teacher` re-derives
+state from `qualify-exam.md`'s response block; neither side restarts
+or re-grades on resume. Added as a hard rule in Constraints & Scope
+too.
+
+**MEDIUM -- `airchon-teacher.agent.md` was 645 lines / ~8.7k tokens,
+loaded wholesale on every invocation** including the trivial cached
+"what's my tier" lookup (R1 SPLIT's FRAGMENT CALLERS trigger). Fixed
+via R3 EXTRACT: the Step 2 exam-file markdown template and the Step
+4/5 Python pseudocode moved to two new files --
+`.apm/agents/airchon-teacher/resources/exam-file-template.md` and
+`resources/scoring-reference.md` -- each with an explicit load-trigger
+condition in the body, borrowing the SKILL.md `references/` convention
+for a persona file. Net effect: 645 -> 569 lines despite also adding
+the resume/cache-discipline prose below.
+
+**MEDIUM -- the routed pipeline's ~42 fresh subagent calls each reload
+the full persona body (truth #2) with no cache-prefix discipline
+stated (B13).** Fixed: both files now instruct that the per-call
+variable payload (`order` + the reader's raw answer) goes at the END
+of each `grade` call's prompt, keeping the instructional prefix
+byte-identical across the pipeline so the calls can share a cache hit.
+
+**MEDIUM -- `airchon` `SKILL.md`'s `description` was 995/1024
+characters (97% of the hard cap),** spanning four fairly distinct
+trigger domains. Not a violation yet, but this project already got
+burned once by a silent frontmatter failure (see the two authoring
+gotchas in `CLAUDE.md`), and the next capability added to this router
+would have hit the ceiling with no warning. Fixed: tightened to 694
+characters, same four domains still named, imperative phrasing and
+indirect triggers preserved.
+
+**LOW -- non-ASCII characters throughout `airchon-teacher.agent.md`**
+(em/en-dashes, arrows, checkmarks, one emoji) against genesis's own
+step-8 "ASCII only" validate item. Fixed: all replaced with ASCII
+equivalents (`--`, `->`, "correct"/"incorrect", emoji removed).
+`SKILL.md` was already clean.
+
+**Confirmed compliant, not just findings:** the dual direct-invocation
+/ routed-invocation shape in `airchon-teacher.agent.md` reads at first
+glance like a MULTI-LENS BODY smell, but maps cleanly onto genesis's
+own MODULE ENTRYPOINT BINDING MODES concept -- one primitive, two
+binding contexts. Not a SoC violation; left as-is.
+
+Redeployed via `apm install`.
+
+## 2026-08-18 -- Exam administration re-architected around a subagent one-shot-return constraint: the router now paces the exam, `airchon-teacher` grades per question via JSON
+
+At the operator's request ("instead of using taskcreate/tasklist for
+task management, return in json all the questions to the skill in
+order that the skill uses the tool to render the tasklist to the
+user"). Before implementing, asked the operator to resolve a real
+architectural fork this implied (see the AskUserQuestion in this
+session) and they chose: the `airchon` skill administers the live
+exam loop; `airchon-teacher` grades and teaches per question via JSON,
+never itself calling `TaskCreate`/`TodoWrite` when reached this way.
+
+**The underlying problem.** `airchon-teacher`'s Steps 1-8 (unchanged,
+still the direct-invocation path) assume its own conversation turn IS
+the live session with the reader -- it can call `TaskCreate` for
+question 1, wait several turns for an answer, then move to question 2,
+because it's driving the whole conversation. But when the `airchon`
+router dispatches to it via the `Agent` tool (the only path
+DISCOVERY/`/airchon` invocation actually takes on Claude Code), that
+call is a subagent invocation that runs to completion and returns
+exactly once -- it cannot pause mid-exam to show one question, wait an
+arbitrary number of reader turns, then resume. The original design
+(teacher self-administers via its own `TaskCreate`/`TodoWrite` calls,
+one question at a time, all inside one Agent() call) silently cannot
+work through the router at all; it only ever worked for direct
+invocation.
+
+**Fix: dual invocation paths, single set of rules.**
+`.apm/agents/airchon-teacher.agent.md` gained a new
+"Routed-Invocation Protocol" section, used only when reached via the
+skill: three JSON modes -- `generate` (build+shuffle+write the exam,
+return the tier-blind ordered question list), `grade` (given one
+question's `order` + the reader's raw answer, grade it, teach the
+concept, append the response line to `qualify-exam.md` so state
+survives across otherwise-stateless calls, return the explanation),
+and `finalize` (tally the score, assign the tier, persist
+`~/.airchon/level`, return the Step 8 summary). Every substantive rule
+-- Tier Concealment, the new Question Stem Neutrality guardrail
+(above), the Harness-Agnostic boundary, the Step 4 rubric, the Step 5
+tier table, Self-Assignment, Retake -- applies identically in both
+paths; only the transport changes. Steps 1-8 and the tool list
+(`Read, Write, TaskCreate, TodoWrite`) are otherwise untouched, since
+direct invocation still needs them.
+
+`.apm/skills/airchon/SKILL.md` gained matching pieces: `TaskCreate`
+and `TodoWrite` added to its `allowed-tools`, and a new "Exam
+Administration" section carving out the one explicit exception to its
+"never call more than one agent for one request" rule -- restated more
+precisely as "never call more than one agent TYPE," since the exam
+flow is now a bounded pipeline of one `generate` + up to 40 `grade` +
+one `finalize` call, all against `airchon-teacher` alone, with the
+skill never originating exam content itself (only pacing + rendering
+the tasklist). `CLAUDE.md`'s `airchon` bullet updated to describe this
+exception at a summary level, pointing to both files for the full
+contract rather than duplicating it there.
+
+Redeployed via `apm install`.
+
+## 2026-08-18 -- New guardrail: exam question stems must never contain the answer or a hint toward it
+
+At the operator's request. `airchon-teacher.agent.md` already had rules
+governing *which* concepts a question can test (Harness-Agnostic
+boundary) and *how much context* a reader is owed (the mentoring-voice
+"write every question so it teaches" rule in Step 2), but nothing yet
+said a question's own stem must not give away its answer -- a gap
+distinct from both existing rules, since a stem can be perfectly
+harness-agnostic and well-explained while still leaking the answer
+through its own wording.
+
+Added three things, all in `.apm/agents/airchon-teacher.agent.md`:
+
+1. A paragraph directly under Step 2's "write every question so it
+   teaches, not just tests" rule, warning that the same
+   scenario-setting prose that makes a question self-contained must
+   not smuggle in the concept being tested.
+2. A new named guardrail, **Question Stem Neutrality (No Answer
+   Leakage)**, alongside the existing Tier Concealment guardrail --
+   four concrete failure modes to check every stem against
+   (definitional leakage, behavioural leakage, distractor asymmetry
+   for [CHOICE], reasoning-gives-it-away for [ESSAY]), to be run both
+   when a question is drafted (Step 2) and again before it's
+   administered (Step 3).
+3. A matching bullet in Constraints & Scope, so this reads as a hard
+   rule on the same footing as tier concealment and the
+   harness-agnostic boundary, not just a Step 2 aside.
+
+Redeployed via `apm install`.
+
+## 2026-08-17 -- Second session-pacing file (Gnostic->Demiurge) written; vendor-name leak caught and the harness-agnostic rule tightened
+
+Two things at the operator's request, in sequence.
+
+**`gnostic-to-demiurge-sessions.md` written**, directly to
+`.apm/agents/airchon-teacher/resources/` this time (no wiki-book
+detour, unlike the Transition-1 file above) -- delegated to
+`airchon-author` since designing session count/sizing from a
+21-module, 5-cluster band is genuine pedagogical-content authorship,
+the same category of work it already does for
+`knowledge-path-curriculum.md`, regardless of final file location.
+27 sessions: one per module (agenda items from that module's own key
+concepts), one synthesis session per cluster (walking that cluster's
+comprehension checks plus a representative exercise), and a final
+capstone session -- organized around the same five thematic clusters
+`knowledge-path-curriculum.md` already uses for this band. Matching
+pointer paragraphs added to `knowledge-path-curriculum.md` (under
+Transition 2) and `index.md`.
+
+**Vendor-name leak found and fixed.** The operator spotted "Anthropic"
+in the output. Both new session files named a specific model vendor in
+one agenda item apiece: the Slumberer->Gnostic file's Session 1 item 6
+("Anthropic's own narrower usage" vs. "the Hugging Face agents
+course's / Lilian Weng's broader ones") and the Gnostic->Demiurge
+file's Session 12 items 1-2 ("Anthropic's Messages API" vs. "OpenAI's
+Responses API"). Both reworded to describe the underlying
+concept/mechanism generically with no company or individual named --
+e.g. "one wire protocol's tool-call representation" /  "a second wire
+protocol's tool-call representation" in place of naming which vendor
+owns which. This happened because the existing Harness-Agnostic
+boundary rule in `airchon-teacher.agent.md` only said "never pin the
+correct answer to one *harness's* syntax" -- it never said the same
+about the model *vendor* underneath the harness, which is a level
+these session-breakdown files (and, by the same logic, any future exam
+question) can just as easily leak into.
+
+**Rule tightened, not just the two instances fixed.** Added one
+sentence to `airchon-teacher.agent.md`'s Harness-Agnostic boundary:
+"generic" goes one level deeper than "harness" -- never name the
+underlying model vendor either (Anthropic, OpenAI, etc.), only the
+three harness names (Claude Code, Copilot CLI, OpenCode) are a
+sanctioned exception, since this book's whole cross-harness-comparison
+structure depends on naming them. Placed here rather than only in the
+two session files, since this is the canonical policy document the
+rule already lived in and the one a future author drafting the
+Demiurge->Archon session breakdown (or any new exam question) would
+need to see it in. Redeployed via `apm install`.
+
+## 2026-08-17 -- New per-agent resource location: `.apm/agents/airchon-teacher/resources/`
+
+At the operator's request ("i want that temary under
+airchon-teacher/resources"), relocated the Slumberer->Gnostic
+session-breakdown content (written earlier today, see the entry
+below) out of the shared wiki-book into a new location scoped to
+`airchon-teacher`'s own domain. Treated as a primitive/structure
+change I did directly, the same way the rename and router-wiring
+entries above were -- not delegated to `airchon-author`, since
+relocating already-authored content and adjusting primitive
+boundaries is maintainer-level work, not the research-and-write
+wiki-book authorship `airchon-author` is chartered for.
+
+- **New file:** `.apm/agents/airchon-teacher/resources/slumberer-to-gnostic-sessions.md`
+  -- the session-breakdown content, moved (not duplicated) from
+  `knowledge-path-curriculum.md`, now a standalone page with its own
+  "what this file is" / "why this lives here, not in the wiki-book"
+  framing rather than being a subsection of Transition 1.
+- **`knowledge-path-curriculum.md` updated:** the moved subsection
+  replaced with a short pointer to the new location and why it moved
+  (scoped to one agent's domain and explicitly downstream/course-
+  delivery work that agent doesn't do itself, vs. general wiki-book
+  research content any reader/agent might need).
+- **`index.md` updated:** the Curriculum row's mention of the
+  session-pacing layer now points at the new path instead of
+  describing content living inline on the curriculum page.
+- **`airchon-teacher.agent.md` updated:** Constraints & Scope now
+  names the new path for discoverability, explicit that this agent
+  neither authors nor reads it as part of its own exam-administration
+  flow -- it's there for whatever downstream course-delivery work
+  eventually consumes it, consistent with the existing "You do NOT
+  create courses" line.
+- **`airchon-author.agent.md`'s BOUNDARY updated:** one narrow, named
+  exception added -- `.apm/agents/airchon-teacher/resources/` is
+  maintainer-level primitive content outside `references/harnesses/`;
+  if asked to update it, edit it in place, don't recreate it inside
+  the wiki-book. `airchon-author` remains the wiki-book's only writer;
+  this is not a general license to write anywhere under `.apm/agents/`.
+- **`CLAUDE.md` updated:** file tree gained the new path (explicitly
+  noting `apm install` never deploys it -- it isn't an
+  `*.agent.md`/`SKILL.md` entrypoint); a new rationale paragraph
+  mirrors the existing "why the wiki-book is at the project root"
+  one, explaining why this narrow exception exists and that it
+  generalizes a possibility this project had previously only
+  anticipated hypothetically for the skill, not yet exercised for any
+  primitive until now.
+- Redeployed via `apm install` (`airchon-teacher`/`airchon-author`
+  content changed; the new resources file itself needed no deploy
+  step, confirmed by `apm install`'s own output not touching it).
+
+## 2026-08-17 -- `airchon-teacher` redesigned: mentoring voice, one-question-at-a-time, shuffled + tier-hidden, Slumberer-only self-assignment
+
+Ran the `genesis` skill at the operator's request to modify five things
+about `.apm/agents/airchon-teacher.agent.md` at once. Treated as a
+lightweight redesign (intent + SoC pass + compliance check) rather than
+a from-scratch design, since this is a body-only edit to an existing
+single-thread persona with no new primitive, tool grant, or dependency.
+
+- **Harness-agnostic grounding made concrete.** "Sourcing Questions"
+  now names the actual mechanism categories to draw from (caching,
+  tool-calling/tool-schema, determinism, memory/context loading,
+  context compression, permissions, retries, orchestration/fan-out,
+  hooks), tied to whichever `references/harnesses/*.md` page documents
+  each. Also swapped out the Gnostic example question, which asked for
+  a specific Claude Code version number -- harness-specific trivia that
+  visibly contradicted the rule it sat next to -- for a conceptual
+  message-stream-vs-persisted-checklist question any harness with a
+  todo/task mechanism can be asked about.
+- **Questions must teach, not just test.** New instruction: every
+  question is self-contained and carefully set up, because the answer
+  explanation (see next point) leans on it.
+- **Voice reframed as mentoring, not silent grading.** The persona now
+  explains the underlying concept after every answer, right or wrong --
+  bounded explicitly against overlap with `airchon-mentor` (stays tied
+  to the question just asked; open-ended tangents get redirected to
+  the mentor instead of teacher improvising a second Q&A role).
+- **Administration restructured: one question at a time via a 40-item
+  todo/task list**, never a single 40-question message. Step 3
+  rewritten around `TaskCreate`/`TodoWrite` as the per-question
+  checklist, citing the same B4 PLAN MEMENTO / B8 ATTENTION ANCHOR
+  rationale `genesis` itself uses for its own step-by-step plans.
+- **Shuffled presentation, tier concealed.** Questions are randomized
+  before administration (scoring is per-question and order-independent,
+  so this changes nothing about grading) and no tier label ever
+  reaches the todo list, the chat, or any hint about difficulty --
+  new "Tier Concealment During Administration" guardrail, justified as
+  closing an anchoring/gaming vector the existing Exam Cheating/Gaming
+  guardrail already targets. The persisted exam file's tier headers
+  stay as private scoring bookkeeping only.
+- **New Self-Assignment Policy: skipping the exam caps at Slumberer.**
+  A reader may ask to self-declare a tier without taking the exam;
+  Teacher may honor skipping the exam but never writes anything above
+  `Slumberer` regardless of what tier they named. Justified as a real
+  guardrail, not a formality -- `~/.airchon/level` gates tier-specific
+  content/courses elsewhere, so an unverified self-assignment would be
+  unearned access. Wired through Step 1 (offers the choice), Step 6
+  (forces the write), Step 7 (logs it honestly), the mermaid diagram
+  (new `OfferMode`/`SelfAssign` states), Constraints & Scope, and
+  Invocation Triggers.
+- Diagram, Step 1-8 prose, and guardrails all updated together so they
+  stay in sync, per this file's own stated convention.
+- Redeployed via `apm install`.
+
+## 2026-08-17 -- Renamed `teacher` -> `airchon-teacher`
+
+At the operator's request. Mechanical rename, no behavior change:
+
+- `git mv .apm/agents/teacher.agent.md .apm/agents/airchon-teacher.agent.md`;
+  frontmatter `name: teacher` -> `name: airchon-teacher`; the H1
+  heading, opening self-reference, and closing line updated from
+  "Teacher Persona" to "Airchon Teacher Persona" (interior shorthand
+  mentions of "Teacher" left as natural-language shorthand, same as
+  how this file's own prose refers to `airchon-mentor` as "the mentor"
+  in places).
+- Every cross-file reference to the identifier updated to match:
+  `.apm/skills/airchon/SKILL.md`'s `allowed-tools` entry and its three
+  in-body mentions (`Agent(teacher)` -> `Agent(airchon-teacher)`, and
+  the router's dispatch/prose text); `CLAUDE.md`'s primitive bullet,
+  file-tree block, "Always edit" list, `apm.lock.yaml`-verified deploy
+  paragraph, and the "Two authoring gotchas" section's `allowed-tools`
+  example.
+- **Not touched:** every entry above this one in this file, which
+  correctly describes what was true *as of that entry's own date*
+  under the old name -- same precedent as the 2026-07-30
+  `airchon-mentor` -> `airchon` rename, whose own prior entries still
+  say `airchon-mentor` rather than being rewritten. `references/
+  harnesses/*.md` never referenced `teacher` by name (verified via a
+  full-repo grep before starting), so the wiki-book needed no edits.
+  `README.md` also does not mention `teacher` -- a pre-existing gap
+  (it already predates `airchon-author` and `teacher` both) left as
+  is, since renaming a name that isn't there is a no-op.
+- Redeployed via `apm install`, which reported "Cleaned 2 stale files"
+  and removed the old deployed copies
+  (`.claude/agents/teacher.md`, `.github/agents/teacher.agent.md`)
+  itself -- verified the new `airchon-teacher.*` copies replaced them
+  in both `.claude/agents/` and `.github/agents/`, and that
+  `airchon-teacher` appears in the deployed `airchon` skill on both
+  targets.
+
+## 2026-08-17 -- `airchon` router grows a third branch: teaching/assessment intent -> `teacher`
+
+At the operator's request ("every message whose topic is classes,
+courses, formation, current level, continue lesson, correct me
+exercise should be redirected to teacher agent"), wired `teacher` into
+the existing `.apm/skills/airchon/SKILL.md` router instead of building
+it a dedicated skill -- reversing, on reflection, the "deliberately
+deferred" call made in an earlier entry above (that entry assumed a
+*new*, `teacher`-only skill was the only way to give it Claude-Code
+discovery coverage; reusing the already-installed router is simpler
+and was not considered at the time).
+
+- **`allowed-tools` grew a third entry**, `Agent(teacher)`, alongside
+  the existing `Agent(airchon-mentor)`/`Agent(airchon-author)`.
+- **Classification is now 3-way, TEACHING/ASSESSMENT checked
+  first**: classes, courses, formation/training, current proficiency
+  level/tier, "assess my proficiency", "take/retake the exam",
+  continuing a lesson, or getting an exercise corrected -> `teacher`.
+  Checked first (not folded into the existing AUTHORING-vs-default
+  branch) because its trigger nouns don't overlap either existing
+  branch, so it doesn't add real ambiguity to the AUTHORING-vs-default
+  call that still defaults to `airchon-mentor`.
+- **Frontmatter `description` extended** (855 -> 995 chars, still
+  under the 1024-char MODULE ENTRYPOINT cap) to name the new trigger
+  nouns for the dispatcher itself.
+- **`CLAUDE.md` updated in four places** that had asserted `teacher`
+  has no router/skill partner on either harness: the `airchon` and
+  `teacher` primitive bullets, the `apm.lock.yaml`-verified deploy
+  paragraph, and the "Two authoring gotchas" section's `allowed-tools`
+  description (two agents -> three).
+- Redeployed via `apm install`; verified `Agent(teacher)` present in
+  both deployed copies (`.claude/skills/airchon/SKILL.md`,
+  `.agents/skills/airchon/SKILL.md`) and the new description string
+  live in the next session's skill-discovery listing.
+
 ## 2026-08-17 -- `teacher` reviewed via `genesis` for consistency, conciseness, navigability, coherence
 
 Ran the `genesis` skill's architect lens (SoC pass + compliance check,

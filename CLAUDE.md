@@ -34,18 +34,29 @@ that work together:
   `airchon-mentor`'s job). Deploys to both Claude Code and Copilot CLI
   the same way.
 - **`airchon`** (`.apm/skills/airchon/SKILL.md`) -- a thin router
-  skill with no mentoring or authoring logic of its own. Its only job
-  is to be DISCOVERY-invocable and `/airchon`-invocable, classify
-  authoring intent vs. the conversational default (B2 CONDITIONAL
-  DISPATCH), call exactly ONE of `airchon-mentor` / `airchon-author`
-  via the Agent tool, and return its answer. Skills only have a
-  deploy mechanism on Claude Code (`.claude/skills/<name>/`) --
-  Copilot CLI has no equivalent skill bundle path -- so this router
-  only actually reaches Claude Code; the two agents themselves are
-  what keep Copilot covered.
-- **`teacher`** (`.apm/agents/teacher.agent.md`) -- a standalone
-  custom agent, unrelated to the mentor/author split above, that
-  assesses reader proficiency: administers a 40-question exam
+  skill with no mentoring, authoring, or assessment logic of its own.
+  Its only job is to be DISCOVERY-invocable and `/airchon`-invocable,
+  classify teaching/assessment intent vs. authoring intent vs. the
+  conversational default (B2 CONDITIONAL DISPATCH), call exactly ONE
+  agent TYPE -- `airchon-mentor` / `airchon-author` / `airchon-teacher`
+  -- via the Agent tool, and return its answer. The one exception
+  (since 2026-08-18): a "take/retake the exam" request against
+  `airchon-teacher` is a multi-call pipeline against that single agent
+  type (`generate` / `grade`-per-question / `finalize`), because an
+  `Agent` call runs to completion and returns once and so cannot pace
+  a 40-question exam turn by turn itself -- the router owns pacing and
+  `TaskCreate`/`TodoWrite` rendering for that one flow instead, while
+  originating none of the exam's content. See `SKILL.md`'s own Exam
+  Administration section and `airchon-teacher.agent.md`'s
+  Routed-Invocation Protocol for the full contract. Skills only have a deploy
+  mechanism on Claude Code (`.claude/skills/<name>/`) -- Copilot CLI
+  has no equivalent skill bundle path -- so this router only actually
+  reaches Claude Code; the three agents themselves are what keep
+  Copilot covered.
+- **`airchon-teacher`** (`.apm/agents/airchon-teacher.agent.md`,
+  renamed from `teacher` on 2026-08-17 -- see `CHANGELOG.md`) -- a
+  standalone custom agent, unrelated to the mentor/author split above,
+  that assesses reader proficiency: administers a 40-question exam
   grounded in `references/harnesses/knowledge-path-curriculum.md`,
   scores it, and classifies the reader into one of four tiers
   (Slumberer / Gnostic / Demiurge / Archon, defined in
@@ -54,19 +65,19 @@ that work together:
   `~/.airchon/qualify-exam.md` -- both on the user's own machine,
   outside this repo, never under `references/harnesses/`. READ-ONLY
   on the wiki-book, same structural boundary as `airchon-mentor` (no
-  `Write`/`Edit` tool over it). Ships as a bare agent with no
-  router-skill partner on either harness -- unlike `airchon`'s
-  relationship to `airchon-mentor`/`airchon-author`, `teacher` has no
-  Claude-Code-only discovery wrapper (deferred, not missing by
-  oversight -- see `CHANGELOG.md`'s 2026-08-17 "Teacher primitive"
-  entry). Deploys to both Claude Code and Copilot CLI the same way as
-  the other two agents.
+  `Write`/`Edit` tool over it). Ships as a bare agent, same as
+  `airchon-mentor`/`airchon-author`; since 2026-08-17 it is also
+  reachable via the `airchon` router's teaching/assessment branch on
+  Claude Code (reusing the existing router rather than giving
+  `airchon-teacher` a dedicated skill of its own -- see
+  `CHANGELOG.md`'s 2026-08-17 entries). Deploys to both Claude Code
+  and Copilot CLI the same way as the other two agents.
 
 This split exists because a skill deploying to Copilot at all is not
-possible, but a bare agent deploying to Copilot works fine -- so both
-mentor's and author's real logic live on the agent side, and the
-skill is purely a discovery/routing convenience layered on top for
-Claude Code.
+possible, but a bare agent deploying to Copilot works fine -- so
+mentor's, author's, and airchon-teacher's real logic all live on the
+agent side, and the skill is purely a discovery/routing convenience
+layered on top for Claude Code.
 
 **Mentor vs. author (2026-07-30 split, at the operator's request):**
 the original combined agent both answered questions AND wrote to the
@@ -106,34 +117,35 @@ was meant to be a router, not a replacement for the agent. Do not
 assume any doc dated before that point still describes the current
 shape.
 
-## Source of truth: `.apm/agents/airchon-mentor.agent.md` + `.apm/agents/airchon-author.agent.md` + `.apm/agents/teacher.agent.md` + `.apm/skills/airchon/SKILL.md`
+## Source of truth: `.apm/agents/airchon-mentor.agent.md` + `.apm/agents/airchon-author.agent.md` + `.apm/agents/airchon-teacher.agent.md` + `.apm/skills/airchon/SKILL.md`
 
 ```
 apm.yml                                    APM project manifest (name, targets, dependencies)
 apm.lock.yaml                              Resolved/locked dependency versions (generated by `apm install`)
 .apm/agents/airchon-mentor.agent.md        Canonical, authored source for the mentor agent -- read-only Q&A
 .apm/agents/airchon-author.agent.md        Canonical, authored source for the author agent -- the only writer to the wiki-book
-.apm/agents/teacher.agent.md               Canonical, authored source for the teacher agent -- read-only proficiency-exam administrator
+.apm/agents/airchon-teacher.agent.md       Canonical, authored source for the teacher agent -- read-only proficiency-exam administrator
 .apm/skills/airchon/SKILL.md               Canonical, authored source for the thin router skill
 references/harnesses/                      The wiki-book -- mentor reads it, author writes it -- project root, NOT under .apm/
 <deploy-root>/agents/airchon-mentor.*      Deployed copy of the mentor agent -- gitignored, regenerated, NEVER hand-edited
 <deploy-root>/agents/airchon-author.*      Deployed copy of the author agent -- gitignored, regenerated, NEVER hand-edited
-<deploy-root>/agents/teacher.*             Deployed copy of the teacher agent -- gitignored, regenerated, NEVER hand-edited
+<deploy-root>/agents/airchon-teacher.*     Deployed copy of the teacher agent -- gitignored, regenerated, NEVER hand-edited
 <deploy-root>/skills/airchon/               Deployed copy of the router skill -- gitignored, regenerated, NEVER hand-edited
-~/.airchon/level                           Teacher's own state -- one line, the reader's tier -- user's machine, outside this repo entirely
-~/.airchon/qualify-exam.md                 Teacher's own state -- exam + responses + score history -- user's machine, outside this repo entirely
+.apm/agents/airchon-teacher/resources/     airchon-teacher's own reference content -- scoped to its tier domain, outside references/harnesses/ on purpose (see below); NOT deployed anywhere by `apm install`, just project-relative content its own file (or a future consumer) can Read
+~/.airchon/level                           airchon-teacher's own state -- one line, the reader's tier -- user's machine, outside this repo entirely
+~/.airchon/qualify-exam.md                 airchon-teacher's own state -- exam + responses + score history -- user's machine, outside this repo entirely
 ```
 
 **Always edit `.apm/agents/airchon-mentor.agent.md`,
-`.apm/agents/airchon-author.agent.md`, `.apm/agents/teacher.agent.md`,
-`.apm/skills/airchon/SKILL.md`, and `references/harnesses/*.md`
-directly.** `.claude/`, `.agents/`, and `.github/` are gitignored
-build output -- a plain file copy (not a symlink; Windows/
-`core.symlinks=false` makes junctions unsafe). Only `airchon-author`
-should ever hand-edit or be instructed to edit
-`references/harnesses/*.md` -- `airchon-mentor` and `teacher` are
-read-only there by design (no `Write`/`Edit` tool). After editing any
-of the above, run:
+`.apm/agents/airchon-author.agent.md`,
+`.apm/agents/airchon-teacher.agent.md`, `.apm/skills/airchon/SKILL.md`,
+and `references/harnesses/*.md` directly.** `.claude/`, `.agents/`,
+and `.github/` are gitignored build output -- a plain file copy (not
+a symlink; Windows/`core.symlinks=false` makes junctions unsafe).
+Only `airchon-author` should ever hand-edit or be instructed to edit
+`references/harnesses/*.md` -- `airchon-mentor` and `airchon-teacher`
+are read-only there by design (no `Write`/`Edit` tool). After editing
+any of the above, run:
 
 ```bash
 apm install
@@ -157,14 +169,32 @@ content independent of the agents, that would need to live under
 resolution step in the skill's own instructions -- not needed today
 since the skill has no content of its own.
 
+**Why `.apm/agents/airchon-teacher/resources/` exists outside
+`references/harnesses/`.** `references/harnesses/` is general-purpose,
+cross-agent wiki-book content; `airchon-teacher` needed a place for
+content scoped narrowly to its own tier domain instead (session
+pacing/course scaffolding it doesn't itself author or consume -- see
+its own Constraints & Scope) -- something this project only ever
+anticipated hypothetically for the skill (previous paragraph) until
+the operator actually asked for it for `airchon-teacher`, 2026-08-17
+(see `CHANGELOG.md`). It is plain markdown, edited directly the same
+way the wiki-book is, not a deployed artifact -- `apm install` never
+touches it, since it isn't an `*.agent.md`/`SKILL.md` entrypoint.
+`airchon-author` remains the wiki-book's only writer; this path is a
+narrow, named exception to that scope (see its own BOUNDARY section)
+for this one relocated file, not a general license to write anywhere
+under `.apm/agents/`.
+
 Verified live via this project's own `apm.lock.yaml` after running
-`apm install`: all three agents (mentor, author, teacher) deploy to
-`.claude/agents/` and `.github/agents/` (both targets, 6 files); the
-skill deploys to `.claude/skills/airchon/` and `.agents/skills/airchon/`
-(no `.github/skills/...` entry -- Copilot never gets a skill copy, and
-`teacher` has no skill partner on either harness). Re-check
-`apm.lock.yaml` after any future `apm install` rather than assuming
-this list is still current.
+`apm install`: all three agents (mentor, author, airchon-teacher)
+deploy to `.claude/agents/` and `.github/agents/` (both targets,
+6 files); the skill deploys to `.claude/skills/airchon/` and
+`.agents/skills/airchon/` (no `.github/skills/...` entry -- Copilot
+never gets a skill copy; `airchon-teacher` still has no skill of its
+own, but is reachable via the `airchon` skill's routing on Claude
+Code, same as the other two agents). Re-check `apm.lock.yaml` after
+any future `apm install` rather than assuming this list is still
+current.
 
 ## Two authoring gotchas (carried forward from AgentXRay, still apply)
 
@@ -188,9 +218,10 @@ The **skill's** frontmatter (`.apm/skills/airchon/SKILL.md`) uses
 `tools: [A, B, C]` bracket syntax -- see the discord `access`/
 `configure` skills or `claude-security`'s `SKILL.md` in the official
 plugin marketplace for the live-verified format. The router's
-`allowed-tools` scopes the Agent tool to the two agents it's allowed
-to call: `Agent(airchon-mentor)` and `Agent(airchon-author)` -- the
-router picks exactly one per invocation, never both.
+`allowed-tools` scopes the Agent tool to the three agents it's allowed
+to call: `Agent(airchon-mentor)`, `Agent(airchon-author)`, and
+`Agent(airchon-teacher)` -- the router picks exactly one per
+invocation, never more than one.
 
 After adding or editing either, always verify it actually appears in
 the next "New agent types are now available" / "The following skills
@@ -215,7 +246,7 @@ of this project either way.
 
 There are none yet -- this project has no scripts, no `node:test`
 suite, and no evals harness. `airchon-mentor`, `airchon-author`, and
-`teacher` are all prose/research-driven, not deterministic-probe-driven
-the way `xray` is; if that changes, add a `dev/` maintainer area
-following AgentXRay's own precedent rather than putting test/eval
-assets under `.apm/`.
+`airchon-teacher` are all prose/research-driven, not
+deterministic-probe-driven the way `xray` is; if that changes, add a
+`dev/` maintainer area following AgentXRay's own precedent rather than
+putting test/eval assets under `.apm/`.

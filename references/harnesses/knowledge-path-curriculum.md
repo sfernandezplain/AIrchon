@@ -83,6 +83,20 @@ that tracing is deferred to the next transition on purpose.
 - Given a real, unlabeled transcript of an agent session, annotate
   which lines are Thought, which are Action, and which are Observation.
 
+### Session breakdown (agenda only), Slumberer -> Gnostic
+
+A pacing layer chunking this transition's two modules into three
+schedulable teaching sessions (5/4/3 items respectively, sized so no
+sitting is overloaded or too thin to be worth convening) now lives at
+`.apm/agents/airchon-teacher/resources/slumberer-to-gnostic-sessions.md`
+-- moved there 2026-08-17, out of this page, since session-pacing for
+actually running a course is scoped to `airchon-teacher`'s own domain
+and is explicitly downstream work that agent doesn't do itself (see
+its Constraints & Scope), not general wiki-book research content. This
+page's learning objectives, modules, comprehension checks, and
+exercises below are still the authoritative source that file's agendas
+point back to -- it adds pacing, not new content.
+
 ### Module: A topology of agentic systems ([agent-topology.md](agent-topology.md))
 
 **Key concepts:** reactive vs. deliberative agents; single-agent vs.
@@ -215,6 +229,21 @@ flowchart TB
     end
     C1 --> C2 --> C3 --> C4 --> C5
 ```
+
+### Session breakdown (agenda only), Gnostic -> Demiurge
+
+A pacing layer chunking this transition's 21 modules into 27
+schedulable teaching sessions (organized around the five clusters
+above: one session per module, plus one per-cluster synthesis session,
+plus a final capstone session) now lives at
+`.apm/agents/airchon-teacher/resources/gnostic-to-demiurge-sessions.md`
+-- scoped to `airchon-teacher`'s own domain rather than kept as general
+wiki-book content, the same reasoning and the same day's precedent as
+Transition 1's session breakdown (see that transition's own pointer
+paragraph above and `CHANGELOG.md`). This page's learning objectives,
+clusters, modules, comprehension checks, exercises, and capstone below
+remain the authoritative source that file's agendas point back to -- it
+adds pacing, not new content.
 
 ### Cluster 1: Memory & Context
 
@@ -647,6 +676,22 @@ observational.
 - Distinguish a genuine technical ceiling from a deliberate,
   team-specific scope decision when a page raises that question, and
   argue for one interpretation using the page's own evidence.
+
+### Session breakdown (agenda only), Demiurge -> Archon
+
+A pacing layer chunking this transition's 10 modules into 13
+schedulable teaching sessions (organized around a two-way split this
+band's own pages already draw for themselves in `index.md` -- five
+design-space/original-survey modules and five production-completeness
+/gap-closing modules -- one session per module, plus one per-cluster
+synthesis session, plus a final capstone session) now lives at
+`.apm/agents/airchon-teacher/resources/demiurge-to-archon-sessions.md`
+-- scoped to `airchon-teacher`'s own domain rather than kept as general
+wiki-book content, the same reasoning and precedent as Transitions 1
+and 2's own session breakdowns (see their pointer paragraphs above and
+`CHANGELOG.md`). This page's learning objectives, modules, comprehension
+checks, exercises, and capstone below remain the authoritative source
+that file's agendas point back to -- it adds pacing, not new content.
 
 ### Module: The multi-agent coordination design space ([multi-agent-coordination-design-space.md](multi-agent-coordination-design-space.md))
 

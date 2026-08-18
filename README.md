@@ -49,33 +49,51 @@ plainly that what it's about to say is reasoned, not verified. That
 distinction is the whole point. True understanding isn't a vibe; it's
 a claim you can trace back to a named source.
 
-AIrchon does not write your code for you, and it does not audit your
-project. It exists for one purpose: to turn you into someone who
-understands how the machine you're standing on actually works.
+AIrchon does not write your code for you, and it does not run a
+formal audit process on your project -- that discipline (diagrams,
+severity findings, a persisted redesign plan) belongs to a separate
+tool, `genesis`. What it will do, on request, is read (never edit)
+your own project's agent-harness setup -- skills, agent/persona
+files, hooks, permission and sandboxing config, orchestration
+definitions -- and advise on guardrails, control flow, or performance
+against the same sourced corpus it mentors from. Either way its
+purpose stays singular: to turn you into someone who understands how
+the machine you're standing on actually works, not to do the work
+for you.
 
 ---
 
 ## ⚡ What it actually does
 
 AIrchon is a conversational mentor, not a wizard with hidden
-subcommands. You ask it a real question about harness internals, in
-plain language, and it answers in prose -- citing exactly where the
-answer came from.
+subcommands -- backed by three specialist agents behind one thin
+router. You ask it a real question about harness internals, in plain
+language, and it answers in prose -- citing exactly where the answer
+came from.
 
-- **Grounding discipline.** Every factual claim is tagged, explicitly
-  or by the shape of the answer: **VERIFIED** (fetched this session,
-  or already cited in the wiki-book, from a named source) or **BEST
-  CURRENT UNDERSTANDING, UNCONFIRMED** (reasoned, not yet confirmed
-  against a source). The two are never blended together.
+- **`airchon-mentor` answers, read-only.** Every factual claim is
+  tagged, explicitly or by the shape of the answer: **VERIFIED**
+  (fetched this session, or already cited in the wiki-book, from a
+  named source) or **BEST CURRENT UNDERSTANDING, UNCONFIRMED**
+  (reasoned, not yet confirmed against a source). The two are never
+  blended together. It can also read (never edit) your own project's
+  agent-harness setup and advise on guardrails, control flow, or
+  performance -- but it never writes to the wiki-book, even when its
+  own live research fills a gap.
 - **No authority overreach.** Claude Code, Copilot CLI, and OpenCode
   are different products from different companies. A mechanism
   confirmed for one is never quietly assumed to hold for another --
   every harness gets its own citation.
-- **A growing wiki-book.** Answers get written down at
-  `references/harnesses/`, one topic file per subject, only built
-  when a real question needs it -- never pre-built speculatively. The
-  next question about the same topic gets answered from what's
-  already there, faster and just as grounded.
+- **`airchon-author` is the only writer.** Answers worth keeping get
+  written down at `references/harnesses/`, one topic file per subject,
+  only built when a real question needs it -- never pre-built
+  speculatively. The next question about the same topic gets answered
+  from what's already there, faster and just as grounded.
+- **`airchon-teacher` assesses proficiency.** A 40-question exam,
+  grounded in the wiki-book's own curriculum, classifies you into one
+  of four tiers -- Slumberer, Gnostic, Demiurge, Archon -- and
+  persists the result locally (`~/.airchon/level`), never uploaded and
+  never a substitute for actually reading the material.
 
 ---
 
@@ -99,9 +117,11 @@ only ever cited for what it actually documents.
 apm install
 ```
 
-This deploys the mentor agent (`airchon-mentor`) to both Claude Code
-and Copilot CLI, and a thin router skill (`airchon`) to Claude Code
-for `/airchon` and natural-language discovery.
+This deploys all three agents -- `airchon-mentor`, `airchon-author`,
+`airchon-teacher` -- to both Claude Code and Copilot CLI, and the thin
+router skill (`airchon`) to Claude Code only, for `/airchon` and
+natural-language discovery. Skills have no Copilot CLI deploy path;
+the agents are what keep Copilot covered either way.
 
 Then just ask it something, for example:
 
@@ -110,24 +130,38 @@ Then just ask it something, for example:
 how would I build a multi-agent harness like this one?
 what's the actual difference between OpenCode's and Claude Code's tool loop?
 walk me through how MCP servers get discovered and invoked
+write up OpenCode's permission model in the wiki-book
+assess my proficiency / take the exam
+review my project's own skills and agent files for guardrail gaps
 ```
 
 No fixed command set to memorize -- if the question is about harness
-internals, ask it the way you'd ask a person.
+internals, ask it the way you'd ask a person. The one exception is
+taking the exam: once you're in it, it paces one question at a time
+instead of free-form back-and-forth, since that's a real assessment,
+not a chat.
 
 ---
 
 ## 🗺️ Repository layout
 
 ```
-apm.yml                              APM project manifest
-apm.lock.yaml                        Resolved/locked dependency versions
-.apm/agents/airchon-mentor.agent.md  The mentor agent -- does the real work
-.apm/skills/airchon/SKILL.md         The thin router skill
-references/harnesses/                The wiki-book airchon-mentor writes/reads
-.claude/agents/, .github/agents/     Deployed copies of the agent (gitignored)
-.claude/skills/airchon/              Deployed copy of the router skill (gitignored)
+apm.yml                                   APM project manifest
+apm.lock.yaml                             Resolved/locked dependency versions
+.apm/agents/airchon-mentor.agent.md       Read-only mentor -- answers, reviews your project's harness setup
+.apm/agents/airchon-author.agent.md       The only writer to the wiki-book
+.apm/agents/airchon-teacher.agent.md      Read-only proficiency-exam administrator
+.apm/agents/airchon-teacher/resources/    Teacher's own tier-domain content -- not the wiki-book
+.apm/skills/airchon/SKILL.md              Thin router skill (Claude Code only)
+references/harnesses/                     The wiki-book -- mentor reads, author writes
+~/.airchon/level, ~/.airchon/qualify-exam.md   Teacher's own state -- your machine, outside this repo
+.claude/agents/, .github/agents/          Deployed copies of the three agents (gitignored)
+.claude/skills/airchon/, .agents/skills/airchon/   Deployed copies of the router skill (gitignored)
 ```
+
+For the full architecture rationale -- why the read/write split, why
+the router stays thin, why the teacher's own content lives outside
+the wiki-book -- see `CLAUDE.md`.
 
 ---
 
@@ -137,5 +171,8 @@ AIrchon began as `xray-mentor`, the 11th agent in the
 [AgentXRay](https://github.com/sfernandezplain/AgentXRay) project, and
 was split into its own repo once its scope -- mentoring on harness
 internals generally -- outgrew xray's own mission of profiling a
-single agent execution. Full history lives in `CHANGELOG.md`; this
-file only ever describes the present.
+single agent execution. It grew from that one read-only mentor into
+the current three-agent, one-router shape: mentor stayed read-only,
+`airchon-author` took over writing to the wiki-book, and
+`airchon-teacher` was added for proficiency assessment. Full history
+lives in `CHANGELOG.md`; this file only ever describes the present.
