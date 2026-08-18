@@ -89,11 +89,15 @@ came from.
   only built when a real question needs it -- never pre-built
   speculatively. The next question about the same topic gets answered
   from what's already there, faster and just as grounded.
-- **`airchon-teacher` assesses proficiency.** A 40-question exam,
+- **`airchon-teacher` assesses, then teaches.** A 40-question exam,
   grounded in the wiki-book's own curriculum, classifies you into one
-  of four tiers -- Slumberer, Gnostic, Demiurge, Archon -- and
-  persists the result locally (`~/.airchon/level`), never uploaded and
-  never a substitute for actually reading the material.
+  of four tiers -- Slumberer, Gnostic, Demiurge, Archon -- and persists
+  the result locally (`~/.airchon/level`), never uploaded. Once
+  classified, it can also walk you through the actual course toward
+  your next tier, one session at a time -- teaching every topic in
+  full, grading a practical exercise in your own harness at the end of
+  each session, and administering a focused exam to promote you once
+  the course is done.
 
 ---
 
@@ -115,9 +119,13 @@ for the fine print on that distinction).
 
 Ask "assess my proficiency" or "take the exam" any time to find out
 where you actually stand, via a 40-question exam grounded in the same
-wiki-book -- not where the vibe says you stand. The full rubric,
-reading lists per tier, and this book's own honest ceiling note (it's
-necessary but not sufficient at Archon tier) live at
+wiki-book -- not where the vibe says you stand. Once you have a tier,
+ask to be taught and `airchon-teacher` runs the actual course toward
+the next one, session by session: a topic taught in full, a practical
+exercise in your own harness at the end of each session, and a focused
+exam at the end of the course to promote you. The full rubric, reading
+lists per tier, and this book's own honest ceiling note (it's necessary
+but not sufficient at Archon tier) live at
 [reader-proficiency-tiers.md](references/harnesses/reader-proficiency-tiers.md).
 
 ---
@@ -157,14 +165,15 @@ what's the actual difference between OpenCode's and Claude Code's tool loop?
 walk me through how MCP servers get discovered and invoked
 write up OpenCode's permission model in the wiki-book
 assess my proficiency / take the exam
+teach me / continue my course
 review my project's own skills and agent files for guardrail gaps
 ```
 
 No fixed command set to memorize -- if the question is about harness
-internals, ask it the way you'd ask a person. The one exception is
-taking the exam: once you're in it, it paces one question at a time
-instead of free-form back-and-forth, since that's a real assessment,
-not a chat.
+internals, ask it the way you'd ask a person. The two exceptions are
+the exam and the course: once you're in either, it paces one question
+or one session at a time instead of free-form back-and-forth, since
+both are real assessment and real teaching, not idle chat.
 
 ---
 
@@ -175,11 +184,12 @@ apm.yml                                        APM project manifest
 apm.lock.yaml                                  Resolved/locked dependency versions
 .apm/agents/airchon-mentor.agent.md            Read-only mentor -- answers, reviews your project's harness setup
 .apm/agents/airchon-author.agent.md            The only writer to the wiki-book
-.apm/agents/airchon-teacher.agent.md           Read-only proficiency-exam administrator
-resources/airchon-teacher/                     Teacher's own tier-domain content -- not the wiki-book
+.apm/agents/airchon-teacher.agent.md           Proficiency exam + course delivery -- read-only on the wiki-book
+resources/airchon-teacher/                     Teacher's own tier-domain content, consumed directly for course delivery
 .apm/skills/airchon/SKILL.md                   Thin router skill (Claude Code only)
 references/harnesses/                          The wiki-book -- mentor reads, author writes
-~/.airchon/level, ~/.airchon/qualify-exam.md   Teacher's own state -- your machine, outside this repo
+~/.airchon/level, ~/.airchon/qualify-exam.md,
+~/.airchon/course-progress.md                  Teacher's own state -- your machine, outside this repo
 .claude/agents/, .github/agents/               Deployed copies of the three agents (gitignored)
 .claude/skills/airchon/, .agents/skills/airchon/   Deployed copies of the router skill (gitignored)
 ```
@@ -199,5 +209,6 @@ internals generally -- outgrew xray's own mission of profiling a
 single agent execution. It grew from that one read-only mentor into
 the current three-agent, one-router shape: mentor stayed read-only,
 `airchon-author` took over writing to the wiki-book, and
-`airchon-teacher` was added for proficiency assessment. Full history
-lives in `CHANGELOG.md`; this file only ever describes the present.
+`airchon-teacher` was added for proficiency assessment and now also
+delivers the course toward each tier. Full history lives in
+`CHANGELOG.md`; this file only ever describes the present.

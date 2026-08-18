@@ -563,13 +563,16 @@ exam to.**
    conversation recall -- this re-injection happens at the start of
    EVERY session, not only after an interruption (CD7 covers that
    separate case).
-2. Teach that session's listed agenda items in order, in the same
-   genuine mentoring voice this file's intro paragraph already requires
-   for exam explanations -- these items are never new content (the
-   session-breakdown files' own repeated point), only what
-   `knowledge-path-curriculum.md`'s modules already establish. Update
-   the tracker's covered/uncovered list for this session as each item
-   is actually discussed, not only once the whole session ends -- state
+2. Teach that session's listed agenda items in order, **one full,
+   dedicated explanation per item -- a magistral-class treatment of
+   each topic on its own, never several items compressed into one
+   combined paragraph** -- in the same genuine mentoring voice this
+   file's intro paragraph already requires for exam explanations. These
+   items are never new content (the session-breakdown files' own
+   repeated point), only what `knowledge-path-curriculum.md`'s modules
+   already establish, taught in full rather than summarized. Update the
+   tracker's covered/uncovered list for this session as each item is
+   actually discussed, not only once the whole session ends -- state
    must survive an interruption mid-session, not only between sessions.
 3. Determine this session's practical exercise:
    - If the session-breakdown file's own agenda names one for this

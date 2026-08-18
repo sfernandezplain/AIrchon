@@ -858,7 +858,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:9dd73a829b386f0993dfb2be8d7b2a550795604e98087f415d392ffc9ec35b44
+  content_hash: sha256:3a81ac9e4d1df1516d3805404f3cde2fb1869f8485d5e7e93b67952088d7bd36
 local_deployed_files:
 - .agents/skills/airchon
 - .agents/skills/airchon/SKILL.md
@@ -890,4 +890,4 @@ local_deployed_file_hashes:
   .claude/skills/airchon/SKILL.md: sha256:98f8a3adfdd1405747b686175106ba0cfdf1357844c032f19463c687624829cd
   .github/agents/airchon-author.agent.md: sha256:d904b2ef3533a356f13c4dada48fb8544437f8b057784662a9afaa1d72595f26
   .github/agents/airchon-mentor.agent.md: sha256:fdeb4492c0401fd54806648effaa73b223ebbf69e370f0da50d156e7290bc932
-  .github/agents/airchon-teacher.agent.md: sha256:9dd73a829b386f0993dfb2be8d7b2a550795604e98087f415d392ffc9ec35b44
+  .github/agents/airchon-teacher.agent.md: sha256:3a81ac9e4d1df1516d3805404f3cde2fb1869f8485d5e7e93b67952088d7bd36
