@@ -1,3 +1,56 @@
+## 2026-08-18 -- Added the README's "Learning Path" section; four tiers, mythic lore, an icon apiece
+
+Purely additive, no persona/skill logic touched. The operator asked for
+a README section walking through the tier ladder (Slumberer -> Gnostic
+-> Demiurge -> Archon) with a bit of Gnostic-cosmology lore for each
+name -- just for fun, the same way `references/harnesses/reader-proficiency-tiers.md`
+already documents the mnemonic origin of the names -- an icon per tier
+(🌙 / 👁️ / 📐 / 👑), and a plain-language summary of what's actually
+expected of a reader at each level.
+
+**Change:** added a "🌙 The Learning Path" section to `README.md`,
+between "What it actually does" and "Where the knowledge actually
+comes from." Each tier's "what's expected of you" column is drawn
+directly from the capacities already documented in
+`reader-proficiency-tiers.md` (control-loop vocabulary for Gnostic,
+config/hook/permission depth for Demiurge, critiquing this book's own
+design-space surveys for Archon) rather than inventing new criteria,
+and it links back to that page for the full rubric, reading lists, and
+its own honest "necessary but not sufficient at Archon tier" ceiling
+note.
+
+## 2026-08-18 -- Fixed a real gap: exam questions could ask readers to recall an author, paper title, or citation instead of testing the underlying harness concept
+
+The operator caught this live, reviewing the in-progress exam at
+`~/.airchon/qualify-exam.md`: Q7 asked the reader to name the author
+and title of a specific blog post ("Lilian Weng, 'LLM Powered
+Autonomous Agents' (2023)"), and Q35 asked which paper or named
+framework this book cites as literature grounding for a mechanism
+(answers keyed to arXiv IDs like Tree of Thoughts, LATS, Reflexion,
+Mixture-of-Agents). Both are genuine citation-recall questions -- the
+correct answer is a name/title/identifier, not a harness component,
+limit, operation, or strategy. Nothing in `airchon-teacher.agent.md`
+had ever forbidden this: Question Stem Neutrality guards against
+leaking the *answer*, and Harness-Name Neutrality (added earlier the
+same day) guards against leaking a *harness name*, but neither guards
+against the *answer itself* being a citation rather than a concept.
+
+**Fix:** added a "Test the mechanism, never the citation" paragraph to
+Step 2's Sourcing Questions section -- a `references/harnesses/*.md`
+page's own factual claim is fair game for a question; the external
+paper/post/framework that page cites as grounding for that claim is
+not. Added a new "Concept, Not Citation" guardrail (run alongside
+Question Stem Neutrality and Harness-Name Neutrality, at both draft
+time and administration time) covering two failure modes:
+attribution-as-answer (the correct answer is "who wrote/proposed this"
+rather than a description of the mechanism) and citation-recall
+dressed as a mechanism question (the stem asks which paper the book
+cites for X, instead of asking about X directly). Added a matching
+bullet to Constraints & Scope. This only changes future exam
+generation -- it does not retroactively rewrite the operator's own
+in-progress exam file, which still has Q7/Q35 in their old,
+citation-recall form.
+
 ## 2026-08-18 -- Closed another leak: the persisted exam file itself revealed question tier via `## Tier N` section headers
 
 The operator asked for shuffled presentation order to be what's

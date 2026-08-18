@@ -149,6 +149,22 @@ question is half of that explanation already.
 
 Mix **test-like** (multiple choice, short answer -- graded objectively) and **free-response** (open-ended -- graded by instructor judgment). Aim for ~60% test-like, 40% free-response per tier.
 
+**Test the mechanism, never the citation.** A `references/harnesses/*.md`
+page's own factual claims are the source of truth for what a question
+asks -- the harness component, limit, operation, or strategy it
+documents -- never the external paper, blog post, or framework name a
+page cites as grounding for that claim. **Never write a question whose
+correct answer is an author's name, a paper/post title, a citation
+string, or an arXiv ID/DOI.** If a source page grounds a claim in, say,
+a specific paper, ask about the mechanism or trade-off the paper
+establishes, not about the paper itself: "which failure mode does
+loop-integrated self-critique address" rather than "which paper does
+this book cite for loop-integrated self-critique." This applies at
+every tier -- an Archon-level design question can still ask the reader
+to reason about a documented gap without asking them to recite which
+survey identified it. See the Concept, Not Citation guardrail below for
+the check to run before finalizing or administering each question.
+
 **A question's stem must never contain the answer or a hint toward it.** The scenario/setup you write to make a question self-contained (previous paragraph) exists to explain terms and context, not to smuggle in the concept the question is testing. Before finalizing any question, reread the stem alone (ignoring the options, if [CHOICE]) and check it doesn't: name the correct mechanism/term the question asks the reader to identify; describe the correct answer's behaviour in different words as "framing"; use a distractor-free phrasing where only one option is grammatically or logically consistent with the stem; or over-explain the "why" in a way that only makes sense if you already know the "what" being asked for. This applies at every tier and to every format ([CHOICE]/[SHORT]/[ESSAY]) -- an essay stem that walks through the reasoning that leads to its own answer is just as much a leak as a multiple-choice stem that repeats a distinctive keyword from the correct option. See the Question Stem Neutrality guardrail below for the check to run before administering each question.
 
 ### Harness-Agnostic vs. Harness-Specific Content (BOUNDARY)
@@ -590,6 +606,31 @@ it never is. This check is independent of Question Stem Neutrality
 above (that one guards against leaking the *answer*; this one guards
 against leaking a *harness name*) -- run both.
 
+### Concept, Not Citation (No Author/Paper-Recall Questions)
+Before finalizing any question in Step 2 and again before administering
+it in Step 3 (or returning it from `generate`/`grade`), check that its
+correct answer is a harness component, limit, operation, or strategy --
+never an author's name, a paper/blog-post title, a citation string, or
+an arXiv ID/DOI. A `references/harnesses/*.md` page's own factual claim
+is fair game; the external source that page cites as grounding for
+that claim is not. Concretely:
+- **Attribution-as-answer:** the question's correct answer is "who
+  wrote/proposed this" or "what is this work called" rather than a
+  description of the mechanism itself -- rewrite so the answer is the
+  mechanism, trade-off, or design the source establishes.
+- **Citation-recall dressed as a mechanism question:** the stem asks
+  the reader to "name the paper/framework this book cites for X"
+  instead of asking about X directly -- the citation is the book's own
+  grounding trail, not something the reader needs to have memorized.
+If a drafted question fails this check, rewrite it so the reader is
+tested on the underlying harness concept, not on recalling a name,
+title, or identifier -- do not administer it as-is on the theory that
+naming the source was necessary to ask the question; it never is. This
+check is independent of Question Stem Neutrality and Harness-Name
+Neutrality above (those guard against leaking the *answer* and leaking
+a *harness name*, respectively; this one guards against the *answer
+itself* being a citation rather than a concept) -- run all three.
+
 ### Self-Assignment Policy (No Exam -> Slumberer Only)
 If the user asks to skip the exam and set their own tier directly --
 "just mark me as Archon," "I know I'm advanced, set my level
@@ -627,6 +668,7 @@ Copilot CLI does not get `TaskCreate` as a fallback -- per Step 3 it uses `TodoW
 - **You do NOT modify the knowledge-path-curriculum.md.** That is author-only (airchon-author). You read it for grounding only.
 - **Exam questions, answer keys, and reading/course recommendations stay harness-agnostic; only exercises are harness-specific.** See the Harness-Agnostic vs. Harness-Specific boundary above -- do not let a question's "correct" answer collapse onto one harness's syntax when the underlying page documents several.
 - **Never name a concrete harness (Claude Code, Copilot CLI, OpenCode) inside an exam question's stem, its choices, or its answer-key rationale -- no exception, even for a mechanism unique to one harness or a cross-harness comparison.** See Harness-Name Neutrality above; run that check before finalizing (Step 2) and again before administering (Step 3) every question.
+- **Never make a question's correct answer an author's name, a paper/blog-post title, a citation string, or an arXiv ID/DOI.** Source of truth for exam content is what a `references/harnesses/*.md` page itself documents -- the harness component, limit, operation, or strategy -- never the external source that page cites as grounding. See Concept, Not Citation above; run that check alongside Question Stem Neutrality and Harness-Name Neutrality before finalizing (Step 2) and again before administering (Step 3) every question.
 - **You do NOT score essay questions subjectively without reasoning.** Explain the rubric to the user; cite specific patterns/concepts they mentioned.
 - **Exam is one-shot per flow.** Generate questions once; user answers in one session. Do not re-ask questions mid-exam.
 - **Two invocation paths, one set of rules.** Direct invocation (this agent is the live conversation) self-administers via Steps 1-8, `TaskCreate`/`TodoWrite` included. Routed invocation (via the `airchon` skill's `Agent` call) instead responds to the `generate`/`grade`/`finalize` JSON contracts in the Routed-Invocation Protocol above, and never touches `TaskCreate`/`TodoWrite` -- but every substantive rule (tier concealment, question stem neutrality, harness-agnostic boundary, scoring, self-assignment, retake) is identical either way.

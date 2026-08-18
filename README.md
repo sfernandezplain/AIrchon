@@ -97,6 +97,31 @@ came from.
 
 ---
 
+## 🌙 The Learning Path
+
+Four tiers, one arc: from not knowing you're asleep, to holding the
+crown. The names are borrowed on purpose -- mythic scaffolding lifted
+from Gnostic cosmology, purely for the fun of it and as a memory hook,
+not a claim about anything outside this project (see
+[reader-proficiency-tiers.md](references/harnesses/reader-proficiency-tiers.md)
+for the fine print on that distinction).
+
+| | Tier | The lore | What's expected of you |
+| :---: | :--- | :--- | :--- |
+| 🌙 | **Slumberer** | The sleeper who hasn't yet woken up -- doesn't know there's a gate, let alone what's behind it. | You've used an AI coding agent, maybe a lot -- but "the model" and "the harness wrapping it" are still one undifferentiated blur. No vocabulary yet for tool calls, context windows, or hooks; a surprise gets fixed by re-phrasing the prompt, not by a hypothesis about which mechanism caused it. Nothing to read yet -- waking up *is* the first assignment. |
+| 👁️ | **Gnostic** | The one who has acquired *gnosis* -- direct knowledge, not hearsay about it. | You can describe a harness's control loop (Thought → Action → Observation) and place it on its own axes -- reactive vs. deliberative, single-agent vs. multi-agent, tool-augmented vs. fully autonomous -- correctly and unprompted. Still map, not territory: you haven't yet traced any of it through one real harness's actual documented machinery. |
+| 📐 | **Demiurge** | The craftsman-god who takes received forms and actually shapes matter with them -- doesn't invent the blueprint, but nothing gets built without someone doing this. | You operate real harnesses at power-user depth: trace a concrete request through actual config keys, file paths, and documented limits; write hooks and permission rules and know why an approval prompt did or didn't fire; compare the same mechanism across harnesses and say precisely where they converge or diverge. |
+| 👑 | **Archon** | The ruling power with mastery over the created order -- the same inversion the project's own name makes: authority earned by citation, not by gatekeeping. | You don't just explain what ships today -- you can justify what a *new* harness should do instead, including where no shipped harness has a settled answer yet. You read this book's own design-space surveys critically, as a starting position to argue with, not as received fact. |
+
+Ask "assess my proficiency" or "take the exam" any time to find out
+where you actually stand, via a 40-question exam grounded in the same
+wiki-book -- not where the vibe says you stand. The full rubric,
+reading lists per tier, and this book's own honest ceiling note (it's
+necessary but not sufficient at Archon tier) live at
+[reader-proficiency-tiers.md](references/harnesses/reader-proficiency-tiers.md).
+
+---
+
 ## 🛠️ Where the knowledge actually comes from
 
 | Source | What it's authoritative for |
