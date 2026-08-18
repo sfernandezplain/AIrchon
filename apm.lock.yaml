@@ -219,7 +219,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:67c1cab1b5a8ac57d3ef42e43d10141f307c8b302466d61de2c926f11a13d96f
+  content_hash: sha256:d904b2ef3533a356f13c4dada48fb8544437f8b057784662a9afaa1d72595f26
 - kind: project-relative
   target: claude
   value: .claude/agents/airchon-mentor.md
@@ -237,52 +237,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:4ec0b150a9fd6c5f54edab0bb05edbbb009c0b88333cb418c5bb0772054cc68d
-- kind: project-relative
-  target: claude
-  value: .claude/agents/demiurge-to-archon-sessions.md
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:a78b0a47b16a746cf12645c34ad98021efa147c99d5d579209b6eddf9ec1b941
-- kind: project-relative
-  target: claude
-  value: .claude/agents/exam-file-template.md
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:d6063f3573fe3928b4355b38555d56797d0e05e2033c1fd3807ec14df2ef1e9c
-- kind: project-relative
-  target: claude
-  value: .claude/agents/gnostic-to-demiurge-sessions.md
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:a0d1a9efa991ee9812c2036a0b93713d6b4d4fe3b19b8f6f70f1658bcfc7dfd9
-- kind: project-relative
-  target: claude
-  value: .claude/agents/scoring-reference.md
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:f600b47e7ed1b06d088d48800aea31e6e872edf7133b07c97261b80d3b3bf3bf
-- kind: project-relative
-  target: claude
-  value: .claude/agents/slumberer-to-gnostic-sessions.md
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:65a6dce0b9f3dbc624d4a5a570fd9ff721e0198360a737577e92f69d877c8860
+  content_hash: sha256:f92cc2d066637f5ed7a266477a6c47465e582bbd1133cee50e2cb3fb119ab754
 - kind: project-relative
   target: claude
   value: .claude/skills/airchon
@@ -885,7 +840,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:67c1cab1b5a8ac57d3ef42e43d10141f307c8b302466d61de2c926f11a13d96f
+  content_hash: sha256:d904b2ef3533a356f13c4dada48fb8544437f8b057784662a9afaa1d72595f26
 - kind: project-relative
   target: copilot
   value: .github/agents/airchon-mentor.agent.md
@@ -903,52 +858,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:4ec0b150a9fd6c5f54edab0bb05edbbb009c0b88333cb418c5bb0772054cc68d
-- kind: project-relative
-  target: copilot
-  value: .github/agents/demiurge-to-archon-sessions.agent.md
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:a78b0a47b16a746cf12645c34ad98021efa147c99d5d579209b6eddf9ec1b941
-- kind: project-relative
-  target: copilot
-  value: .github/agents/exam-file-template.agent.md
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:d6063f3573fe3928b4355b38555d56797d0e05e2033c1fd3807ec14df2ef1e9c
-- kind: project-relative
-  target: copilot
-  value: .github/agents/gnostic-to-demiurge-sessions.agent.md
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:a0d1a9efa991ee9812c2036a0b93713d6b4d4fe3b19b8f6f70f1658bcfc7dfd9
-- kind: project-relative
-  target: copilot
-  value: .github/agents/scoring-reference.agent.md
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:f600b47e7ed1b06d088d48800aea31e6e872edf7133b07c97261b80d3b3bf3bf
-- kind: project-relative
-  target: copilot
-  value: .github/agents/slumberer-to-gnostic-sessions.agent.md
-  runtime: null
-  scope: project
-  owners:
-  - .
-  active_owner: .
-  content_hash: sha256:65a6dce0b9f3dbc624d4a5a570fd9ff721e0198360a737577e92f69d877c8860
+  content_hash: sha256:f92cc2d066637f5ed7a266477a6c47465e582bbd1133cee50e2cb3fb119ab754
 local_deployed_files:
 - .agents/skills/airchon
 - .agents/skills/airchon/SKILL.md
@@ -961,21 +871,11 @@ local_deployed_files:
 - .claude/agents/airchon-author.md
 - .claude/agents/airchon-mentor.md
 - .claude/agents/airchon-teacher.md
-- .claude/agents/demiurge-to-archon-sessions.md
-- .claude/agents/exam-file-template.md
-- .claude/agents/gnostic-to-demiurge-sessions.md
-- .claude/agents/scoring-reference.md
-- .claude/agents/slumberer-to-gnostic-sessions.md
 - .claude/skills/airchon
 - .claude/skills/airchon/SKILL.md
 - .github/agents/airchon-author.agent.md
 - .github/agents/airchon-mentor.agent.md
 - .github/agents/airchon-teacher.agent.md
-- .github/agents/demiurge-to-archon-sessions.agent.md
-- .github/agents/exam-file-template.agent.md
-- .github/agents/gnostic-to-demiurge-sessions.agent.md
-- .github/agents/scoring-reference.agent.md
-- .github/agents/slumberer-to-gnostic-sessions.agent.md
 local_deployed_file_hashes:
   .agents/skills/airchon/SKILL.md: sha256:98f8a3adfdd1405747b686175106ba0cfdf1357844c032f19463c687624829cd
   .agents/skills/airchon/references/harnesses/agent-loop-implementations.md: sha256:dbf941e48a2a3139a852ff925842e7ab6a0bf60d3452fdf500a0bc494265c6be
@@ -984,20 +884,10 @@ local_deployed_file_hashes:
   .agents/skills/airchon/references/harnesses/instruction-context-budget.md: sha256:0d851fa2b4d1142615c5640b46579ab078ff89f53aaefa0bb92209dee1fc3b5d
   .agents/skills/airchon/references/harnesses/mcp-integration.md: sha256:b1569099c5dc0bee4838ef7fbab53d6096eb79f1278d0a55692a97a96f50dde9
   .agents/skills/airchon/references/harnesses/memory-management.md: sha256:d27559323f5404548ecd9aa20d701a5da2b77ad8af3c658c32956b59c00c1bf0
-  .claude/agents/airchon-author.md: sha256:67c1cab1b5a8ac57d3ef42e43d10141f307c8b302466d61de2c926f11a13d96f
+  .claude/agents/airchon-author.md: sha256:d904b2ef3533a356f13c4dada48fb8544437f8b057784662a9afaa1d72595f26
   .claude/agents/airchon-mentor.md: sha256:fdeb4492c0401fd54806648effaa73b223ebbf69e370f0da50d156e7290bc932
-  .claude/agents/airchon-teacher.md: sha256:4ec0b150a9fd6c5f54edab0bb05edbbb009c0b88333cb418c5bb0772054cc68d
-  .claude/agents/demiurge-to-archon-sessions.md: sha256:a78b0a47b16a746cf12645c34ad98021efa147c99d5d579209b6eddf9ec1b941
-  .claude/agents/exam-file-template.md: sha256:d6063f3573fe3928b4355b38555d56797d0e05e2033c1fd3807ec14df2ef1e9c
-  .claude/agents/gnostic-to-demiurge-sessions.md: sha256:a0d1a9efa991ee9812c2036a0b93713d6b4d4fe3b19b8f6f70f1658bcfc7dfd9
-  .claude/agents/scoring-reference.md: sha256:f600b47e7ed1b06d088d48800aea31e6e872edf7133b07c97261b80d3b3bf3bf
-  .claude/agents/slumberer-to-gnostic-sessions.md: sha256:65a6dce0b9f3dbc624d4a5a570fd9ff721e0198360a737577e92f69d877c8860
+  .claude/agents/airchon-teacher.md: sha256:f92cc2d066637f5ed7a266477a6c47465e582bbd1133cee50e2cb3fb119ab754
   .claude/skills/airchon/SKILL.md: sha256:98f8a3adfdd1405747b686175106ba0cfdf1357844c032f19463c687624829cd
-  .github/agents/airchon-author.agent.md: sha256:67c1cab1b5a8ac57d3ef42e43d10141f307c8b302466d61de2c926f11a13d96f
+  .github/agents/airchon-author.agent.md: sha256:d904b2ef3533a356f13c4dada48fb8544437f8b057784662a9afaa1d72595f26
   .github/agents/airchon-mentor.agent.md: sha256:fdeb4492c0401fd54806648effaa73b223ebbf69e370f0da50d156e7290bc932
-  .github/agents/airchon-teacher.agent.md: sha256:4ec0b150a9fd6c5f54edab0bb05edbbb009c0b88333cb418c5bb0772054cc68d
-  .github/agents/demiurge-to-archon-sessions.agent.md: sha256:a78b0a47b16a746cf12645c34ad98021efa147c99d5d579209b6eddf9ec1b941
-  .github/agents/exam-file-template.agent.md: sha256:d6063f3573fe3928b4355b38555d56797d0e05e2033c1fd3807ec14df2ef1e9c
-  .github/agents/gnostic-to-demiurge-sessions.agent.md: sha256:a0d1a9efa991ee9812c2036a0b93713d6b4d4fe3b19b8f6f70f1658bcfc7dfd9
-  .github/agents/scoring-reference.agent.md: sha256:f600b47e7ed1b06d088d48800aea31e6e872edf7133b07c97261b80d3b3bf3bf
-  .github/agents/slumberer-to-gnostic-sessions.agent.md: sha256:65a6dce0b9f3dbc624d4a5a570fd9ff721e0198360a737577e92f69d877c8860
+  .github/agents/airchon-teacher.agent.md: sha256:f92cc2d066637f5ed7a266477a6c47465e582bbd1133cee50e2cb3fb119ab754

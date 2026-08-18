@@ -131,7 +131,7 @@ references/harnesses/                      The wiki-book -- mentor reads it, aut
 <deploy-root>/agents/airchon-author.*      Deployed copy of the author agent -- gitignored, regenerated, NEVER hand-edited
 <deploy-root>/agents/airchon-teacher.*     Deployed copy of the teacher agent -- gitignored, regenerated, NEVER hand-edited
 <deploy-root>/skills/airchon/               Deployed copy of the router skill -- gitignored, regenerated, NEVER hand-edited
-.apm/agents/airchon-teacher/resources/     airchon-teacher's own reference content -- scoped to its tier domain, outside references/harnesses/ on purpose (see below); NOT deployed anywhere by `apm install`, just project-relative content its own file (or a future consumer) can Read
+resources/airchon-teacher/                 airchon-teacher's own reference content -- scoped to its tier domain, outside references/harnesses/ on purpose (see below); genuinely NOT deployed anywhere by `apm install` (moved outside `.apm/agents/` on 2026-08-18 specifically so it wouldn't be -- see `CHANGELOG.md`), just project-relative content its own file (or a future consumer) can Read
 ~/.airchon/level                           airchon-teacher's own state -- one line, the reader's tier -- user's machine, outside this repo entirely
 ~/.airchon/qualify-exam.md                 airchon-teacher's own state -- exam + responses + score history -- user's machine, outside this repo entirely
 ```
@@ -169,7 +169,7 @@ content independent of the agents, that would need to live under
 resolution step in the skill's own instructions -- not needed today
 since the skill has no content of its own.
 
-**Why `.apm/agents/airchon-teacher/resources/` exists outside
+**Why `resources/airchon-teacher/` exists outside
 `references/harnesses/`.** `references/harnesses/` is general-purpose,
 cross-agent wiki-book content; `airchon-teacher` needed a place for
 content scoped narrowly to its own tier domain instead (session
@@ -178,8 +178,20 @@ its own Constraints & Scope) -- something this project only ever
 anticipated hypothetically for the skill (previous paragraph) until
 the operator actually asked for it for `airchon-teacher`, 2026-08-17
 (see `CHANGELOG.md`). It is plain markdown, edited directly the same
-way the wiki-book is, not a deployed artifact -- `apm install` never
-touches it, since it isn't an `*.agent.md`/`SKILL.md` entrypoint.
+way the wiki-book is, not a deployed artifact. This was originally
+placed at `.apm/agents/airchon-teacher/resources/` on the assumption
+that `apm install` only deploys `*.agent.md` files -- false: `apm`
+recursively treats every loose `.md` file anywhere under `.apm/agents/`
+as its own deployable agent candidate, with no companion-resource
+convention the way skill bundles have `references/`/`assets/`. That
+silently deployed this content as junk agents into `.claude/agents/`
+and `.github/agents/` (two of the five even broke `apm`'s own YAML
+parser outright, since a bare `---` markdown divider followed by a
+`**bold**`-led line reads as a second, malformed frontmatter block to
+its parser). Fixed 2026-08-18 by moving the whole folder outside
+`.apm/` entirely, to `resources/airchon-teacher/` at the project root
+-- see `CHANGELOG.md`'s 2026-08-18 entry for the full root-cause
+writeup. `apm install` genuinely does not touch this path now.
 `airchon-author` remains the wiki-book's only writer; this path is a
 narrow, named exception to that scope (see its own BOUNDARY section)
 for this one relocated file, not a general license to write anywhere

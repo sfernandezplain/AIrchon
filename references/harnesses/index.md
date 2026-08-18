@@ -50,21 +50,21 @@ layer for Transition 1 (Slumberer->Gnostic) -- three schedulable
 sessions, each listing only the agenda items to discuss, sized so no
 session runs thinner than three items or heavier than six -- was added
 2026-08-17 and then relocated the same day out of this page to
-`.apm/agents/airchon-teacher/resources/slumberer-to-gnostic-sessions.md`,
+`resources/airchon-teacher/slumberer-to-gnostic-sessions.md`,
 scoped to `airchon-teacher`'s own domain rather than kept as general
 wiki-book content (see that agent's own file and `CHANGELOG.md`). A
 second such agenda layer for Transition 2 (Gnostic->Demiurge) --
 27 sessions (one per module, five per-cluster synthesis sessions, and
 a final capstone session), organized around the same five thematic
 clusters -- was written directly to
-`.apm/agents/airchon-teacher/resources/gnostic-to-demiurge-sessions.md`
+`resources/airchon-teacher/gnostic-to-demiurge-sessions.md`
 the same way, without ever living inline in this page. A third such
 agenda layer for Transition 3 (Demiurge->Archon) -- 13 sessions (one
 per module, two per-cluster synthesis sessions, and a final capstone
 session), organized around a two-way design-space/original-survey vs.
 production-completeness split this band's own pages already draw for
 themselves in the Topics table below -- was written directly to
-`.apm/agents/airchon-teacher/resources/demiurge-to-archon-sessions.md`
+`resources/airchon-teacher/demiurge-to-archon-sessions.md`
 the same way.
 
 ## Topics

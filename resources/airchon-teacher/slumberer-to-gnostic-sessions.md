@@ -1,7 +1,7 @@
 # Session breakdown (agenda only): Slumberer -> Gnostic
 
 **What this file is.** A pacing layer on top of
-[knowledge-path-curriculum.md](../../../../references/harnesses/knowledge-path-curriculum.md)'s
+[knowledge-path-curriculum.md](../../references/harnesses/knowledge-path-curriculum.md)'s
 "Transition 1: Slumberer -> Gnostic" section. That page's learning
 objectives, per-module key concepts, comprehension checks, and
 exercises answer "what has to be taught." This file answers a

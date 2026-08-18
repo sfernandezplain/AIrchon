@@ -1,3 +1,64 @@
+## 2026-08-18 -- Root-caused and fixed: `apm install` was silently deploying `airchon-teacher/resources/` as five bogus agents
+
+The operator pasted one of the two YAML parse warnings `apm install`
+had been printing every run since the entry below (the 08-18 genesis
+review) was written -- warnings this project had been reading past
+without actually tracing to a cause. Investigated instead of ignoring
+it again.
+
+**Root cause, in two parts.** (1) `apm`'s agent discovery recursively
+treats every loose `.md` file anywhere under `.apm/agents/` as its own
+deployable agent candidate -- there is no companion-resource
+convention for agents the way skill bundles have `references/`/
+`assets/`/`scripts/` (which `apm` does NOT deploy as separate
+entrypoints). `.apm/agents/airchon-teacher/resources/` sat inside that
+scanned tree, so all five files there -- the three session-pacing
+files plus this session's own `exam-file-template.md` and
+`scoring-reference.md` -- were being copied into `.claude/agents/` and
+`.github/agents/` as if each were a standalone agent, contradicting
+CLAUDE.md's explicit (and, it turns out, simply wrong) claim that this
+folder is "NOT deployed anywhere by `apm install`." (2) Two of the
+five (later found to be three, non-deterministically, depending on
+scan order) also threw a loud parse warning rather than deploying
+silently: `apm`'s frontmatter parser treats a bare `---` markdown
+horizontal-rule divider as a YAML multi-document separator, then tries
+to parse whatever follows as a second document -- and errors with
+"while scanning an alias" the moment that chunk's first non-blank line
+starts with `**` (bold Markdown), since YAML reads a leading `*` as an
+alias reference and the second `*` is not a valid anchor-name
+character. Traced precisely: `gnostic-to-demiurge-sessions.md`'s
+`---` divider before "## Cluster 1" put "**Session 1 -- Memory
+management.**" at exactly line 4 of the resulting bogus second
+document, matching the warning's own line/column down to the letter.
+
+**Fix:** moved the whole folder outside `.apm/` entirely, from
+`.apm/agents/airchon-teacher/resources/` to `resources/airchon-teacher/`
+at the project root (sibling to `references/harnesses/`, which lives
+outside `.apm/` for the same underlying reason). Updated every
+cross-reference (`airchon-teacher.agent.md`'s three Read load-triggers,
+`airchon-author.agent.md`'s BOUNDARY exception note, `CLAUDE.md`'s
+directory table and its "Why this exists outside references/harnesses/"
+section, `README.md`'s repository layout, and the pointer paragraphs
+in `index.md` and `knowledge-path-curriculum.md`) and fixed the three
+session files' own internal relative link back to
+`knowledge-path-curriculum.md` (was `../../../../references/harnesses/...`,
+correct for the old four-levels-deep location; now
+`../../references/harnesses/...`, correct for the new two-levels-deep
+one). Verified live: `apm install` now reports a clean "6 agents
+adopted" (the 3 real agents x 2 targets) with zero parse warnings, and
+`.claude/agents/`/`.github/agents/` contain exactly those 3 files each
+-- confirmed by listing both directories directly, not by trusting the
+log output alone.
+
+**Why this took two full turns to catch.** The warning had been
+visible in every `apm install` run since the resources folder was
+created, dismissed each time as "pre-existing, unrelated" because it
+referenced files that looked like session-pacing content, not code.
+Nobody actually opened the deployed `.claude/agents/`/`.github/agents/`
+directories to check what was in them until asked to look, which is
+exactly the kind of unverified assumption this project's own grounding
+discipline exists to catch in *other* people's harness claims.
+
 ## 2026-08-18 -- `/genesis` review of `airchon-teacher.agent.md` + `airchon/SKILL.md`: five findings, all fixed
 
 At the operator's request ("check the teacher agent and the skill for

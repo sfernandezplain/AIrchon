@@ -88,7 +88,7 @@ that tracing is deferred to the next transition on purpose.
 A pacing layer chunking this transition's two modules into three
 schedulable teaching sessions (5/4/3 items respectively, sized so no
 sitting is overloaded or too thin to be worth convening) now lives at
-`.apm/agents/airchon-teacher/resources/slumberer-to-gnostic-sessions.md`
+`resources/airchon-teacher/slumberer-to-gnostic-sessions.md`
 -- moved there 2026-08-17, out of this page, since session-pacing for
 actually running a course is scoped to `airchon-teacher`'s own domain
 and is explicitly downstream work that agent doesn't do itself (see
@@ -236,7 +236,7 @@ A pacing layer chunking this transition's 21 modules into 27
 schedulable teaching sessions (organized around the five clusters
 above: one session per module, plus one per-cluster synthesis session,
 plus a final capstone session) now lives at
-`.apm/agents/airchon-teacher/resources/gnostic-to-demiurge-sessions.md`
+`resources/airchon-teacher/gnostic-to-demiurge-sessions.md`
 -- scoped to `airchon-teacher`'s own domain rather than kept as general
 wiki-book content, the same reasoning and the same day's precedent as
 Transition 1's session breakdown (see that transition's own pointer
@@ -685,7 +685,7 @@ band's own pages already draw for themselves in `index.md` -- five
 design-space/original-survey modules and five production-completeness
 /gap-closing modules -- one session per module, plus one per-cluster
 synthesis session, plus a final capstone session) now lives at
-`.apm/agents/airchon-teacher/resources/demiurge-to-archon-sessions.md`
+`resources/airchon-teacher/demiurge-to-archon-sessions.md`
 -- scoped to `airchon-teacher`'s own domain rather than kept as general
 wiki-book content, the same reasoning and precedent as Transitions 1
 and 2's own session breakdowns (see their pointer paragraphs above and

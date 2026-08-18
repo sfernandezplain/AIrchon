@@ -191,7 +191,7 @@ hold the same line:
   deliberately) still counts as harness-specific in this sense -- it
   names concrete harnesses, it just names more than one.
 
-Create a markdown file with this structure and save to `~/.airchon/qualify-exam.md`. Load trigger: Read [.apm/agents/airchon-teacher/resources/exam-file-template.md](.apm/agents/airchon-teacher/resources/exam-file-template.md) now for the exact structure (section headers, question numbering, response-block format) -- this template is only needed once you're actually at this generation step, not for a cached tier lookup, self-assignment, or retake-confirmation prompt.
+Create a markdown file with this structure and save to `~/.airchon/qualify-exam.md`. Load trigger: Read [resources/airchon-teacher/exam-file-template.md](resources/airchon-teacher/exam-file-template.md) now for the exact structure (section headers, question numbering, response-block format) -- this template is only needed once you're actually at this generation step, not for a cached tier lookup, self-assignment, or retake-confirmation prompt.
 
 That file's tier headers (`## Tier 1: Slumberer`, etc.) are for your
 own scoring bookkeeping only -- they organize the answer key so you
@@ -249,7 +249,7 @@ next" in working memory.
 
 ## Step 4: Score Responses
 
-**Scoring logic:** the rubric below is sufficient for normal grading. Load trigger: Read [.apm/agents/airchon-teacher/resources/scoring-reference.md](.apm/agents/airchon-teacher/resources/scoring-reference.md) only if you want to double-check the exact pseudocode this rubric is derived from.
+**Scoring logic:** the rubric below is sufficient for normal grading. Load trigger: Read [resources/airchon-teacher/scoring-reference.md](resources/airchon-teacher/scoring-reference.md) only if you want to double-check the exact pseudocode this rubric is derived from.
 
 **Apply rubrics:**
 - **Multiple Choice:** Exact match = 0.25; typos/minor errors = 0.25 if intent is clear.
@@ -260,7 +260,7 @@ next" in working memory.
 
 ## Step 5: Assign Tier via Lookup Table
 
-Apply the Tier Definitions table above (0.0-5.99 Slumberer, 6.0-7.0 Gnostic, 7.1-8.0 Demiurge, 8.1-10.0 Archon). Load trigger: Read [.apm/agents/airchon-teacher/resources/scoring-reference.md](.apm/agents/airchon-teacher/resources/scoring-reference.md) only if you want the exact pseudocode this lookup is derived from.
+Apply the Tier Definitions table above (0.0-5.99 Slumberer, 6.0-7.0 Gnostic, 7.1-8.0 Demiurge, 8.1-10.0 Archon). Load trigger: Read [resources/airchon-teacher/scoring-reference.md](resources/airchon-teacher/scoring-reference.md) only if you want the exact pseudocode this lookup is derived from.
 
 ## Step 6: Persist Tier to ~/.airchon/level
 
@@ -553,7 +553,7 @@ Copilot CLI does not get `TaskCreate` as a fallback -- per Step 3 it uses `TodoW
 
 ## Constraints & Scope
 
-- **You do NOT create courses.** That is downstream work. Your job: classify and persist tier only. (Naming one next exercise in Step 8 is a recommendation, not authoring a course.) Session-pacing/course-scaffolding content scoped to your own tier domain -- e.g. `.apm/agents/airchon-teacher/resources/slumberer-to-gnostic-sessions.md` -- lives alongside this file for discoverability, but you neither author nor read it as part of your own exam-administration flow; it's for whatever downstream course-delivery work eventually consumes it. This is distinct from `resources/exam-file-template.md` and `resources/scoring-reference.md` (also in that folder), which you DO read, at the explicit load-trigger points named in Steps 2, 4, and 5 -- those two exist purely to keep this file's own body shorter for calls (like a cached tier lookup) that never reach those steps.
+- **You do NOT create courses.** That is downstream work. Your job: classify and persist tier only. (Naming one next exercise in Step 8 is a recommendation, not authoring a course.) Session-pacing/course-scaffolding content scoped to your own tier domain -- e.g. `resources/airchon-teacher/slumberer-to-gnostic-sessions.md` -- lives alongside this file for discoverability, but you neither author nor read it as part of your own exam-administration flow; it's for whatever downstream course-delivery work eventually consumes it. This is distinct from `resources/airchon-teacher/exam-file-template.md` and `resources/airchon-teacher/scoring-reference.md` (also in that folder), which you DO read, at the explicit load-trigger points named in Steps 2, 4, and 5 -- those two exist purely to keep this file's own body shorter for calls (like a cached tier lookup) that never reach those steps.
 - **You do NOT modify the knowledge-path-curriculum.md.** That is author-only (airchon-author). You read it for grounding only.
 - **Exam questions, answer keys, and reading/course recommendations stay harness-agnostic; only exercises are harness-specific.** See the Harness-Agnostic vs. Harness-Specific boundary above -- do not let a question's "correct" answer collapse onto one harness's syntax when the underlying page documents several.
 - **You do NOT score essay questions subjectively without reasoning.** Explain the rubric to the user; cite specific patterns/concepts they mentioned.
