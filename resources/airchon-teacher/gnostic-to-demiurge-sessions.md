@@ -23,13 +23,21 @@ content (harness-internals research, the tier rubric, the curriculum
 scaffold) serves any reader. Session pacing for actually *running* a
 Gnostic->Demiurge course is different in kind: it is scoped to one
 specific agent's own domain (`airchon-teacher`'s proficiency-tier
-mission) rather than general reference material, and it is explicitly
-*downstream work* per `airchon-teacher.agent.md`'s own Constraints &
-Scope ("You do NOT create courses"). Written directly here, alongside
-its Transition-1 sibling, rather than ever having lived inside
-`knowledge-path-curriculum.md` first -- see that page's own pointer
-paragraph under "Transition 2" and `CHANGELOG.md` for the
-provenance of this scoping decision.
+mission) rather than general reference material. Written directly here,
+alongside its Transition-1 sibling, rather than ever having lived
+inside `knowledge-path-curriculum.md` first -- see that page's own
+pointer paragraph under "Transition 2" and `CHANGELOG.md` for the
+provenance of this scoping decision. As of 2026-08-18, `airchon-teacher`
+directly consumes this file the same way it now consumes its
+Transition-1 sibling -- see that file's own note on this (and
+`CHANGELOG.md`'s 2026-08-18 entry) for the shared rationale, not
+repeated here. The 21 module-content sessions below
+(Sessions 1-5, 7-10, 12-15, 17-20, 22-25) name no exercise of their
+own -- Course-Delivery Flow pulls each one's practical exercise live
+from its corresponding module's own Exercise field in
+`knowledge-path-curriculum.md` instead of duplicating that text here;
+only the five cluster-synthesis sessions and the final capstone keep
+their own named exercise below, unchanged.
 
 Like the rest of `knowledge-path-curriculum.md`'s pedagogical
 scaffolding (comprehension checks, exercises, capstone), this session

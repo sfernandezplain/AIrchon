@@ -1,3 +1,64 @@
+## 2026-08-18 -- `airchon-teacher` now delivers the course behind each tier transition, not only classifies into one
+
+The operator asked for `airchon-teacher` to stop stopping at
+classification: once a reader's tier is known, walk them through their
+tier's course session-by-session (consuming the three
+`resources/airchon-teacher/*-sessions.md` files that already existed
+but had no consumer), grade a practical exercise at the end of every
+session, and -- once the course's final session passes -- administer a
+focused 10-question exam at the target tier to decide whether the
+reader actually transitions, updating `~/.airchon/level` on a pass.
+This reverses this file's own prior "You do NOT create courses --
+that is downstream work" line in Constraints & Scope, which had been
+true since the three `*-sessions.md` files were first written.
+
+**The exercise-cadence problem.** The three session-breakdown files
+only name a practical exercise on their cluster-synthesis/final-capstone
+sessions, by deliberate original design ("one representative
+pick... rather than attempting all of that cluster's exercises in one
+sitting") -- a plain content session (e.g. "Session 4 -- Caching") has
+no exercise of its own. The operator wants every session, not only
+those, to end in one. Hand-authoring 33 new exercises across three
+files was rejected: `knowledge-path-curriculum.md` already documents an
+**Exercise** field per module, one-to-one with each content session's
+own title, and the session-breakdown files already say every item they
+carry is "inherited by reference," never new content. Course-Delivery
+Flow instead pulls a content session's exercise live from its matching
+module's own Exercise field at teaching time; only the sessions that
+already name one keep using that named one verbatim. The three
+`*-sessions.md` files needed no new exercise prose as a result, only a
+short note in each explaining this sourcing plus a fix to their
+now-stale "You do NOT create courses" cross-reference into this file.
+
+**Change:** added a new "Course-Delivery Flow (Teaching a Session)"
+section to `airchon-teacher.agent.md` (steps CD1-CD7: check
+prerequisites, load/initialize a new `~/.airchon/course-progress.md`
+tracker, establish the reader's harness once per course, administer one
+session at a time with its exercise, grade it, run the transition exam,
+and resume-after-interruption discipline matching the exam's own).
+Added a new invocation-trigger set ("teach me," "start my course,"
+"next session," etc.), a new resource file
+`resources/airchon-teacher/course-progress-template.md` (mirroring
+`exam-file-template.md`'s own load-trigger pattern) defining that
+tracker's structure, and rewrote the Constraints & Scope bullet that
+used to forbid this. Two explicit operator decisions shape the failure
+paths: a transition-exam score below 5/10 always means
+redo-the-final-session, never an immediate retake; and this is
+**direct-invocation-only** for now -- the `airchon` router skill gets no equivalent
+multi-call pipeline for teaching in this change (unlike its existing
+Exam Administration pipeline for the qualifying exam), so a "teach me"
+request routed through the skill still reaches a single `Agent` call
+that cannot pace a multi-session course. That gap is named here as
+known follow-up work, not fixed.
+
+**Known follow-on, not done here:** `references/harnesses/knowledge-path-curriculum.md`
+still says, in three places, that session-pacing content "is explicitly
+*downstream work* that agent doesn't do itself (see its Constraints &
+Scope)" -- now stale. That page is `airchon-author`-only to write per
+this project's single-writer interlock, so it wasn't touched as part of
+this change; it needs an `airchon-author` pass to bring those three
+sentences current.
+
 ## 2026-08-18 -- Added the README's "Learning Path" section; four tiers, mythic lore, an icon apiece
 
 Purely additive, no persona/skill logic touched. The operator asked for

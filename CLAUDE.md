@@ -63,9 +63,18 @@ that work together:
   `references/harnesses/reader-proficiency-tiers.md`). Persists the
   tier to `~/.airchon/level` and the exam + responses to
   `~/.airchon/qualify-exam.md` -- both on the user's own machine,
-  outside this repo, never under `references/harnesses/`. READ-ONLY
-  on the wiki-book, same structural boundary as `airchon-mentor` (no
-  `Write`/`Edit` tool over it). Ships as a bare agent, same as
+  outside this repo, never under `references/harnesses/`. Since
+  2026-08-18 it also *delivers* the course behind each tier transition
+  (Course-Delivery Flow in its own persona file) -- session by session
+  from `resources/airchon-teacher/*-sessions.md`, grading a practical
+  exercise every session and a 10-question transition exam at the end,
+  tracked in a new `~/.airchon/course-progress.md` (also
+  user-machine-local, never under `references/harnesses/`). This reverses an
+  earlier revision's explicit "You do NOT create courses"; see
+  `CHANGELOG.md`'s 2026-08-18 entry. Still READ-ONLY on the wiki-book
+  and on `resources/airchon-teacher/` itself, same structural boundary
+  as `airchon-mentor` (no `Write`/`Edit` tool over either -- only over
+  files under `~/.airchon/`). Ships as a bare agent, same as
   `airchon-mentor`/`airchon-author`; since 2026-08-17 it is also
   reachable via the `airchon` router's teaching/assessment branch on
   Claude Code (reusing the existing router rather than giving
@@ -131,9 +140,10 @@ references/harnesses/                      The wiki-book -- mentor reads it, aut
 <deploy-root>/agents/airchon-author.*      Deployed copy of the author agent -- gitignored, regenerated, NEVER hand-edited
 <deploy-root>/agents/airchon-teacher.*     Deployed copy of the teacher agent -- gitignored, regenerated, NEVER hand-edited
 <deploy-root>/skills/airchon/               Deployed copy of the router skill -- gitignored, regenerated, NEVER hand-edited
-resources/airchon-teacher/                 airchon-teacher's own reference content -- scoped to its tier domain, outside references/harnesses/ on purpose (see below); genuinely NOT deployed anywhere by `apm install` (moved outside `.apm/agents/` on 2026-08-18 specifically so it wouldn't be -- see `CHANGELOG.md`), just project-relative content its own file (or a future consumer) can Read
+resources/airchon-teacher/                 airchon-teacher's own reference content -- scoped to its tier domain, outside references/harnesses/ on purpose (see below); genuinely NOT deployed anywhere by `apm install` (moved outside `.apm/agents/` on 2026-08-18 specifically so it wouldn't be -- see `CHANGELOG.md`), read directly by airchon-teacher's own Course-Delivery Flow (added 2026-08-18, same day) as well as being project-relative content its own file can Read
 ~/.airchon/level                           airchon-teacher's own state -- one line, the reader's tier -- user's machine, outside this repo entirely
 ~/.airchon/qualify-exam.md                 airchon-teacher's own state -- exam + responses + score history -- user's machine, outside this repo entirely
+~/.airchon/course-progress.md              airchon-teacher's own state (added 2026-08-18) -- current course, session-by-session progress, the in-flight exercise, and transition-exam Q&A/score -- user's machine, outside this repo entirely
 ```
 
 **Always edit `.apm/agents/airchon-mentor.agent.md`,

@@ -16,12 +16,18 @@ content (harness-internals research, the tier rubric, the curriculum
 scaffold) serves any reader. Session pacing for actually *running* a
 Slumberer->Gnostic course is different in kind: it is scoped to one
 specific agent's own domain (`airchon-teacher`'s proficiency-tier
-mission) rather than general reference material, and it is explicitly
-*downstream work* per `airchon-teacher.agent.md`'s own Constraints &
-Scope ("You do NOT create courses"). Moved here 2026-08-17 at the
-operator's request, out of `knowledge-path-curriculum.md`, so it sits
-next to the agent whose domain it belongs to instead of inside the
-shared wiki-book alongside general harness-internals research.
+mission) rather than general reference material. Moved here 2026-08-17
+at the operator's request, out of `knowledge-path-curriculum.md`, so it
+sits next to the agent whose domain it belongs to instead of inside the
+shared wiki-book alongside general harness-internals research. As of
+2026-08-18, `airchon-teacher` directly consumes this file to deliver the
+course session-by-session (its own Course-Delivery Flow) -- an earlier
+revision of that agent explicitly refused to do this ("You do NOT
+create courses"); see `CHANGELOG.md`'s 2026-08-18 entry. Session 1 and
+Session 2 below name no exercise of their own -- Course-Delivery Flow
+pulls each one's practical exercise live from its corresponding
+module's own Exercise field in `knowledge-path-curriculum.md` instead,
+rather than duplicating that text into this file.
 
 Like the rest of `knowledge-path-curriculum.md`'s pedagogical
 scaffolding (comprehension checks, exercises, capstones), this session
