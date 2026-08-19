@@ -1,3 +1,292 @@
+## 2026-08-19 -- `/genesis` review of the `airchon-teacher` file set post-split: three findings, all fixed
+
+At the operator's request ("review for conciseness, coherence and
+adherence to PROSE teacher agent"), re-ran the genesis review
+discipline against the whole file set as it stood after the router
+split and Path Resolution work above -- measured actual line/token
+counts fresh rather than trusting the split's own numbers, which
+predated the Path Resolution addition. Both LOW findings from the
+prior 2026-08-19 review were already resolved as side effects of the
+split (confirmed by rereading, not assumed). Three new findings, all
+fixed immediately:
+
+**MEDIUM -- `resources/path-resolution.md` was wired to load eagerly.**
+The router said to read it "before the first such `Read` in a
+session" -- forcing ~954 tokens onto nearly every substantive request,
+even though the file's own text admits the literal path resolves
+correctly "every time so far." Backwards for Progressive Disclosure:
+every other load-trigger in this file set fires on actual need, not
+preemptively. Fixed: the router, `airchon-mentor.agent.md`, and
+`airchon-author.agent.md` all now say to try the literal path first
+and read `path-resolution.md` only if that `Read` comes back
+not-found.
+
+**MEDIUM -- ~16 lines of near-identical provenance boilerplate
+duplicated across 4 files.** `classification-flow.md`,
+`course-delivery-flow.md`, `guardrails.md`, and
+`routed-invocation-protocol.md` each carried a 4-line "Moved out of
+the always-loaded persona body... same genesis conciseness pass that
+also produced X, Y, Z" paragraph -- the same historical narrative told
+four times, permanently loaded on every future request reaching any of
+them, when it already lives in full in this file's own 2026-08-19
+entries. Fixed: trimmed each to one clause pointing here.
+
+**LOW -- the previous turn's own edit to `airchon-mentor`/
+`airchon-author`'s WIKI-BOOK PROCEDURE header was hard to read.**
+Fixing the "path is the same every time" accuracy issue had crammed
+three separate ideas into one overloaded parenthetical. Fixed as part
+of the same eager-vs-reactive rewrite above, pulling the Path
+Resolution explanation into normal sentence flow.
+
+Redeployed via `apm install`; confirmed all three agents' deployed
+copies still match source.
+
+## 2026-08-19 -- Added a shared Path Resolution fallback for `resources/`/`references/` paths, used by all three standalone agents
+
+Follow-up question from the operator, prompted by the same-day router
+split (below): every `resources/airchon-teacher/*.md` and
+`references/harnesses/*.md` path any of this project's agents name is
+project-root-relative, written on the assumption that a session always
+runs with the AIrchon repo itself as its working directory -- true
+today, since nothing depends on this project. Checked what would
+actually happen if that stopped being true: inspecting this project's
+own `danielmeppiel/genesis` dependency showed `apm install` vendors a
+dependency's ENTIRE repo, unmodified, into the consuming project's
+`apm_modules/<owner>/<repo>/` -- not just its declared primitives. If
+another project ever declared AIrchon as an `apm` dependency the same
+way, a deployed agent there would still contain these same literal
+paths, but that session's working directory would be the CONSUMING
+project's root, not the vendored copy -- every `resources/`/
+`references/` `Read` would silently resolve nowhere. This project hit
+an analogous multi-location-resolution problem once before
+(`xray-mentor`'s three-path skill-bundle resolution, per `CLAUDE.md`'s
+Provenance section) and deliberately simplified it away by asserting a
+fixed working directory instead of solving it generally -- reasonable
+at the time, since nothing consumed these agents as a dependency yet.
+
+Initially fixed as a section local to `airchon-teacher.agent.md`
+alone; the operator immediately pointed out `airchon-mentor` and
+`airchon-author` name `references/harnesses/*.md` project-relative
+paths exactly the same way and carry the identical gap (both had a
+"you always run with this repo as your working directory... the path
+is the same every time" claim in their own WIKI-BOOK PROCEDURE
+headers -- now known to be conditionally false). Rather than
+duplicate the same ~35-line algorithm into three agent bodies,
+consolidated it into one shared file instead.
+
+**Change:** new `resources/path-resolution.md` -- generic, not scoped
+to any one agent -- holds the canonical algorithm: try the literal
+path first; on a not-found result, `Glob` for
+`apm_modules/*/*/<the same literal path>` and `Read` whichever single
+match comes back; stop and say so plainly on zero or multiple matches
+rather than guessing. Placed at `resources/` root, not inside
+`resources/airchon-teacher/`, since that directory stays scoped to
+`airchon-teacher`'s own narrow tier domain per `CLAUDE.md`'s existing
+rationale for it -- this file serves all three agents. Explicitly
+scoped to `resources/`/`references/` paths only -- `~/.airchon/*`
+state paths are already user-home-absolute and need no fallback.
+`airchon-teacher.agent.md`'s own "Path Resolution" section now just
+points to it (net: an even shorter router body than the teacher-only
+version). `airchon-mentor.agent.md` and `airchon-author.agent.md`'s
+WIKI-BOOK PROCEDURE headers rewritten to point to it too, correcting
+their now-inaccurate "the path is the same every time" claim while
+preserving the part that's still true (no PER-HARNESS path variation).
+`Glob` added to `airchon-teacher`'s `tools:` frontmatter (previously
+`[Read, Write, TaskCreate, TodoWrite]`) since the fallback step
+requires it -- `airchon-mentor` and `airchon-author` already had
+`Glob`, no change needed there. Noted the addition in `guardrails.md`'s
+Multi-Harness Alignment section. Redeployed via `apm install`;
+confirmed all three deployed agent copies match source and
+`resources/path-resolution.md` did not leak into `apm.lock.yaml` as a
+bogus deployed agent (same guard as the 2026-08-18 fix for that exact
+failure mode).
+
+**Not yet exercised in practice.** No project currently depends on
+AIrchon via `apm`, so this fallback is unverified against a real
+vendored install, for any of the three agents -- same "plausible, not
+tested" caveat this project already applies elsewhere (e.g. the routed
+course-delivery pipeline). Revisit if/when this project is actually
+published as a dependency for something else to `apm install`.
+
+## 2026-08-19 -- `airchon-teacher.agent.md` split into a lean router + four canonical resource files; Constraints & Scope duplication resolved as a side effect
+
+Follow-up to the same day's genesis conciseness review (below): the
+operator asked whether the classification and course-delivery flows
+themselves -- not just the Routed-Invocation Protocol -- were also
+Progressive-Disclosure candidates, since a given request only ever
+exercises ONE of the two. Confirmed yes: `Invocation Triggers` already
+gives the dispatcher-facing routing signal needed to decide which flow
+applies *before* either flow's detail is loaded, the same mechanism
+that made the Routed-Invocation Protocol extraction work.
+
+**Change:** split the persona into:
+- `.apm/agents/airchon-teacher.agent.md` -- now a lean ROUTER: persona
+  voice, Invocation Triggers, the coarse two-flow Overview diagram,
+  Tier Definitions, Step 1 (kept inline as the hottest path -- a cached
+  tier lookup should cost nothing beyond this file), the
+  Routed-Invocation Protocol stub, and one Boundary fact. 1099 -> 182
+  lines, ~17.0k -> ~3.2k tokens.
+- `resources/airchon-teacher/classification-flow.md` -- Steps 2-8
+  (generate/administer/score/report the 40-question exam), moved
+  verbatim with cross-references retargeted.
+- `resources/airchon-teacher/course-delivery-flow.md` -- CD1-CD8
+  (deliver a tier-transition course session by session), moved
+  verbatim likewise.
+- `resources/airchon-teacher/guardrails.md` -- the exam-quality and
+  edge-case rules shared by BOTH flows (Question Stem Neutrality,
+  Harness-Name Neutrality, Concept-Not-Citation, Self-Assignment
+  Policy, Retake Policy, Alumni Folder Creation, Privacy & Storage,
+  Multi-Harness Alignment) -- genuinely reused by classification's Step
+  2/3 and course-delivery's CD6/CD7 alike, so it earns its own file
+  rather than living inside either flow file.
+
+All four resource files carry the same "Load-trigger:" header
+convention as the pre-existing `exam-file-template.md` and
+`scoring-reference.md`. Every `above`/`below` spatial cross-reference
+in the moved content was individually re-checked against its new file
+boundary and repointed where the target moved to a different file
+(most stayed correct, since most cross-references were already
+same-section); a full audit list is in this session's own working
+notes, not reproduced here.
+
+**Side effect: resolved the prior review's HIGH finding.** The
+monolithic `Constraints & Scope` section (74 lines, ~90% restatement
+of rules already stated in full elsewhere) is gone -- its content
+didn't get relocated as one block (that would have just moved the
+duplication), it got genuinely distributed: each flow file ends in its
+own short "Hard Rules Recap" -- imperative one-liners pointing at the
+section in the SAME file (or `guardrails.md`) that explains them in
+full, never restating the explanation. Same-file pointers carry far
+lower drift risk than the old cross-file-spanning restatement did.
+
+Updated `CLAUDE.md`'s source-of-truth tree and "Always edit" list to
+name all four new resource files as canonical hand-authored source
+(same editing discipline as the `.agent.md` file itself, not generated
+or optional), and to fix one now-stale "see its own Constraints &
+Scope" pointer. Also backfilled two 2026-08-19 state paths
+(`~/.airchon/exercises/<course-slug>-session{N}-exercise/`,
+`~/.airchon/session-{N}.exam.md`) that the scaffold/session-exam
+feature work earlier the same day had introduced but never added to
+that tree.
+
+Redeployed via `apm install`; confirmed deployed copy matches source
+and none of the four new resource files leaked into `apm.lock.yaml` as
+bogus deployed agents (same guard as the 2026-08-18 fix for this exact
+failure mode).
+
+## 2026-08-19 -- Genesis conciseness review of `airchon-teacher.agent.md`: Routed-Invocation Protocol extracted (R3), Constraints & Scope duplication flagged
+
+At the operator's request ("review the teacher in terms of
+conciseness, coherence and following PROSE constraints"), ran the
+genesis review discipline against the file as it stood after today's
+two feature additions below -- measured actual line/char/token counts
+rather than eyeballing, same discipline as the prior 2026-08-18 genesis
+review of this file. Result: 1224 lines / ~18.4k tokens, ~7x either
+sibling agent (`airchon-mentor`/`airchon-author`, ~41 lines/~2.7k
+tokens each), loaded wholesale on every invocation regardless of
+branch -- 1.9x the 645-line size the prior review already flagged as a
+MEDIUM Progressive-Disclosure violation.
+
+Two findings, one fixed here:
+
+**MEDIUM (fixed) -- `Routed-Invocation Protocol` (149 lines) was a
+clean R3 EXTRACT candidate.** It applies only when the `airchon` skill
+dispatches here via its `Agent` tool call with a `mode` field --
+narrower than the direct-invocation exam and course flows that
+dominate this agent's actual usage, so every direct-invocation call was
+paying for tokens it never used. Moved the three JSON-contract Mode
+sections verbatim to
+`resources/airchon-teacher/routed-invocation-protocol.md`, following
+the same "Load-trigger:" header convention as `exam-file-template.md`
+and `scoring-reference.md`; the agent body now carries an ~18-line stub
+naming the exact trigger condition (an incoming `mode` field) instead
+of the full contract. Net effect: 1224 -> 1099 lines, ~18.4k -> ~17.0k
+tokens.
+
+**HIGH (not fixed here, operator asked to solve lazy-loading first) --
+`Constraints & Scope` (74 lines) is ~90% restatement**, not new
+content -- nearly every bullet is "X is a hard rule, see [dedicated
+section] above" for a rule already stated in full there. Explicitly
+NOT a lazy-loading candidate: the content isn't situational, it's
+duplicate, so moving it to a reference file would relocate the
+redundancy rather than remove it. The real fix is deletion/
+consolidation, called out as separate follow-up work.
+
+## 2026-08-19 -- Exercises become harness-real scaffolds summarizing the whole session; a session-exam fallback for purely conceptual sessions
+
+The operator wanted a session's practical exercise to actually feel
+practical: instead of just presenting the curriculum's Exercise text as
+a paragraph and grading a prose submission, `airchon-teacher` now
+generates real starting files -- in the reader's own established
+harness's real conventions -- summarizing everything the session taught
+into a concrete "before" state the reader edits (e.g. an overloaded
+agent file the reader is asked to decompose into a discoverable skill).
+This only makes sense for sessions whose exercise task maps to a real
+harness artifact; a purely conceptual session (an essay, a comparison)
+has nothing to scaffold.
+
+**The invented-content tension.** This project's Constraints & Scope has
+long held a hard line: exercises trace verbatim to
+`knowledge-path-curriculum.md`'s own Exercise field or a session file's
+named exercise, never invented on the spot. A synthesized scaffold
+looked, at first glance, like exactly that -- new content. Resolved by
+splitting *task* from *delivery*: the exercise's task substance still
+comes only from the existing curriculum sourcing (CD4 step 3, unchanged);
+the scaffold (CD4 step 5, new) is a delivery format for that same task,
+built from what the session already taught, and is barred from adding,
+narrowing, or changing what the task asks for. This is documented as a
+narrow, named exception in Constraints & Scope, not a reversal of the
+original rule.
+
+**Change:** `airchon-teacher.agent.md`'s CD4 gains a scaffold-eligibility
+decision (step 4: does the exercise task map to a concrete harness
+artifact?) and Scaffold Generation (step 5), writing starter files to
+`~/.airchon/exercises/<course-slug>-session{N}-exercise/` -- the
+course-slug prefix is required because session numbers restart at 1 in
+every course file, and a bare `session{N}-exercise` name would collide
+across courses. A new CD6 ("The Session Exam") is the fallback for
+sessions judged purely conceptual (or where scaffold generation
+genuinely fails to cohere): a 10-question, harness-agnostic exam scoped
+to *only* that session's own items (never the whole tier), scored 1
+point per question, persisted to its own new file,
+`~/.airchon/session-{N}.exam.md` -- kept structurally separate from both
+`qualify-exam.md` (the 40-question classification exam) and
+`course-progress.md`'s Transition Exam block (whole-tier, course-final),
+so none of the three audit trails can be conflated. A session-exam
+failure follows the Transition Exam's redo-the-session policy (no
+immediate retake), not the scaffold-exercise's three-attempt retry
+policy -- these are different failure semantics for different assessment
+shapes, kept explicit rather than silently reused. Old CD6 (Transition
+Exam) and CD7 (Resume After Interruption) renumbered to CD7 and CD8
+respectively; all cross-references, both mermaid diagrams, and
+`course-progress-template.md` (new `Exercise:`-vs-`Session exam:` session
+line, `Current Session Exam` block, scaffold-path field) updated to
+match.
+
+## 2026-08-19 -- Course-Delivery sessions become genuine masterclasses: full-depth-per-item, multi-turn-aware, name-based resume
+
+The operator's concern: a session's agenda items were being taught but
+with no explicit floor on depth or turn budget, and the tracker recorded
+progress by item number alone -- fine within one sitting, useless for
+recognizing where a multi-day resume actually left off. Three changes
+address this in CD4 (Administer One Session): (1) an item counts as
+"covered" only once its full documented scope has genuinely been taught
+through -- never because a turn ended or the reader gave a noncommittal
+"ok"; (2) a single item, or a whole session, may legitimately take
+several conversation turns to teach through completely -- the existing
+one-at-a-time discipline governs ordering (never teach two items at
+once), not how many turns one item may take; (3) after finishing each
+item, the reader is asked directly whether to continue now or pause the
+session for another day, rather than assumed.
+
+**Change:** `course-progress.md`'s per-session item lists now record
+each item by number AND a short name/paraphrase (never a bare number),
+plus a new `Paused:` line logging a reader-chosen break and where to
+resume. CD8's (then CD7's) resume behavior updated to greet a resumed
+session by the next uncovered item's name, not just its number. The
+Course-Delivery Flow diagram gained an explicit per-item ask-to-continue
+loop and a pause exit state.
+
 ## 2026-08-18 -- `airchon-teacher` now delivers the course behind each tier transition, not only classifies into one
 
 The operator asked for `airchon-teacher` to stop stopping at

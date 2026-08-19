@@ -1,7 +1,7 @@
 # Exam File Template
 
 Load-trigger: Read this file when you reach Step 2 of
-`airchon-teacher.agent.md` (generating a fresh exam, whether direct
+`classification-flow.md` (generating a fresh exam, whether direct
 or via the routed `generate` mode) and need the exact file structure
 to write to `~/.airchon/qualify-exam.md`. Not needed for a cached
 tier lookup, a self-assignment, or a retake confirmation prompt --

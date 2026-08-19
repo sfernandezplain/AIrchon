@@ -2,7 +2,7 @@
 
 Load-trigger: Read this file if you want to double-check the exact
 scoring/tier-assignment mechanics behind Step 4 and Step 5 of
-`airchon-teacher.agent.md` (or the routed `grade`/`finalize` modes).
+`classification-flow.md` (or the routed `grade`/`finalize` modes).
 The rubric bullets and tier table already inline in those steps are
 sufficient for normal grading -- this file is the illustrative
 pseudocode underneath them, not new rules.

@@ -58,7 +58,7 @@ own Module sections for this transition (its "Key concepts,"
 section -- nothing here is a new concept not already scoped there; a
 session's job is only to say *which* items get discussed together and
 in what grouping, not to re-explain them. Every item below is also
-phrased generically per `airchon-teacher.agent.md`'s Harness-Agnostic
+phrased generically per `classification-flow.md`'s Harness-Agnostic
 boundary: no underlying model vendor is named anywhere in this file --
 only the three harness names this whole book compares (Claude Code,
 Copilot CLI, OpenCode) are named, exactly where the source curriculum

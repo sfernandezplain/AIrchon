@@ -9,7 +9,7 @@ flow only ever touches `~/.airchon/level` and `~/.airchon/qualify-exam.md`,
 never this file.
 
 Added 2026-08-18 alongside Course-Delivery Flow -- see
-`airchon-teacher.agent.md`'s Constraints & Scope and `CHANGELOG.md`'s
+`course-delivery-flow.md`'s own Hard Rules Recap and `CHANGELOG.md`'s
 2026-08-18 entry for why this agent now delivers courses instead of
 only classifying into a tier.
 
@@ -26,21 +26,34 @@ only classifying into a tier.
 ## Sessions
 
 - [x] Session 1 -- Memory management
-  - Items covered: 1, 2, 3, 4
-  - Exercise: passed (2026-08-18) -- "<reader's submission, verbatim>"
+  - Items covered: 1 -- What memory means in a harness context;
+    2 -- Working vs. persistent memory; 3 -- Injection timing;
+    4 -- Eviction/summarization triggers
+  - Exercise: passed (2026-08-18) -- scaffold at
+    ~/.airchon/exercises/gnostic-to-demiurge-session1-exercise/ --
+    "<reader's submission, verbatim>"
   - (or: passed-with-notes (2026-08-18, 3 attempts) -- reader chose to
     stand by their attempt after CD5's three-failure resolution offer;
     "<final submission, verbatim>" -- honestly logged, never silently
     upgraded to a clean pass)
 - [ ] Session 2 -- Instruction context budget
-  - Items covered: 1, 2
-  - Items uncovered: 3, 4
+  - Items covered: 1 -- What counts against the instruction budget;
+    2 -- Static vs. dynamic budget allocation
+  - Items uncovered: 3 -- Budget exhaustion failure modes;
+    4 -- Trade-offs in reserving headroom
+  - Paused: 2026-08-19 -- reader chose to continue another day after
+    item 2; resume at item 3 (see CD8)
   - Exercise: not yet reached
-- [ ] Session 3 -- Context compression
-  - Items covered: (none yet)
-  - Exercise: not yet reached
+- [x] Session 3 -- Context compression
+  - Items covered: 1 -- Summarization vs. eviction; 2 -- Compression
+    trigger thresholds; 3 -- What survives a compaction pass
+  - Session exam: passed (7/10, 2026-08-19) -- purely conceptual
+    session, no scaffold-eligible artifact (CD4 step 4) -- see
+    ~/.airchon/session-3.exam.md for the full question/answer record
 - [... one entry per session in the course file, straight through to
-  the final capstone session, in that file's own order and numbering ...]
+  the final capstone session, in that file's own order and numbering;
+  each one ends in EITHER an "Exercise:" line (scaffold-backed, graded
+  via CD5) OR a "Session exam:" line (CD6's fallback), never both ...]
 
 ## Current Exercise
 
@@ -48,9 +61,31 @@ only classifying into a tier.
 **Statement:** "<the exact exercise text presented to the reader --
 either the session's own named exercise, or the corresponding module's
 Exercise field pulled from knowledge-path-curriculum.md>"
+**Scaffold:** ~/.airchon/exercises/gnostic-to-demiurge-session2-exercise/
+-- "<one-line description of the starting files placed there>"
 **Status:** pending / submitted / passed / failed (N attempts) /
 passed-with-notes (offered only after 3 failed attempts, per CD5)
 **Reader's submission:** "<raw text, once submitted>"
+
+*(This block only exists while a scaffold-backed exercise, per CD4/CD5,
+is the session's current practical assessment. A session routed to
+CD6 instead has no Current Exercise block -- see Current Session Exam
+below.)*
+
+## Current Session Exam
+
+**Session:** 3
+**File:** ~/.airchon/session-3.exam.md -- the full 10-question
+record (questions, raw answers, per-question outcome) lives there, not
+duplicated here; this block is only a pointer plus the outcome CD4/CD6
+need to decide what happens next.
+**Status:** not started / in progress / passed / failed
+**Score:** "<N / 10, once finished>"
+
+*(This block only exists while CD6's session exam, not CD5's
+scaffold-backed exercise, is the session's current practical
+assessment -- see Current Exercise above for that case instead. Never
+both blocks populated for the same session at once.)*
 
 ## Transition Exam (Gnostic -> Demiurge)
 
@@ -75,14 +110,55 @@ here that needs to be withheld from them.
 **Update this file after every interaction, not only at session or
 exercise boundaries.** Per-item covered/uncovered state, the exact
 exercise statement once presented, and each transition-exam
-question/answer/outcome must all be persisted as they happen -- CD7
+question/answer/outcome must all be persisted as they happen -- CD8
 ("Resume After Interruption") depends on this file, not on conversation
 recall, being the source of truth for where a reader actually is.
 
-**Only one "Current Exercise" block and one course's "Sessions" list
-exist at a time.** When a course completes (the transition exam
-passes), this file is either reinitialized for the next course (a new
-tier/course header, a fresh Sessions list) or, if the reader just
-reached Archon, left as a closed record with no next course to start --
-Course-Delivery Flow's CD1 returns the Ceiling note in that case rather
-than reinitializing this file into a course that doesn't exist.
+**Items covered/uncovered are recorded by number AND a short name, never
+a bare number.** ("1 -- What memory means in a harness context", not
+just "1".) An item only moves from uncovered to covered once CD4's own
+bar for coverage is met -- its full documented scope actually taught
+through, not a first pass or a turn simply ending -- so this list is
+also the authoritative record of what has genuinely been taught, not a
+running commentary on what's been touched on. The name exists so a
+resume (same day or days later, per CD8) can name the exact pickup
+point at a glance instead of forcing a re-read of the whole session's
+agenda in the course file.
+
+**A `Paused:` line records a reader-chosen break, distinct from an
+uncontrolled interruption.** CD4 asks the reader after every completed
+item whether to continue or pause for another day; when they choose to
+pause, log the date and which item they're resuming at here. Its
+absence doesn't mean anything went wrong -- most sessions likely
+complete without ever needing it -- it only appears when the reader
+explicitly chose not to continue in the same sitting.
+
+**Every session ends in exactly one practical assessment, never both.**
+CD4 decides, per session, whether the exercise task maps to a real
+harness artifact: if so, a scaffold is generated and the session's
+entry gets an `Exercise:` line, graded via CD5. If not, the session
+gets a `Session exam:` line instead, administered and graded via CD6.
+Both are equally valid ways for a session to pass -- neither is a lesser
+substitute for the other -- and a session's entry only ever carries the
+one that actually applied.
+
+**Scaffold paths and session-exam files are pointers, not duplicated
+content.** The actual starter files a scaffold-backed exercise created
+live under `~/.airchon/exercises/<course-slug>-session{N}-exercise/`;
+this tracker only records that path plus a one-line description, never
+copies of the files themselves. The actual 10 questions/answers/outcomes
+of a session exam live in `~/.airchon/session-{N}.exam.md`; this
+tracker only records a pointer to that file plus the final score and
+status, the same relationship `qualify-exam.md` has to a cached tier
+lookup -- full detail lives in its own file, a summary lives here.
+
+**Only one "Current Exercise" or "Current Session Exam" block, and one
+course's "Sessions" list, exist at a time.** Never both blocks
+populated together -- a session is either mid-exercise (CD5) or
+mid-session-exam (CD6), never both. When a course completes (the
+transition exam passes), this file is either reinitialized for the
+next course (a new tier/course header, a fresh Sessions list) or, if
+the reader just reached Archon, left as a closed record with no next
+course to start -- Course-Delivery Flow's CD1 returns the Ceiling note
+in that case rather than reinitializing this file into a course that
+doesn't exist.
