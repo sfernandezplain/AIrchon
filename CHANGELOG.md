@@ -1,3 +1,22 @@
+## 2026-08-19 -- Fixed a real mermaid render failure: semicolons inside `stateDiagram-v2` edge labels
+
+Found live by the operator: `course-delivery-flow.md`'s own diagram
+failed to render with `Lexical error on line 42. Unrecognized text.`
+Root cause: a raw `;` inside an edge label's text --
+`Transitioned --> Redirect: ~/.airchon/level updated (Step 6);<br/>next
+course offered...` -- mermaid's `stateDiagram-v2` grammar treats `;` as
+a statement terminator even inside label text, so everything after it
+on the line became unparseable garbage. Swept the whole agent/resource
+file set for the same pattern (`--> ... ;` anywhere in an edge line)
+rather than just patching the one reported instance: found two more,
+both pre-existing in `classification-flow.md`'s Core Workflow diagram
+(unchanged content, just relocated there by the router split above) --
+`Shuffle presentation order;<br/>tier stays...` and `(tier
+hidden);<br/>collect answer...`. Fixed: replaced each embedded `;`
+with `--` or a line break, preserving the label's meaning exactly.
+Verified with a repo-wide grep that no `--> ... ;` pattern remains in
+any mermaid block. Redeployed via `apm install`.
+
 ## 2026-08-19 -- `/genesis` review of the `airchon-teacher` file set post-split: three findings, all fixed
 
 At the operator's request ("review for conciseness, coherence and

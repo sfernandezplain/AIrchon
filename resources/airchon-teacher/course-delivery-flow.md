@@ -75,7 +75,7 @@ stateDiagram-v2
 
     RedoFinal --> AdministerSession: final session reset to not-done,<br/>no immediate retake
 
-    Transitioned --> Redirect: ~/.airchon/level updated (Step 6);<br/>next course offered, or Ceiling note if now Archon
+    Transitioned --> Redirect: ~/.airchon/level updated (Step 6)<br/>next course offered, or Ceiling note if now Archon
     Redirect --> [*]
     CeilingNote --> [*]
 ```

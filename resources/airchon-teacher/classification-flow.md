@@ -40,10 +40,10 @@ stateDiagram-v2
 
     LoadCurriculum --> GenerateExam: Read knowledge-path-curriculum.md<br/>+ the topic pages it cites
     GenerateExam --> ShuffleOrder: Generate 40 harness-agnostic,<br/>well-explained questions (10/tier)
-    ShuffleOrder --> WriteExamFile: Shuffle presentation order;<br/>tier stays internal bookkeeping only
+    ShuffleOrder --> WriteExamFile: Shuffle presentation order --<br/>tier stays internal bookkeeping only
     WriteExamFile --> AdministerOne: Save full exam + answer key to<br/>~/.airchon/qualify-exam.md
 
-    AdministerOne --> AdministerOne: One todo/task per question,<br/>presented one at a time (tier hidden);<br/>collect answer, teach the concept,<br/>mark done, advance
+    AdministerOne --> AdministerOne: One todo/task per question,<br/>presented one at a time (tier hidden)<br/>collect answer, teach the concept,<br/>mark done, advance
     AdministerOne --> Score: All 40 collected
 
     Score --> AssignTier: 0.25 pts/question --<br/>MC/short exact-match,<br/>essay via generous rubric
