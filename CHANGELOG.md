@@ -1,3 +1,147 @@
+## 2026-08-19 -- Made the `airchon` router fall back to `TaskCreate` when `Agent(...)` is unavailable
+
+The router skill was still hard-stopping on runtimes that did not
+surface Claude Code's `Agent(...)` tool, even though this project's
+router and teacher flows already had `TaskCreate` in their allowed tool
+set. Fixed `SKILL.md` so it now classifies first, then dispatches via
+`Agent(...)` when present or `TaskCreate` otherwise, instead of
+redirecting the user to call the underlying persona directly.
+
+## 2026-08-19 -- Fixed a second mermaid render hazard: bare `<` inside `stateDiagram-v2` edge labels
+
+Found at the operator's request ("fix the mermaid diagram"), same day
+as and same root-cause family as the earlier `;`-in-edge-label fix
+below: a literal `<` inside an edge label -- `score < 5/10` -- sits in
+the same hazardous position as the semicolon did, because these
+diagrams' own established convention of writing `<br/>` literally for
+line breaks means label text is parsed HTML-ish; an unclosed `<` not
+part of a recognized tag (`< 5/10` is not `<br/>`) breaks that parsing
+the same way the semicolon broke the state-diagram grammar itself.
+Grepped the whole repo's mermaid blocks for the pattern rather than
+patching only the one instance: found three, not one --
+`.apm/agents/airchon-teacher.agent.md` (the deployed router-map
+diagram) and two in `course-delivery-flow.md` (CD6's session-exam
+branch and CD7's transition-exam branch). `classification-flow.md`'s
+own diagram, checked for the same pattern, had none.
+
+Fixed: replaced `score < 5/10` with `score below 5/10` in all three
+spots -- words instead of the operator symbol, the same style choice
+the semicolon fix used (`--` or a line break instead of `;`). Redeployed
+via `apm install` for `airchon-teacher.agent.md`'s copies in
+`.claude/agents/` and `.github/agents/`; `course-delivery-flow.md` needs
+no redeploy (read directly, not built by `apm install`).
+
+## 2026-08-19 -- Closed the "marked covered without ever being shown" gap in Course-Delivery Flow
+
+At the operator's request, tightened further than the
+tracker-write-ordering fix immediately below: "the persistence of the
+items covered should be made ONLY after the TEACHER agents WRITE the
+lesson to the user SO the Skill can print it AND the user may see it,
+write it as done without showing IS NEVER NEVER ALLOWED." The prior fix
+only ordered the write relative to the next prompt; it didn't rule out
+the tracker claiming an item "covered" for content that was never
+actually emitted to the reader in the first place -- a real risk
+especially on the routed-via-`airchon`-skill path, where this agent
+returns text once and a SEPARATE actor (the skill) is the one that
+actually prints it to the reader. That is exactly the failure mode
+found and fixed in the first 2026-08-19 entry below (agent-relay
+contract) -- session content existed but nothing was rendered. A
+tracker write made independent of what was actually shown could
+silently launder that exact failure into "the reader was taught this,"
+permanently, with no way to detect it later.
+
+Fixed in `course-delivery-flow.md`: CD4 step 2 now states, as a
+standalone rule ahead of the persistence bullet, that a "covered" write
+may only happen for content that already exists in the visible
+response the reader can actually read -- never as a side effect ahead
+of, instead of, or assumed-independent from that visible text. Applied
+the same tightening to the Hard Rules Recap. Also added a cross-
+reference in `routed-invocation-protocol.md`'s Course-Delivery note
+naming the connection to the agent-relay bug explicitly, so a future
+reader of either file sees why this rule exists, not just that it does.
+Neither file is deployed by `apm install` (both live under
+`resources/airchon-teacher/`, read directly) -- no redeploy needed.
+
+## 2026-08-19 -- Made tracker-write-before-next-prompt an explicit ordering rule in Course-Delivery Flow
+
+At the operator's request: "once an item is teach it should update the
+course prior to give the user the prompt again." CD4 step 2 in
+`course-delivery-flow.md` already listed persisting an item's
+covered/uncovered state and then asking the reader whether to continue
+as two separate bullets in that order, but never stated the ordering
+itself as a rule -- it was only implied by bullet sequence, which a
+future edit could silently reverse or merge without violating anything
+written down. Concretely, the risk: if the "continue?" prompt went out
+before the tracker write landed, an interruption in that window would
+leave the tracker still showing the just-taught item as uncovered.
+
+Fixed: reworded both bullets in CD4 step 2 so the tracker write is
+explicitly required to happen immediately after an item's explanation
+completes, before the continue/pause prompt or any other content goes
+out -- not just before the *next item*, before anything. Added the same
+ordering constraint to the Hard Rules Recap so it's visible to a reader
+of that section alone. Not deployed by `apm install` (this file lives
+under `resources/airchon-teacher/`, read directly, per `CLAUDE.md`) --
+no further action needed for the change to take effect.
+
+## 2026-08-19 -- Corrected why the `airchon` router is Claude-Code-only (wrong reason had been documented)
+
+At the operator's request to "make the router cross compatible,"
+checked the premise before touching code: `CLAUDE.md` and
+`.apm/skills/airchon/SKILL.md` both claimed the router only reaches
+Claude Code because "Copilot CLI has no equivalent skill bundle
+path." Had `airchon-mentor` verify that claim against official
+Copilot CLI docs and its public repo rather than trust it as
+settled -- it was wrong. Copilot CLI does discover skills, at
+`.github/skills/<name>/`; this project's `apm install` tooling simply
+doesn't populate that path today.
+
+That still doesn't make the router portable, though, for a more
+fundamental reason: Copilot CLI has no agent-to-agent invocation
+primitive at all -- no equivalent of Claude Code's `Agent` tool a
+skill's own instructions can call to dispatch to a named custom agent
+and read its output back. Agent selection on Copilot CLI is always
+either the human (`/agent`, `--agent <name>`) or the main session's
+own automatic inference from an agent's `description` frontmatter --
+never a skill's static classify-then-dispatch logic. So even a
+byte-identical copy of `SKILL.md` sitting at
+`.github/skills/airchon/` would not actually work there.
+
+Fixed: corrected the reasoning in both `CLAUDE.md` (two spots -- the
+`airchon` primitive's own description, and the `apm.lock.yaml`
+verification note) and `SKILL.md`'s intro paragraph, replacing the
+wrong "no skill bundle path" claim with the real one, and making
+explicit that Copilot CLI users already get equivalent coverage today
+via Copilot's own automatic custom-agent inference plus `/agent`/
+`--agent <name>` -- which works because the three agents already
+deploy to `.github/agents/` with descriptive frontmatter. No code
+change was possible or warranted for the router's actual dispatch
+mechanism; this was a documentation-accuracy fix, not a feature.
+Redeployed via `apm install` to refresh the deployed `SKILL.md` copies.
+
+## 2026-08-19 -- Fixed the `airchon` router's agent-relay contract so lesson content actually reaches the reader
+
+Found live while teaching through `/airchon teach me`: the router's
+old instruction said, in essence, "call one agent, then return its
+answer," but that still left room for a harness to summarize, frame,
+or otherwise treat the sub-agent output as relay metadata instead of
+plain response text. In practice that ambiguity produced exactly the
+failure the operator saw: session content existed, but nothing useful
+was rendered to the reader because the router path did not state
+strongly enough that the returned text itself must be emitted as the
+visible response.
+
+Fixed in `.apm/skills/airchon/SKILL.md`: the relay rule now requires
+the router to display the chosen agent's returned text **verbatim, in
+full, as the skill's own response**, with no trimming, paraphrase,
+framing, attribution, or added commentary around it. This keeps the
+router thin in the way it was always meant to be, but closes the live
+rendering gap explicitly rather than relying on implication.
+
+Verified the deployed copies at `.claude/skills/airchon/SKILL.md` and
+`.agents/skills/airchon/SKILL.md` already match the updated canonical
+source, and `apm.lock.yaml` reflects the new content hash.
+
 ## 2026-08-19 -- Fixed a real mermaid render failure: semicolons inside `stateDiagram-v2` edge labels
 
 Found live by the operator: `course-delivery-flow.md`'s own diagram

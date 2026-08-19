@@ -48,11 +48,20 @@ that work together:
   `TaskCreate`/`TodoWrite` rendering for that one flow instead, while
   originating none of the exam's content. See `SKILL.md`'s own Exam
   Administration section and `airchon-teacher.agent.md`'s
-  Routed-Invocation Protocol for the full contract. Skills only have a deploy
-  mechanism on Claude Code (`.claude/skills/<name>/`) -- Copilot CLI
-  has no equivalent skill bundle path -- so this router only actually
-  reaches Claude Code; the three agents themselves are what keep
-  Copilot covered.
+  Routed-Invocation Protocol for the full contract. Copilot CLI does
+  have its own skill-discovery path (`.github/skills/<name>/`), and
+  this project's deploy tool (`apm install`) simply doesn't populate
+  it today -- but that's not the real blocker. Even a copy placed
+  there would not work: Copilot CLI has no agent-to-agent invocation
+  primitive at all (no equivalent of Claude Code's `Agent` tool a
+  skill's own instructions can call), so this router's core
+  classify-then-dispatch mechanism has no Copilot CLI equivalent
+  regardless of file placement -- confirmed 2026-08-19 via
+  `airchon-mentor`, grounded in official Copilot CLI docs/repo (see
+  `CHANGELOG.md`). So this router only actually reaches Claude Code;
+  the three agents themselves are what keep Copilot covered, reached
+  there via Copilot's own automatic custom-agent inference, its
+  `/agent` picker, or `--agent <name>`.
 - **`airchon-teacher`** (`.apm/agents/airchon-teacher.agent.md`,
   renamed from `teacher` on 2026-08-17 -- see `CHANGELOG.md`) -- a
   standalone custom agent, unrelated to the mentor/author split above,
@@ -222,10 +231,13 @@ Verified live via this project's own `apm.lock.yaml` after running
 `apm install`: all three agents (mentor, author, airchon-teacher)
 deploy to `.claude/agents/` and `.github/agents/` (both targets,
 6 files); the skill deploys to `.claude/skills/airchon/` and
-`.agents/skills/airchon/` (no `.github/skills/...` entry -- Copilot
-never gets a skill copy; `airchon-teacher` still has no skill of its
-own, but is reachable via the `airchon` skill's routing on Claude
-Code, same as the other two agents). Re-check `apm.lock.yaml` after
+`.agents/skills/airchon/` (no `.github/skills/...` entry -- a gap in
+this project's own deploy tooling, not a Copilot CLI limitation, and
+moot either way since the router's dispatch mechanism has no Copilot
+CLI equivalent regardless -- see the note above; `airchon-teacher`
+still has no skill of its own, but is reachable via the `airchon`
+skill's routing on Claude Code, same as the other two agents).
+Re-check `apm.lock.yaml` after
 any future `apm install` rather than assuming this list is still
 current.
 

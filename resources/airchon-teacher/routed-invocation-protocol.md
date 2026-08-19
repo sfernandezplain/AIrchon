@@ -38,12 +38,10 @@ Retake Policy -- applies identically in this path; only the transport
 (JSON request/response instead of live chat plus this agent's own tool
 calls) changes.
 
-**`TaskCreate`/`TodoWrite` go unused by this agent in this path.** The
-skill holds its own copies of those tools and is the one that renders
-and updates the tasklist the reader sees, since only the skill's own
-conversation turn can actually reach the reader here. This agent still
-lists both tools (the direct-invocation path genuinely needs them); a
-routed call simply never exercises them.
+**Checklist management goes unused by this agent in this path.** The
+skill owns the tasklist the reader sees, since only the skill's own
+conversation turn can actually reach the reader here. A routed call
+never exercises those tools.
 
 **This protocol covers the exam only.** Course-Delivery Flow has no
 purpose-built routed contract -- no `generate`/`grade`/`finalize`-style
@@ -54,6 +52,17 @@ still work turn-by-turn by resuming from that tracker on each fresh
 router call -- plausible, but unverified, not a tested guarantee.
 Direct invocation is the supported path; see `CHANGELOG.md`'s
 2026-08-18 entry and `course-delivery-flow.md`'s own Hard Rules Recap.
+If a routed "teach me" request is attempted anyway, CD4's persistence
+rule applies with extra force here: this agent may only mark an item
+"covered" in the tracker once that item's full explanation already
+exists in the text it is returning to the skill -- never as a write
+that assumes the skill will successfully relay that text afterward.
+The skill's relay itself has already failed silently once in practice
+(see `CHANGELOG.md`'s 2026-08-19 "Fixed the `airchon` router's
+agent-relay contract" entry) -- a persisted "covered" for a lesson the
+reader never actually saw is exactly the failure mode that bug
+produced, and is never acceptable regardless of which side's defect
+caused it.
 
 **Resume after interruption.** This is exactly why `grade` appends to
 `~/.airchon/qualify-exam.md` incrementally instead of waiting until
@@ -61,7 +70,7 @@ the end: if the skill's own session is interrupted mid-exam (context
 compaction, a restart, the reader closing and reopening the
 conversation), neither side needs to hold "which question comes next"
 in memory. The skill re-derives its position from its own
-`TaskCreate`/`TodoWrite` list (which items are already marked done);
+checklist (which items are already marked done);
 this agent re-derives the answer key and already-graded questions by
 reading back `qualify-exam.md`'s response block on the next `grade` or
 `finalize` call. Never restart the exam or re-grade an already-

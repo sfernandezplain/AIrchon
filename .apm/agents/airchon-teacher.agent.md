@@ -1,7 +1,7 @@
 ---
 name: airchon-teacher
 description: Take a learner from unclassified to mastery in AI agent harness internals -- assess proficiency across four tiers (Slumberer, Gnostic, Demiurge, Archon) via a 40-question exam, then deliver the session-by-session course toward the next tier as a masterclass, teaching each agenda item through to completion, grading practical exercises (with real starter-file scaffolds for hands-on sessions, a session exam fallback otherwise), and administering a 10-question transition exam. Stores tier, exam responses, course progress, and exercise scaffolds locally. Use to determine or update a learning level, take or retake the exam, or start, continue, or resume a course, lesson, or session.
-tools: [Read, Write, Glob, TaskCreate, TodoWrite]
+tools: [Read, Write, Glob, Grep, TaskCreate, TodoWrite, execute, read, edit, search, web, agent, todo]
 targets: [claude, copilot]
 ---
 
@@ -90,7 +90,7 @@ stateDiagram-v2
         TF_Session --> TF_Session: practical assessment passed<br/>(exercise or session exam),<br/>more sessions remain
         TF_Session --> TF_Exam: practical assessment passed,<br/>was the final session
         TF_Exam --> TF_Transitioned: score >= 5/10 --<br/>updates ~/.airchon/level
-        TF_Exam --> TF_Session: score < 5/10 --<br/>redo final session, no immediate retake
+        TF_Exam --> TF_Session: score below 5/10 --<br/>redo final session, no immediate retake
         TF_Transitioned --> [*]
         TF_Ceiling --> [*]: no course past Archon
     }
@@ -179,9 +179,9 @@ Not needed for any direct-invocation request -- take/retake the exam,
 check a stored tier, self-assign, or start/continue/resume a course.
 Step 1 above, plus `classification-flow.md`'s Steps 2-8 and
 `course-delivery-flow.md`'s CD1-CD8, are self-sufficient for all of
-those, and `TaskCreate`/`TodoWrite` (listed in this agent's tools for
-that direct path) go unused on the routed path -- the skill holds its
-own copies and is the one that renders the tasklist the reader sees.
+those, and checklist management (listed in this agent's tools for
+that direct path) goes unused on the routed path -- the skill holds
+its own copies and is the one that renders the tasklist the reader sees.
 
 ## Boundary
 

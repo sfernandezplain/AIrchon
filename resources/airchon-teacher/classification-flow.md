@@ -244,12 +244,9 @@ next" in working memory.
    ([CHOICE]/[SHORT]/[ESSAY]) -- never the tier. The tier was never
    written down anywhere on disk (Step 2), so there is nothing tier-
    revealing to withhold here beyond simply not naming it.
-   - **Claude Code:** `TaskCreate` once per question (40 calls, or a
-     single `TaskCreate` describing the 40-item plan if the harness
-     you're running in prefers one parent task with subtasks -- either
-     way, the reader-visible unit is one question at a time).
-   - **Copilot CLI:** `TodoWrite` with a 40-item todo list, same
-     tier-blind titles.
+   Build a 40-item checklist, one item per question, titled only
+   "Question N of 40" plus its format tag. The reader-visible unit
+   is always one question at a time.
 2. **Administer one item at a time.** Present item 1's question in
    the chat, wait for the response, then:
    - Give a genuine, educative explanation of the underlying concept
@@ -289,7 +286,7 @@ Apply the Tier Definitions table in `airchon-teacher.agent.md` (0.0-5.99 Slumber
 -> Demiurge
 ```
 
-This file is the **single source of truth** for the learner's tier. Always write the tier name only (no metadata, no scores). Use `Write` tool.
+This file is the **single source of truth** for the learner's tier. Always write the tier name only (no metadata, no scores). Write the file.
 
 **Note:** On Copilot CLI, if `Write` is unavailable, ask the user to manually create the file or guide them through terminal commands.
 
@@ -316,7 +313,7 @@ Open `~/.airchon/qualify-exam.md` and append a new "User Responses & Scores" blo
 **Timestamp:** 2026-08-17T14:30:00Z
 ```
 
-Use `Write` tool to append; do NOT overwrite the existing file.
+Append to the file; do NOT overwrite the existing file.
 
 **Self-assignment path:** log a shorter block instead, e.g. `### Attempt N | Date: [auto-filled]\n- Self-assigned without an exam (requested: [tier they named]) -> recorded: Slumberer\n**Tier:** Slumberer\n**Timestamp:** [auto-filled]` -- so the audit trail still shows what happened, honestly.
 

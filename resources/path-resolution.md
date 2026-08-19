@@ -1,6 +1,6 @@
 # Path Resolution for Project-Relative Paths (Shared by All Three Bare Agents)
 
-Load-trigger: read this before resolving any `Read`/`Glob` of a path
+Load-trigger: read this before resolving any file read or file search of a path
 under `references/harnesses/` or `resources/` -- from any of this
 project's three standalone agents (`airchon-mentor`, `airchon-author`,
 `airchon-teacher`). Added 2026-08-19, at the operator's request, once
@@ -34,14 +34,14 @@ resolves from cwd.
 **The algorithm.** Resolve every such path this way, never assuming in
 advance which case applies:
 
-1. **Try the literal path first**, exactly as named (e.g. `Read
-   references/harnesses/knowledge-path-curriculum.md`). If it
+1. **Try the literal path first**, exactly as named (e.g. read
+   `references/harnesses/knowledge-path-curriculum.md`). If it
    resolves, you are running standalone inside this repo -- done; this
    is the expected outcome almost always.
 2. **On a not-found result, fall back to a vendored-dependency
-   search.** `Glob` for `apm_modules/*/*/<the same literal path>` (e.g.
+   search.** Search for `apm_modules/*/*/<the same literal path>` (e.g.
    `apm_modules/*/*/references/harnesses/knowledge-path-curriculum.md`)
-   and `Read` whichever single match comes back. There should be at
+   and read whichever single match comes back. There should be at
    most one -- this repo is a leaf dependency, not itself re-vendored
    recursively.
 3. **If step 2 returns more than one match, or neither step resolves

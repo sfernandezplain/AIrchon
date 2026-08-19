@@ -68,10 +68,10 @@ stateDiagram-v2
     SessionExam --> GradeSessionExam: 10 questions on this session's<br/>material only, one at a time
     GradeSessionExam --> AdministerSession: score >= 5/10,<br/>more sessions remain
     GradeSessionExam --> TransitionExam: score >= 5/10,<br/>was the course's final session
-    GradeSessionExam --> AdministerSession: score < 5/10 --<br/>redo this session's teaching,<br/>no immediate retake
+    GradeSessionExam --> AdministerSession: score below 5/10 --<br/>redo this session's teaching,<br/>no immediate retake
 
     TransitionExam --> Transitioned: score >= 5/10
-    TransitionExam --> RedoFinal: score < 5/10
+    TransitionExam --> RedoFinal: score below 5/10
 
     RedoFinal --> AdministerSession: final session reset to not-done,<br/>no immediate retake
 
@@ -174,25 +174,48 @@ message" constraint.
      reader needs to pause (CD8), it stays recorded as in-progress or
      uncovered, never covered, so a later resume picks the item back up
      rather than skipping it as already done.
-   - **Persist covered/uncovered state by item NAME, not number alone.**
-     Update the tracker (per the Item Naming note in
-     `course-progress-template.md`) as each item is actually completed,
-     not only once the whole session ends -- record each item's number
+   - **Never persist "covered" for content the reader hasn't actually
+     been shown.** The write to the tracker may only happen once the
+     item's full explanation text already exists as part of the visible
+     response -- the same message (or an earlier one already sent) the
+     reader can actually read. Writing "covered" as a side effect ahead
+     of, instead of, or independent from that visible text -- so the
+     tracker claims an item done while the reader never saw it taught --
+     is **never allowed, under any circumstance**. This applies with
+     extra force on the routed-via-`airchon`-skill path (see
+     `routed-invocation-protocol.md`): a subagent call there returns its
+     text once, and it is the *skill* that actually prints that returned
+     text to the reader -- so the persisted state must reflect only what
+     this agent's own returned response already contains, never content
+     planned, summarized, or assumed-delivered but not actually emitted
+     in that response.
+   - **Persist covered/uncovered state by item NAME, not number alone,
+     immediately once shown -- before anything else, including the next
+     bullet's prompt.** The moment one item's explanation is genuinely
+     complete AND has been emitted to the reader, write the tracker
+     update (per the Item Naming note in `course-progress-template.md`)
+     right then, as its own step, before asking the reader anything or
+     presenting the next item's content -- never batch it until the
+     whole session ends, and never let the "continue?" prompt below go
+     out first with the write following after. Record each item's number
      AND a short name/paraphrase of what it covers (e.g. "3 -- Reactive
-     vs. deliberative agents"), never a bare number. A bare number
+     vs. deliberative agents"), never a bare number -- a bare number
      forces a same-day memory of what "item 3" was; a name lets the
      reader (and you, on a fresh call days later) recognize the resume
-     point at a glance.
-   - **After the item is covered, ask before continuing.** Once one
-     item's full explanation is done, ask the reader directly whether
-     to continue now with the next item (or, if that was the session's
-     last item, with the exercise) or to pause here and pick the session
-     back up another day. Wait for their answer -- never assume they
-     want to keep going just because the last item landed. If they
-     choose to pause, say plainly that their progress (which items are
-     covered, by name) is already saved and that resuming later will
-     pick up exactly at the next uncovered item -- then stop; do not
-     keep teaching.
+     point at a glance. This ordering matters concretely: if the
+     conversation is interrupted between finishing an item and asking to
+     continue, the tracker must already show that item done, not still
+     uncovered -- but only because the reader by then has already seen
+     it, never as a pre-emptive write.
+   - **Only then, ask before continuing.** With the tracker already
+     updated, ask the reader directly whether to continue now with the
+     next item (or, if that was the session's last item, with the
+     exercise) or to pause here and pick the session back up another
+     day. Wait for their answer -- never assume they want to keep going
+     just because the last item landed. If they choose to pause, say
+     plainly that their progress (which items are covered, by name) is
+     already saved and that resuming later will pick up exactly at the
+     next uncovered item -- then stop; do not keep teaching.
 3. Determine this session's practical exercise **task** (only once
    every item is covered AND the reader has chosen to continue into the
    exercise) -- this sourcing is unchanged and still the only source of
@@ -441,9 +464,15 @@ not a nicety).
   bounds ordering, not duration -- a single item, or a whole session,
   may legitimately span several conversation turns (CD4 step 2).
 - An agenda item is only "covered" once genuinely taught through in
-  full, recorded in the tracker by name, not just number (CD4 step 2).
-  After finishing an item, ask the reader whether to continue or pause
-  -- never assume.
+  full **and that full explanation has actually been shown to the
+  reader** -- recorded in the tracker by name, not just number, with
+  the write happening immediately after showing it, before the
+  "continue or pause?" prompt goes out (CD4 step 2). **Persisting
+  "covered" for content the reader was never actually shown is never
+  allowed, under any circumstance** -- this holds even harder on the
+  routed-via-skill path, where the skill (not this agent) is what
+  actually prints the response. After finishing an item, ask the
+  reader whether to continue or pause -- never assume.
 - Course-delivery has no purpose-built router pipeline (unlike the
   exam's `generate`/`grade`/`finalize` contract) -- direct invocation
   is the supported path; a routed "teach me" request resuming from the

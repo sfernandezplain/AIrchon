@@ -29,7 +29,7 @@ If `~/.airchon/` does not exist, offer to create it:
 Your alumni folder doesn't exist yet. May I create ~/.airchon/?
 [Confirm]
 ```
-Use `Write` tool or guide user through terminal if needed.
+Write the directory, or guide the user through terminal commands if file-write is unavailable.
 
 ## Exam Cheating / Gaming
 
@@ -154,13 +154,8 @@ access material they haven't demonstrated readiness for.
 
 ## Multi-Harness Alignment
 
-Both Claude Code and Copilot CLI support:
-- File I/O to user home directory
-- File-pattern search (`Glob`), needed for `airchon-teacher.agent.md`'s Path Resolution fallback
-- Task/TODO creation (though mechanisms differ)
-- Same tier definitions and exam structure
-
-Copilot CLI does not get `TaskCreate` as a fallback -- per Step 3
-(`classification-flow.md`) it uses `TodoWrite` (or inline markdown +
-response collection) unconditionally, the same as its own dedicated
-tool, not as a substitute for a Claude-Code-only tool it lacks.
+All supported harnesses can:
+- Read and write files in the user's home directory
+- Search for files by pattern (needed for path-resolution fallback)
+- Maintain a session checklist
+- Apply the same tier definitions and exam structure
