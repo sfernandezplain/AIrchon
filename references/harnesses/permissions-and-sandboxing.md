@@ -1,4 +1,4 @@
-# Permissions & sandboxing architecture -- Claude Code, GitHub Copilot CLI, and OpenCode
+# Permissions & sandboxing architecture -- Claude Code, GitHub Copilot CLI, OpenCode, and DeepSeek Harness
 
 **Scope note.** [Configuration](configuration.md) already covers the permission-rule
 *schema* -- where `permissions.allow`/`permissions.deny` live, how they merge across
@@ -15,9 +15,9 @@ sandboxing vs. no OS enforcement at all), and where each harness's own documenta
 source name a real, acknowledged escape hatch or residual risk in that architecture.
 
 Every claim is tagged VERIFIED (fetched this session from a named source) or BEST
-CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, and OpenCode are three
-separate products from three separate organizations -- a mechanism confirmed for one is
-never assumed to hold for another without its own citation.
+CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, and DeepSeek
+Harness are four separate products from four separate organizations -- a mechanism
+confirmed for one is never assumed to hold for another without its own citation.
 
 ---
 
@@ -486,8 +486,10 @@ require approval to run." Nothing in the fetched docs frames the `permission` co
 a security boundary against a hostile or compromised model -- it is presented as a
 user-facing approval/awareness control, consistent with [Built-in tools](built-in-tools.md)
 §3's own finding that OpenCode's stated default is "by default, all tools are enabled
-without requiring permission," the most permissive baseline of the three harnesses in
-this book. `"deny"` rules are stated to remain enforced even when a broader auto-approve
+without requiring permission," the most permissive default baseline of Claude Code,
+Copilot CLI, and OpenCode specifically (DeepSeek Harness's own shipped defaults, per
+§4.2 below, pair a sandbox mode with an `ask` approval policy by default, not an
+unconditional allow). `"deny"` rules are stated to remain enforced even when a broader auto-approve
 posture is otherwise in effect for a session -- the one hard guarantee the schema itself
 offers.
 
@@ -627,7 +629,113 @@ a fallback state a user has to specifically trigger:
 
 ---
 
-## 4. Synthesis
+## 4. DeepSeek Harness
+
+Sources for this section: VERIFIED, fetched 20 August 2026 directly from
+`deepseek-ai/deepseek-harness` (`master` branch, developer preview -- see
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §4
+for this book's fuller introduction to the harness itself, not repeated
+here) -- `docs/subsystems/sandbox.md` and
+`docs/subsystems/permission-presets.md`.
+
+### 4.1 The sandbox seam: process-level OS confinement, filesystem effects only
+
+DeepSeek Harness's sandbox subsystem is process-level, platform-specific OS
+confinement -- not a container or microVM. The docs state the distinction
+directly: "containers, microVMs, and remote execution are sibling
+implementations of whole capability seams, not providers of `ctx.sandbox`"
+-- i.e. those heavier isolation strategies live behind a different,
+larger capability seam entirely (most likely `ctx.subprocess`'s `e2b`
+provider, documented from the subagent-dispatch angle in [Fan-out
+(subagent dispatch)](fan-out.md) §4) rather than being an alternative
+backend for the same `ctx.sandbox` interface. The confirmed per-platform
+backends are **Landlock plus Bubblewrap (`bwrap`) on Linux**, **Seatbelt on
+macOS**, and an **ACL-based restricted-token backend on Windows**.
+
+The sandbox vocabulary is a **per-call policy**, not a fixed global
+setting: three modes govern filesystem effects specifically -- `read-only`
+(denies writes except required sinks such as `/dev/null`),
+`workspace-write` (permits writes under the workspace root and
+backend-specific temp areas), and `danger-full-access`, which the docs
+document as **bypassing the `ctx.sandbox` seam entirely** rather than as a
+permissive parameterisation of it: "a `danger-full-access` consumer spawns
+its original argv and does not call `ctx.sandbox`" at all. Enforcement is
+self-reported by the backend as either `full` or `partial` (the latter for
+older kernel ABI versions or Windows ACL limitations), and the docs are
+explicit that consumers requiring an absolute boundary must treat a
+`partial` report as a rejection rather than proceeding optimistically.
+Network isolation and process-visibility confinement are explicitly out of
+this particular seam's vocabulary -- `ctx.sandbox` governs filesystem
+effects only, a narrower scope than Claude Code's own two-independently-
+toggleable-layer sandbox (§1.5 above), which covers both filesystem *and*
+network isolation under one mechanism.
+
+### 4.2 Permission presets: two independent knobs, not one linear scale
+
+Sitting one layer above the sandbox seam itself, a **permission preset**
+bundles two independently-settable knobs rather than exposing one linear
+scale -- `sandbox/mode` (one of the three filesystem modes above) and
+`approval/policy` (whether user consent is required before a tool executes,
+e.g. `ask` vs. `never`).
+
+```mermaid
+flowchart LR
+    Preset["Permission preset\n(one named surface shown to the user)"]
+    Preset --> Ax1["sandbox/mode\n(read-only / workspace-write /\ndanger-full-access)"]
+    Preset --> Ax2["approval/policy\n(ask / never)"]
+    Ax1 & Ax2 --> WW["workspace-write preset:\nsandbox/mode=workspace-write + approval/policy=ask"]
+    Ax1 & Ax2 --> DFA["danger-full-access preset:\nsandbox/mode=danger-full-access + approval/policy=never"]
+    Ax1 & Ax2 --> Custom["'custom' -- a reserved DISPLAY name,\nnot a selectable stored config,\nshown whenever the live knob values\ndon't match either shipped preset"]
+```
+
+The two shipped default presets pair these knobs as `workspace-write`
+(sandbox mode `workspace-write` + policy `ask`) and `danger-full-access`
+(sandbox mode `danger-full-access` + policy `never`); custom presets can
+bundle any other pairing through config. A reserved preset name, `custom`,
+is used purely as a *derived display state* when the current knob values
+don't match any declared preset -- clients show it but cannot select it
+directly, since it names a combination rather than a stored configuration.
+
+### 4.3 Convergence with Claude Code's own sandbox primitives, and Claude Code's escape hatch naming
+
+Both of §4.1's and §4.2's findings connect directly to §1 above. Claude
+Code's own Seatbelt-on-macOS/bubblewrap-on-Linux OS-level sandbox pairing
+(§1.5, documented from Anthropic's own docs) uses the *exact same two named
+primitives* DeepSeek Harness's docs confirm independently here -- a
+genuine, independently-arrived-at convergence on Seatbelt and bubblewrap
+specifically as the two platforms' sandboxing primitives of choice among
+agent harnesses, not merely a coincidence of vocabulary. DeepSeek's
+`danger-full-access` naming is also close enough to Claude Code's
+`dangerouslyDisableSandbox` flag (§1.6) and Copilot CLI's
+`sandbox.allowBypass` managed setting (§2.4) that §5's synthesis below
+treats the "explicit, prominently-named danger/bypass escape hatch"
+pattern as a three-way convergence worth stating on its own.
+
+### 4.4 Using DeepSeek's two-axis preset model as a reasoning aid for Claude Code's six permission modes -- BEST CURRENT UNDERSTANDING, UNCONFIRMED
+
+§1.2 above documents Claude Code's six named permission modes as the docs
+present them: a flat, enumerated menu (`default`/`manual`, `acceptEdits`,
+`plan`, `auto`, `dontAsk`, `bypassPermissions`). DeepSeek's permission-preset
+docs (§4.2) state outright that a preset is a *pairing of two independent
+knobs* -- `sandbox/mode` and `approval/policy` -- collapsed into one named
+surface for the user, with an explicit `custom` label reserved for whatever
+combination doesn't match a named preset. **BEST CURRENT UNDERSTANDING,
+UNCONFIRMED:** Claude Code's own six modes plausibly factor the same way
+internally -- "where code is allowed to run" and "whether the user is asked
+first" as two logically separate axes collapsed into one named-mode menu
+for UX simplicity -- but Claude Code's own docs present the six modes as a
+flat enumeration, never describing them as a factored pair the way
+DeepSeek's docs describe presets, so this is an interpretive lens borrowed
+from a working example in a different, unrelated harness, not a finding
+about Claude Code's actual internal representation. Nothing here should be
+read as evidence that Claude Code's engineering team modeled its own modes
+this way; it is offered strictly as a way of *thinking about* the six-mode
+surface, using DeepSeek's fully transparent internals as a concrete
+illustration of one way such a factoring could work.
+
+---
+
+## 5. Synthesis
 
 ```mermaid
 flowchart TD
@@ -644,20 +752,33 @@ flowchart TD
     subgraph OC["OpenCode"]
         O1["Permission engine\n(Effect-based ask/reply arbiter)"] --> OExec["Process executes with FULL\nhost-process privileges --\nNO further OS containment"]
     end
+    subgraph DS["DeepSeek Harness"]
+        DS1["Permission preset\n(sandbox/mode x approval/policy,\ntwo independent knobs)"] --> DS2["ctx.sandbox seam\n(Landlock+bwrap / Seatbelt / Windows ACL,\nfilesystem effects only)"]
+        DS2 --> DSExec["Process executes, contained by the OS --\nUNLESS danger-full-access,\nwhich bypasses ctx.sandbox entirely"]
+    end
 ```
 
-**All three harnesses converge on the same two-part shape at the rule-evaluation
+**All four harnesses converge on the same two-part shape at the rule-evaluation
 layer**: an allow/ask/deny classification, plus a second-order mechanism to reduce
 per-action prompting once a session has established some trust (Claude Code's
 classifier and dropped-broad-rules-on-entry behavior; Copilot CLI's session-persisted
-approvals and `--yolo`; OpenCode's session-scoped `always`). Where they diverge sharply
-is at exactly the layer this page exists to describe: **only Claude Code and Copilot CLI
-back that rule layer with a second, OS-enforced containment boundary that holds even if
-the rule layer is fooled** (prompt injection, a classifier miss, a pattern-matching
-parsing gap like PromptArmor's `env curl | env sh` finding against Copilot CLI, §2.4).
-OpenCode's own source, read directly this session, shows no equivalent second layer at
-all -- its permission engine is architecturally complete in itself as an approval-UX
-mechanism, and explicitly not framed by its own docs as a security boundary.
+approvals and `--yolo`; OpenCode's session-scoped `always`; DeepSeek's shipped
+`workspace-write`/`danger-full-access` presets pre-bundling both knobs at once). Where
+they diverge sharply is at exactly the layer this page exists to describe: **Claude
+Code, Copilot CLI, and DeepSeek Harness each back their rule layer with a second,
+OS-enforced containment boundary that holds even if the rule layer is fooled**
+(prompt injection, a classifier miss, a pattern-matching parsing gap like PromptArmor's
+`env curl | env sh` finding against Copilot CLI, §2.4). OpenCode's own source, read
+directly this session, shows no equivalent second layer at all -- its permission
+engine is architecturally complete in itself as an approval-UX mechanism, and
+explicitly not framed by its own docs as a security boundary. Two of the three
+OS-sandboxing harnesses independently converge on the *specific* underlying platform
+primitives, not merely the idea of sandboxing: Claude Code and DeepSeek Harness both
+name Seatbelt on macOS and bubblewrap on Linux as their own sandbox backends (§4.3),
+a genuine convergence between two unrelated engineering teams on the same low-level
+tools rather than a coincidence of vocabulary; Copilot CLI's own `/sandbox` docs name
+no equivalent low-level primitive this book has found, describing only "an
+operating-system sandbox" generically (§2.3).
 
 **A classifier and an OS sandbox solve different halves of the same prompt-fatigue
 problem, and only Claude Code currently ships both.** The classifier (§1.4) substitutes
@@ -673,15 +794,25 @@ judging intent. OpenCode ships neither.
 **Every documented escape hatch in this book follows the same shape: a fallback that
 exists specifically so a legitimate task doesn't dead-end, traded against exactly the
 containment the primary mechanism was built to provide.** Claude Code's
-`dangerouslyDisableSandbox` and Copilot CLI's `sandbox.allowBypass` are, structurally,
-the same lever under different names -- both on by default, both triggered by a failed
-sandboxed command, both requiring a user to decline a bypass prompt each time to keep
-the sandbox's guarantee intact. `bypassPermissions`/`--yolo`/`--allow-all` are the same
-pattern one level up the stack, trading the entire rule-and-classifier layer for
-throughput, and both harnesses' own docs name the same mitigating condition ("only in
-isolated environments") for the same reason: once permission-checking is off, the OS
-sandbox (where one exists) is the only remaining boundary, and neither harness enables
-its sandbox by default alongside its own bypass mode.
+`dangerouslyDisableSandbox`, Copilot CLI's `sandbox.allowBypass`, and DeepSeek
+Harness's `danger-full-access` preset are, structurally, the same lever under three
+different names -- a genuine three-way convergence, across one closed harness, one
+enterprise-managed closed harness, and one fully open harness, on making sandbox
+opt-out an explicit, scary-named, individually-triggered action rather than a silent
+default. Claude Code's and Copilot CLI's versions are both on by default and both
+triggered by a failed sandboxed command, requiring a user to decline a bypass prompt
+each time to keep the sandbox's guarantee intact; DeepSeek's `danger-full-access` is
+instead a named preset a deployment opts into wholesale rather than a per-failure
+retry fallback, but the naming convergence -- "danger" appearing in two of the three
+harnesses' own literal identifiers, "dangerously" in the third -- is unlikely to be
+coincidental vocabulary given how precisely all three name the same underlying
+tradeoff. `bypassPermissions`/`--yolo`/`--allow-all` are the same pattern one level up
+the stack for Claude Code and Copilot CLI specifically, trading the entire
+rule-and-classifier layer for throughput, and both harnesses' own docs name the same
+mitigating condition ("only in isolated environments") for the same reason: once
+permission-checking is off, the OS sandbox (where one exists) is the only remaining
+boundary, and neither harness enables its sandbox by default alongside its own bypass
+mode.
 
 ---
 
@@ -766,3 +897,17 @@ framing in §2.3; several community/blog search results surfaced by `WebSearch`
 `deepwiki.com`) that were used only to locate the leads above and are not themselves
 cited as sources of any claim in this page, per this project's standing rule against
 citing an unfetched search snippet as grounding.
+
+**DeepSeek Harness (authoritative for its own documented behavior; fetched 20 August
+2026, `master` branch of `deepseek-ai/deepseek-harness`, developer preview at time of
+fetch -- see [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §4's
+Sources for the full repository-metadata citation, not repeated here):**
+- `docs/subsystems/sandbox.md` -- §4.1's `ctx.sandbox` seam description in full: the
+  process-level/not-container-or-microVM framing, the Landlock+Bubblewrap/Seatbelt/
+  Windows-ACL per-platform backends, the three filesystem modes
+  (`read-only`/`workspace-write`/`danger-full-access`), the `danger-full-access`
+  bypasses-the-seam-entirely finding, the `full`/`partial` self-reported enforcement
+  levels, and the filesystem-effects-only scope boundary.
+- `docs/subsystems/permission-presets.md` -- §4.2's two-independent-knob preset model
+  (`sandbox/mode` x `approval/policy`), the two shipped default presets, and the
+  `custom` reserved display-only preset name.

@@ -401,8 +401,9 @@ this session's `gh api`/base64 decoding failure on this platform) --
 flagging per this project's standing caveat that `dev` is not a stable
 release tag. Unlike §3.2, OpenCode's own multi-provider wire-contract
 handling is fully source-verified, not inferred from documentation, and
-is the most architecturally explicit of the three harnesses on this
-exact topic.
+is the most architecturally explicit of Claude Code, Copilot CLI, and
+OpenCode specifically on this exact topic -- §3.4 below covers DeepSeek
+Harness's own, differently-pitched contribution to this same question.
 
 `packages/llm/AGENTS.md` (the package's own maintainer-facing design
 document, read in full) states the core decomposition directly: a
@@ -546,6 +547,63 @@ vs. several OpenAI-compatible surfaces accepting only a string) forcing
 a harness to actively paper over the gap rather than merely translate
 field names.
 
+### 3.4 DeepSeek Harness
+
+VERIFIED, fetched 20 August 2026 directly from `deepseek-ai/deepseek-harness`
+(`master` branch) -- `docs/capability-seams.md`, `docs/glossary.md`, and
+`docs/architecture.md`. DeepSeek Harness (`dsh`, MIT-licensed, in developer
+preview as of this fetch -- see [Hooks and lifecycle
+extensibility](hooks-lifecycle-extensibility.md) §4 for this book's fuller
+introduction to the harness and its Cordis plugin substrate, not repeated
+here) names, as an explicit, first-class architectural term, the exact
+provider-swap pattern this page's §3.3 already found OpenCode's source
+exhibiting *without* a comparable name: a **capability seam**. The docs
+define it as three interdependent roles -- a **Service Definition** (the
+package declaring the interface a seam promises to expose), one or more
+**Service Providers** (packages implementing that interface), and one or
+more **Consumers** (packages that depend on the seam's interface without
+knowing which provider is mounted underneath it). `ctx.llm` is the seam
+governing exactly the wire-contract question this page is about: its
+Service Definition specifies what an LLM-request capability must expose,
+and the harness ships (at minimum) three real, interchangeable Providers
+against it -- `llm-deepseek`, `llm-pi-ai`, and `llm-replay` (a deterministic,
+recorded-fixture provider, functionally analogous in purpose to
+[Evals and testing a harness](evals-and-testing-a-harness.md)'s coverage of
+OpenCode's own `@opencode-ai/http-recorder` VCR-style cassette package,
+though DeepSeek's docs frame it as a swappable seam provider rather than a
+dedicated test package). The agent loop itself is named directly as the
+seam's Consumer, reaching the currently-mounted provider through a
+provider-neutral interface it never inspects to determine which concrete
+wire contract (Anthropic Messages-shaped, OpenAI-shaped, or something else
+entirely) is actually in play underneath. The docs state the architectural
+payoff in one line: "Seams are why one provider swap changes the whole
+product" -- swapping the mounted `ctx.llm` provider changes what speaks to
+the model with no code change required in the agent loop that consumes it.
+
+This three-role decomposition is not merely a vocabulary restatement of
+§3.3's four-axis `Protocol`/`Endpoint`/`Auth`/`Framing` split -- it operates
+one level of abstraction higher. OpenCode's four axes describe *how a
+single route is assembled internally* (which URL, which auth scheme, which
+byte-framing, which request-body shape); DeepSeek's capability-seam
+vocabulary instead names *the substitutability boundary itself*, independent
+of how many axes a given provider's own implementation happens to need
+internally. The two are compatible, not competing: an OpenCode-style
+`Route.make(Protocol, Endpoint, Auth, Framing)` composition is a plausible
+concrete shape a `ctx.llm` Service Provider could take internally, but
+DeepSeek's docs do not decompose their own `llm-deepseek`/`llm-pi-ai`
+providers into named axes the way `packages/llm/AGENTS.md` does for
+OpenCode's routes -- so this page treats the seam vocabulary as a naming
+contribution over an already-independently-verified pattern, not as
+evidence that DeepSeek's own providers are internally structured the same
+four-axis way OpenCode's are. The architecture doc gives a matching rule for
+when something should **not** be split into a seam at all: `ctx.sessions`
+(the append-only session-event log documented in [Session & transcript
+persistence](session-persistence.md) §4) and `ctx.invariants` (package-
+attributed checks) are deliberately kept as **core services** rather than
+seams, on the stated principle that a seam exists specifically where
+deployment-time or provider-time substitutability is the actual design
+point -- not wherever an interface merely exists.
+
 ---
 
 ## 4. Synthesis
@@ -564,6 +622,7 @@ field names.
 | Claude Code (Agent SDK) | Wraps the raw Anthropic SSE events (§1.5) in a `StreamEvent`/`SDKPartialAssistantMessage` carrying `parent_tool_use_id`/`session_id`/`uuid`, alongside always-emitted accumulated `AssistantMessage`/`ResultMessage` objects; the wrapped `event` field is Anthropic's own SDK type, unmodified |
 | Copilot CLI | Closed source; changelog confirms "Responses API" as a real internally-named provider-protocol category (BYOK sessions, MCP namespace mapping, AI-credits display) across three separate releases, and confirms a reasoning-content *feature* exists, but does not document the exact request/response schema; the separate, adjacent Copilot SDK product documents an explicit three-way `anthropic`/`openai` (`completions`)/`openai` (`responses`) dispatch that is architecturally consistent with, but not proof of, Copilot CLI's own internal routing |
 | OpenCode | Fully source-verified: a four-axis `Protocol`/`Endpoint`/`Auth`/`Framing` route composition, one protocol module per wire contract (`anthropic-messages.ts`, `openai-chat.ts`, `openai-responses.ts`, `gemini.ts`, `bedrock-converse.ts`), each with its own `mapFinishReason()` normalizing into one shared six-value `FinishReason` enum and one shared `LLMEvent` tagged union, plus explicit, source-documented workarounds where the contracts genuinely disagree (hosted-tool continuation shape, tool-result media support, native vs. text-wrapped mid-conversation system updates) |
+| DeepSeek Harness | Fully source-verified (docs, not implementation code, for this specific point): names the substitutability boundary itself, one level of abstraction above OpenCode's four axes, as a **capability seam** -- a Service Definition/Provider/Consumer three-role unit, with `ctx.llm` as the seam governing this page's own subject, real interchangeable providers (`llm-deepseek`, `llm-pi-ai`, `llm-replay`) mounted underneath a provider-neutral Consumer interface the agent loop itself never inspects |
 
 **The design lesson.** Every harness examined on this page has to solve
 the same underlying problem even though only OpenCode's solution is
@@ -582,7 +641,12 @@ mostly avoids needing one by wrapping a single provider's own typed SDK
 events directly; Copilot CLI's own version of this layer is real
 (the changelog proves at least an OpenAI-Responses-API-aware provider
 category exists) but not source-visible, leaving its exact shape as
-this page's one clearly-flagged remaining gap.
+this page's one clearly-flagged remaining gap. DeepSeek Harness's own
+docs supply, independently of OpenCode's engineering, a genuinely useful
+*name* for the underlying design principle both harnesses converge on --
+"provider-neutral consumer, swappable provider, one shared interface" --
+without this page treating that naming contribution as evidence either
+harness's own internal axis structure resembles the other's.
 
 ---
 
@@ -645,3 +709,18 @@ a stable release tag):**
   implementations, grepped and read in context), and
   `packages/opencode/src/session/message-v2.ts` -- covering §3.3 in
   full.
+
+**DeepSeek Harness (authoritative for its own documented capability-seam
+vocabulary; fetched 20 August 2026, `master` branch of
+`deepseek-ai/deepseek-harness`, developer preview at time of fetch --
+see [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md)
+§4's Sources for the full repository-metadata citation, not repeated
+here):**
+- `docs/capability-seams.md` -- the Service Definition/Provider/Consumer
+  three-role definition, the `ctx.llm` seam and its named providers
+  (`llm-deepseek`, `llm-pi-ai`, `llm-replay`), the "one provider swap
+  changes the whole product" quote; covers §3.4 in full.
+- `docs/glossary.md` and `docs/architecture.md` -- the seam-vs-core-service
+  distinction (`ctx.sessions`/`ctx.invariants` deliberately kept unseamed),
+  cross-checked against the same two files' citation in
+  [Session & transcript persistence](session-persistence.md) §4.

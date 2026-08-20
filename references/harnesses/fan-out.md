@@ -12,8 +12,8 @@ and how the fanned-out results rejoin the turn that launched them. The
 general Thought/Action/Observation loop in [agent-loop.md](agent-loop.md)
 frames one step as one Action; fan-out is the case where a single step's
 Action is actually N independent actions issued together, and each of the
-three products researched here answers "what happens to those N actions"
-differently -- at more than one layer, in two of the three cases.
+four products researched here answers "what happens to those N actions"
+differently -- at more than one layer, in most of the four cases.
 
 ---
 
@@ -451,19 +451,145 @@ read this session.
 
 ---
 
-## 4. Synthesis
+## 4. DeepSeek Harness
 
-| Dimension | Claude Code (in-conversation subagents) | Claude Code (background agents) | Claude Code (Workflow `pipeline()`) | Copilot CLI (custom-agent + `/fleet`) | OpenCode (`Task` fan-out) |
-|---|---|---|---|---|---|
-| Launch unit | Several `Agent`-tool calls, model-issued | One prompt per dispatch, user/script-issued | One `pipeline()` call in a script, runtime-driven | Several tool calls in one turn (mandatory since GA); `/fleet` decomposes further | Several `task` tool calls batched into one assistant message (prompted convention) |
-| Concurrency ceiling | 20 running (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`), documented default | None documented -- bounded by subscription/rate-limit quota | 16 concurrent, runtime-enforced, hard cap | Configurable via `/settings`, no documented default number found | None found; `FiberSet` dispatch appears architecturally unbounded |
-| Total-count ceiling | 200 per session (`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`) | None documented | 1,000 agents per run, hard cap | `subagents.maxDepth` bounds nesting (128 max for usage-based billing), not total count | None found |
-| Actual dispatch mechanism | Background execution by default (v2.1.198+); each Agent-tool call proceeds without blocking the turn | One-at-a-time manual/scripted dispatch, no batch API | Runtime executes script's `pipeline()` loop directly, throttled by the runtime itself | Parallel tool execution at the assistant-turn level (mandatory since 0.0.418); `/fleet`'s own parallel dispatch mechanics undocumented beyond "the orchestrator will run subagents in parallel" | Provider stream's `tool-call` events each forked as an independent Effect fiber via `FiberSet.run(..., startImmediately: true)` -- source-verified, not just documented |
-| Join / barrier semantics | Results return individually as background-completion notifications; no single "wait for all" primitive documented | Independent sessions, each polled/attached separately; no cross-session join | Runtime tracks each agent's result as the run progresses; script's own `await`s determine ordering | Undocumented beyond "output... incorporated into the parent agent's response" | `FiberSet.awaitEmpty(settlements)` is an explicit, source-verified barrier: the turn's tool-execution phase does not end until every forked call settles |
-| Per-call depth/permission re-check | Depth limit checked at spawn time per call; concurrent-slot check per call | N/A -- independent sessions | N/A -- workflow agents run in a fixed `acceptEdits` posture set once per run | Depth/concurrency limits configurable, but whether checked per-call or per-batch is undocumented | Source-verified: depth chain walk and permission derivation both re-run independently per fiber, not shared across the batch |
-| Verifiability | Docs-only (closed source) | Docs-only | Docs-only, but unusually mechanistic (concrete numeric caps) | Changelog-traced version history (real, dated, but implementation itself unpublished) | Docs **and** live `dev`-branch source for the actual concurrency primitive, cross-checked this session |
+Sources for this section: VERIFIED, fetched 20 August 2026 directly from
+`deepseek-ai/deepseek-harness` (`master` branch, developer preview -- see
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §4
+for this book's fuller introduction to the harness itself, not repeated
+here), `docs/subsystems/subagent.md` and `docs/glossary.md`.
 
-**The design lesson.** All three products let a single turn request
+### 4.1 Two distinct spawning paths: one-shot delegation vs. continuable children
+
+DeepSeek Harness exposes two structurally distinct subagent-spawning
+mechanisms, not one. **One-shot delegation** (`SubagentRuntime.start(name,
+request)`) validates the requested capability against a named provider,
+resolves a durable descriptor, and publishes a child agent that the
+provider owns until the run settles; failures after publication settle
+through the returned `SubagentRun` handle rather than throwing
+synchronously. **Continuable children** (`SubagentRuntime.startContinuable(spec)`)
+instead reserve a stable child identity up front, snapshot configuration,
+and submit an initial prompt, resolving as soon as the child's inbox
+*accepts* the message -- explicitly "without waiting for the turn to start
+or for the message to reach the Session log," a deliberately weak
+completion guarantee that decouples the parent's dispatch call from the
+child's actual execution timeline.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Publishing: SubagentRuntime.start(name, request)
+    Publishing --> Running: provider validates capability,\nresolves descriptor,\npublishes child agent
+    Running --> Completed: stopReason = completed
+    Running --> Aborted: stopReason = aborted
+    Running --> Errored: stopReason = error
+    Running --> MaxTokens: stopReason = max-tokens
+    Running --> Refused: stopReason = refusal
+    Completed --> [*]: SubagentResult{output, structured?}
+    Aborted --> [*]: SubagentResult{diagnostic}
+    Errored --> [*]: SubagentResult{diagnostic}
+    MaxTokens --> [*]: SubagentResult{diagnostic}
+    Refused --> [*]: SubagentResult{diagnostic}
+```
+
+A completed one-shot run returns a `SubagentResult` carrying `output`
+(final assistant content), `structured` (a schema-validated result, when
+one was requested), `diagnostic` (provider-authored failure detail, capped
+at 4096 UTF-8 bytes), and a `stopReason` drawn from a fixed enumeration:
+`completed`, `aborted`, `error`, `max-tokens`, `refusal`.
+
+### 4.2 Context inheritance is a per-provider descriptor, and it is explicitly not authority inheritance
+
+Context inheritance is governed per-provider by an `inheritsParentContext`
+descriptor: **fork** providers (`true`) give the child "a balanced
+completed-turn prefix of the parent's log" as a session seed, so the child
+can see prior dialogue; **spawn** and **ACP** providers (`false`) give the
+child no prior context at all. The docs draw a sharp, explicitly stated
+line that this inherited-*context* flag says nothing about inherited
+*authority*: "inheritance of context says nothing about tool registration,
+injected services, or authority inheritance" -- every child agent gets "a
+new flat scope rather than inheriting parent registrations," meaning a
+child that can see the parent's prior conversation still starts with none
+of the parent's tool grants unless those are separately re-registered for
+it. This context-vs-authority split is worth naming explicitly against the
+rest of this page: none of Claude Code's, Copilot CLI's, or OpenCode's own
+sections above draw this exact distinction as sharply -- a fork-style
+child's *visibility* into the parent's history and its *permissions* are,
+in DeepSeek's own architecture, two entirely independent decisions, not one
+bundled "inherit or don't" choice.
+
+**This mechanism is a different thing from [Session &
+transcript persistence](session-persistence.md) §4's `fork()`**, even
+though both use the word "fork" and both originate from the same harness:
+`inheritsParentContext` governs what a *newly spawned subagent* sees at
+creation time (a one-time seed at dispatch), while `Session.fork()`
+(documented on that page) creates an entirely new, independently addressable
+*session* from an arbitrary earlier point in an existing session's own
+history, unrelated to subagent dispatch at all. Conflating the two would be
+a real error this page takes care not to make.
+
+### 4.3 Concurrency: a stated qualitative guard, no numeric ceiling
+
+On concurrency, the docs decline to state a global or per-agent numeric
+cap; the only stated constraint is qualitative -- "a shared capacity
+controller may delay an operation but must not couple its settlement or
+cleanup to a sibling" -- meaning backpressure is a provider's own concern,
+and one child's failure or delay is architecturally forbidden from
+cascading into another sibling's lifecycle. This is a real, checked-this-
+session absence finding (not merely an unread doc), and it lands directly
+alongside §3.3's own prior finding on *this same page* that OpenCode's
+`FiberSet`-based concurrent subagent dispatch likewise carries no
+documented hard cap -- two independently-built, fully source-available
+harnesses agreeing, in their own respective docs/source, that "no global
+cap, provider-owned backpressure instead" is a workable production design,
+not merely an oversight neither team got around to fixing.
+
+This book's own search of DeepSeek's docs did not turn up a "Ralph
+loop"/"Ralph round" workflow despite that terminology appearing in
+`docs/glossary.md` (fetched separately this session, where it is described
+as "a fresh-agent workflow toward an immutable objective, composed from
+subagent primitives rather than functioning as a generic scheduler," with a
+"Ralph round" as one fresh child session within that loop) -- the glossary
+entry is VERIFIED, but this session's dedicated fetch of
+`docs/subsystems/subagent.md` did not surface the mechanics behind it, so
+its actual scheduling/composition logic is left as an open follow-up rather
+than guessed at here.
+
+### 4.4 Using the no-global-cap finding as a reasoning aid for Claude Code's own undocumented ceiling -- BEST CURRENT UNDERSTANDING, UNCONFIRMED
+
+§4.3 above confirms DeepSeek's docs decline to state a global subagent
+concurrency cap, on top of this page's own §3.3 finding that OpenCode's
+`FiberSet`-based dispatch also carries none. Two independently-built,
+fully source-available harnesses agreeing that "no global cap,
+provider/runtime-owned backpressure instead" is workable is a real,
+VERIFIED data point about that specific design choice at least twice over.
+**BEST CURRENT UNDERSTANDING, UNCONFIRMED:** this raises the odds that
+Claude Code's own undocumented ceiling (if any exists at all beyond the
+documented concurrent/session/depth caps already covered in §1 above) is
+similarly provider/session-owned rather than a single hardcoded global
+number -- but this book has not found, and does not claim to have found,
+Claude Code source or docs confirming that either way. Nothing in DeepSeek's
+or OpenCode's own design should be read as evidence about what Claude
+Code's closed-source engineering team actually implemented; it is offered
+only as a concrete illustration that the "no hard global cap" design is a
+real, workable choice at least two independent teams have made deliberately,
+not an inherently unsafe gap.
+
+---
+
+## 5. Synthesis
+
+| Dimension | Claude Code (in-conversation subagents) | Claude Code (background agents) | Claude Code (Workflow `pipeline()`) | Copilot CLI (custom-agent + `/fleet`) | OpenCode (`Task` fan-out) | DeepSeek Harness (`SubagentRuntime`) |
+|---|---|---|---|---|---|---|
+| Launch unit | Several `Agent`-tool calls, model-issued | One prompt per dispatch, user/script-issued | One `pipeline()` call in a script, runtime-driven | Several tool calls in one turn (mandatory since GA); `/fleet` decomposes further | Several `task` tool calls batched into one assistant message (prompted convention) | `SubagentRuntime.start()` (one-shot) or `.startContinuable()` (weak-completion-guarantee dispatch), per call |
+| Concurrency ceiling | 20 running (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`), documented default | None documented -- bounded by subscription/rate-limit quota | 16 concurrent, runtime-enforced, hard cap | Configurable via `/settings`, no documented default number found | None found; `FiberSet` dispatch appears architecturally unbounded | None documented; only a qualitative guard ("a shared capacity controller may delay... but must not couple... to a sibling") |
+| Total-count ceiling | 200 per session (`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`) | None documented | 1,000 agents per run, hard cap | `subagents.maxDepth` bounds nesting (128 max for usage-based billing), not total count | None found | None found |
+| Actual dispatch mechanism | Background execution by default (v2.1.198+); each Agent-tool call proceeds without blocking the turn | One-at-a-time manual/scripted dispatch, no batch API | Runtime executes script's `pipeline()` loop directly, throttled by the runtime itself | Parallel tool execution at the assistant-turn level (mandatory since 0.0.418); `/fleet`'s own parallel dispatch mechanics undocumented beyond "the orchestrator will run subagents in parallel" | Provider stream's `tool-call` events each forked as an independent Effect fiber via `FiberSet.run(..., startImmediately: true)` -- source-verified, not just documented | Provider validates capability, resolves a durable descriptor, publishes the child; `startContinuable()` resolves on inbox-accept, not on completion |
+| Join / barrier semantics | Results return individually as background-completion notifications; no single "wait for all" primitive documented | Independent sessions, each polled/attached separately; no cross-session join | Runtime tracks each agent's result as the run progresses; script's own `await`s determine ordering | Undocumented beyond "output... incorporated into the parent agent's response" | `FiberSet.awaitEmpty(settlements)` is an explicit, source-verified barrier: the turn's tool-execution phase does not end until every forked call settles | `SubagentRun` handle settles independently per one-shot call; no cross-agent join primitive documented |
+| Context inheritance at spawn | Documented separately in [handoff-mechanism.md](handoff-mechanism.md) (forks vs. named subagents) | N/A | N/A | Undocumented on the pages fetched | Per-call, source-verified (§3.2-3.3 above) | Explicit per-provider `inheritsParentContext` descriptor: `true` for fork providers (parent-log seed), `false` for spawn/ACP providers -- context inheritance explicitly decoupled from authority/tool-grant inheritance |
+| Per-call depth/permission re-check | Depth limit checked at spawn time per call; concurrent-slot check per call | N/A -- independent sessions | N/A -- workflow agents run in a fixed `acceptEdits` posture set once per run | Depth/concurrency limits configurable, but whether checked per-call or per-batch is undocumented | Source-verified: depth chain walk and permission derivation both re-run independently per fiber, not shared across the batch | Every child gets "a new flat scope rather than inheriting parent registrations" -- authority is never inherited regardless of the context-inheritance descriptor |
+| Verifiability | Docs-only (closed source) | Docs-only | Docs-only, but unusually mechanistic (concrete numeric caps) | Changelog-traced version history (real, dated, but implementation itself unpublished) | Docs **and** live `dev`-branch source for the actual concurrency primitive, cross-checked this session | Docs-only (`docs/subsystems/subagent.md`), but unusually mechanistic and explicit about what is deliberately left unstated |
+
+**The design lesson.** All four products let a single turn request
 several independent workers, but only OpenCode's mechanism is checkable
 all the way down to the actual concurrency primitive: Claude Code and
 Copilot CLI both describe fan-out from the outside (a documented pattern,
@@ -472,29 +598,48 @@ products with no implementation to read; OpenCode's `FiberSet`-based
 dispatch shows that "launch multiple agents concurrently" is not merely
 advisory language in a tool's prompt text but a real architectural
 property of the runtime's event-stream processing, independent of
-whether the model actually chooses to batch its calls. Two further
-asymmetries matter for anyone building against more than one of these
-products. First, **the "coarser" layer exists on two of three products in
-different states of documentation maturity**: Claude Code's background
-agents (`claude agents`) and Copilot CLI's Sessions sidebar solve the same
-problem -- dispatching and monitoring many independent whole sessions,
-rather than subagents inside one conversation -- but Claude Code documents
-the launch mechanics, the quota cost, and the monitoring UI in one
-dedicated docs page, while Copilot CLI's equivalent is traceable only
-through changelog entries and is still labeled experimental as of the
-most recent entry checked this session; OpenCode has no evidence of an
-equivalent layer at all in what was checked. Second, **the numeric
-ceiling that actually exists is asymmetric across products**: Claude Code
-states concrete defaults for all three of its own fan-out layers (20/200
-concurrent-and-total for subagents, 16/1,000 for workflows); Copilot CLI
-confirms a configurable concurrency limit exists for subagents but never
-states its default number, and confirms no cap at all is documented for
-`/fleet`'s own parallel dispatch; OpenCode's `Task`-tool fan-out has no
-concurrency ceiling found anywhere in the config surface or docs read
-this session, leaving the model's own tool-call batching, gated only by
-the `doom_loop` repeated-identical-call guard, as the only thing standing
+whether the model actually chooses to batch its calls; DeepSeek Harness
+sits in between -- its own docs are unusually explicit and mechanistic for
+a documentation-only source, naming exactly which guarantees it declines
+to make (a numeric cap, a specific scheduling algorithm for its own
+"Ralph round" workflow) rather than leaving them simply unaddressed.
+Three further asymmetries matter for anyone building against more than
+one of these products. First, **the "coarser" layer exists on two of four
+products in different states of documentation maturity**: Claude Code's
+background agents (`claude agents`) and Copilot CLI's Sessions sidebar
+solve the same problem -- dispatching and monitoring many independent
+whole sessions, rather than subagents inside one conversation -- but
+Claude Code documents the launch mechanics, the quota cost, and the
+monitoring UI in one dedicated docs page, while Copilot CLI's equivalent
+is traceable only through changelog entries and is still labeled
+experimental as of the most recent entry checked this session; neither
+OpenCode nor DeepSeek Harness shows evidence of an equivalent layer in
+what was checked. Second, **the numeric ceiling that actually exists is
+asymmetric across products**: Claude Code states concrete defaults for
+all three of its own fan-out layers (20/200 concurrent-and-total for
+subagents, 16/1,000 for workflows); Copilot CLI confirms a configurable
+concurrency limit exists for subagents but never states its default
+number, and confirms no cap at all is documented for `/fleet`'s own
+parallel dispatch; OpenCode's `Task`-tool fan-out and DeepSeek's
+`SubagentRuntime` both have no concurrency ceiling found anywhere in
+their respective config surfaces or docs read this session -- for
+OpenCode, the model's own tool-call batching, gated only by the
+`doom_loop` repeated-identical-call guard, is the only thing standing
 between "launch multiple agents concurrently whenever possible" and an
-unbounded fan-out.
+unbounded fan-out; for DeepSeek, the stated design intent is explicitly
+that a provider-owned "shared capacity controller" absorbs this role
+instead of a hardcoded number, a deliberate architectural choice rather
+than a gap in the documentation. Third, **DeepSeek Harness is the only
+one of the four to draw context-inheritance and authority-inheritance
+apart as two independently governed axes of the spawn decision** --
+Claude Code's fork-vs-named-subagent split ([handoff-mechanism.md](handoff-mechanism.md))
+and OpenCode's `Task`-tool dispatch (§3 above) both make a single
+context-scoped decision at spawn time without a comparably explicit
+statement that tool/service authority is a *separate* knob; DeepSeek's
+`inheritsParentContext` descriptor is paired with an explicit,
+docs-stated guarantee that authority is never carried over regardless of
+that descriptor's value -- a genuinely sharper articulation of a design
+question the other three harnesses' own documentation leaves implicit.
 
 ---
 
@@ -571,3 +716,17 @@ citation below):**
     `max_concurrent`/`maxConcurrent` config keys; none found, supporting
     (not proving) the absence of a documented numeric concurrency ceiling
     for `Task` fan-out.
+
+**DeepSeek Harness (authoritative for its own documented behavior; fetched
+20 August 2026, `master` branch of `deepseek-ai/deepseek-harness`,
+developer preview at time of fetch -- see [Hooks and lifecycle
+extensibility](hooks-lifecycle-extensibility.md) §4's Sources for the full
+repository-metadata citation, not repeated here):**
+- `docs/subsystems/subagent.md` -- §4's full subagent-dispatch treatment:
+  `SubagentRuntime.start()`/`startContinuable()`, the `inheritsParentContext`
+  per-provider descriptor and its explicit context-vs-authority split, the
+  `SubagentResult`/`stopReason` shape, and the qualitative
+  no-numeric-cap/provider-owned-backpressure concurrency statement.
+- `docs/glossary.md` -- the "Ralph loop"/"Ralph round" terminology named
+  but not mechanically documented, flagged in §4.3 as an open follow-up
+  rather than guessed at.

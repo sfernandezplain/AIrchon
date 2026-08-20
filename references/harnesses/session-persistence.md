@@ -2,7 +2,7 @@
 
 **Scope note.** This page answers one specific question: once a single
 agent process exits -- terminal closed, machine rebooted, `claude`/
-`copilot`/`opencode` re-invoked hours or days later -- what actually
+`copilot`/`opencode`/`dsh` re-invoked hours or days later -- what actually
 survives on disk, under what identifier, and how do you get back into
 it? That is a narrower question than two pages that sit right next to
 it. [memory-management.md](memory-management.md) covers what a *fresh*
@@ -13,13 +13,17 @@ the run's own record. [handoff-mechanism.md](handoff-mechanism.md)
 covers what crosses the boundary when one agent hands work to a
 *different* agent instance (a subagent, a teammate, a cloud agent) --
 a spawn/return relationship between two agents that may both be alive
-at the same moment. This page is about neither: it is the on-disk
-transcript of one session's own conversation, the identifier that
-names that transcript, and the mechanics (`--resume`, `--continue`,
-`--fork-session`/`/branch`, `--fork`, `revert`) for reopening, copying,
-or rewinding it after the process that wrote it is long gone. All
-three products keep a session-level record; the format, the store, and
-what "forking" means at the storage layer differ completely.
+at the same moment; [Fan-out (subagent dispatch)](fan-out.md) §4 covers
+the analogous but distinct question for DeepSeek Harness specifically
+(its `inheritsParentContext` subagent-spawn descriptor, not to be
+confused with this page's own §4 `fork()`, a whole-session operation).
+This page is about neither: it is the on-disk transcript of one
+session's own conversation, the identifier that names that transcript,
+and the mechanics (`--resume`, `--continue`, `--fork-session`/`/branch`,
+`--fork`, `revert`) for reopening, copying, or rewinding it after the
+process that wrote it is long gone. All four products keep a
+session-level record; the format, the store, and what "forking" means
+at the storage layer differ completely.
 
 ---
 
@@ -832,22 +836,129 @@ corroborated by an OpenCode docs page the way Claude Code's
 
 ---
 
-## 4. Synthesis
+## 4. DeepSeek Harness
 
-| Dimension | Claude Code | Copilot CLI | OpenCode |
-|---|---|---|---|
-| Durable record format | Plaintext JSONL, one line per message/tool-use/tool-result | Session-state files (format undocumented) + a derived SQLite index (`session-store.db`, FTS5) | SQLite database (`opencode.db`, Drizzle ORM, WAL mode) on `dev`; legacy per-message JSON files superseded but still the format some community writeups describe |
-| Location | `~/.claude/projects/<project>/<session-id>.jsonl` | `~/.copilot/session-state/<sessionID>/`, index at `~/.copilot/session-store.db` | `<xdgData>/opencode/opencode.db` (e.g. `~/.local/share/opencode/opencode.db`), path overridable via `OPENCODE_DB` |
-| Session ID character | Opaque per the docs; propagated to MCP subprocesses as `CLAUDE_CODE_SESSION_ID` on resume | Opaque per the docs; printed by `/session` and on exit | Structured: `ses_` + embedded timestamp+counter + random suffix, ascending or descending, self-timestamping via `Identifier.timestamp()` |
-| Resume same identity | `--continue` (most recent in cwd), `--resume [name\|id]`, `/resume` -- same session ID, appends | `--continue`/`-r --resume`, `/resume [SESSION-ID]` -- mutually exclusive `--continue`/`--resume` flags | `--continue`/`-c`, `--session <id>`/`-s <id>` |
-| Fork/branch semantics | `/branch [name]` or `--fork-session` -- copy-then-redirect in the *same process* if via `/branch` (permission grants carry over); a genuinely new process via CLI flag does not carry them | Not documented as a first-class fork/branch operation on the pages fetched this session | `--fork` + `--continue`/`--session`, backed by `Session.fork({sessionID, messageID?})` -- always a brand-new, fully independent `SessionTable` row from the first write, with an optional exclusive message cutoff |
-| Fork-from-a-specific-point | `/branch` forks at "now" (point in the live conversation), not an arbitrary earlier message | Not found | `Session.fork`'s `messageID` parameter is exactly this: fork truncated at an arbitrary earlier message, source-verified |
-| In-session undo/rewind (not a new session) | `/rewind` -- file snapshots under `file-history/<session>/`, five restore modes, rides along across `--resume` | Not found as a distinct mechanism on the pages fetched | `SessionRevert.revert`/`unrevert` -- `session.revert` pointer on the existing row, file state restored via a shadow git repo (`snapshot/<projectID>/<hash>`) sharing object storage with the real repo |
-| Retention/cleanup | `cleanupPeriodDays` (default 30, `settings.json`), swept on startup; `claude project purge` for explicit, previewable deletion | Not found documented on the pages fetched this session | Not found documented; SQLite DB has no stated retention policy on `dev` |
-| Plaintext/at-rest security note | Explicitly documented as unencrypted; OS file permissions only | Not addressed on the pages fetched | Not addressed in the source read this session |
-| Behavior-change history available | `CHANGELOG.md` -- extensive, session/resume/fork/transcript entries span the full file | `changelog.md` -- extensive, same pattern | None -- no `CHANGELOG.md` in the repo; `dev`-branch source is the only trace of change over time available to this project |
+Sources for this section: VERIFIED, fetched 20 August 2026 directly from
+`deepseek-ai/deepseek-harness` (`master` branch, developer preview -- see
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §4
+for this book's fuller introduction to the harness itself, not repeated
+here), `docs/architecture.md`, `docs/glossary.md`, and
+`docs/subsystems/session.md`.
 
-**The design lesson.** All three products treat "can I get back into
+### 4.1 Turn/step vocabulary and the three-domain session-event model
+
+DeepSeek Harness defines a **step** as one model request plus the tool
+invocations it produces, and a **turn** as "one drain of admitted input in
+a session," containing zero or more steps, opening before the first input
+claim and closing once no work is owed or a terminal policy intervenes.
+Everything that becomes part of a model request must be captured as a
+durable `SessionEvent` in an append-only session log -- the architecture
+doc's stated invariant is that "model-visible" and "logged" are treated as
+logically equivalent (already named as a house rule in [Hooks and lifecycle
+extensibility](hooks-lifecycle-extensibility.md) §4.2), so any new kind of
+model-visible input requires a corresponding new entry added to the
+`SessionEventMap` type, not an ad hoc side channel. Events are explicitly
+split into three domains with different durability and audiences:
+**session events** (durable, e.g. `turn/*`, `step/*`, `user/message`,
+`assistant/*`, `tool/*`), **agent events** (live/in-memory only, e.g.
+`agent/pre-step`, `agent/request`, `agent/turn-stopping`), and **capability
+events** (policy/adapter attachment, e.g. `fs/*`, `tools/*`,
+`telemetry/*`).
+
+This turn/step vocabulary is independently confirmed for three of this
+book's four harnesses now -- Claude Code's Agent SDK turns and OpenCode's
+steps (both documented in [Agent loop: Claude Code vs.
+OpenCode](agent-loop-implementations.md), not re-derived here) and now
+DeepSeek's own turn/step pair defined above -- with Copilot CLI's own
+loop-progress vocabulary not yet independently confirmed on that page.
+
+### 4.2 A pluggable persistence contract: the framework ships no backend at all
+
+`docs/subsystems/session.md` describes the persistence contract as
+deliberately decoupled from the in-memory session model: the framework's
+core ships **no persistence backend at all**, and "persistence plugins
+subscribe to `session/event` and flush on `session/flush` / dispose" -- a
+JSONL-backed implementation is named as one such plugin, encoding events as
+"packed chunk rows" while preserving bit-for-bit fidelity on reload. This
+is architecturally distinct from every other harness on this page: Claude
+Code's JSONL transcript (§1.1) and Copilot CLI's session-state files (§2.1)
+are both a fixed, first-party format the harness itself writes directly;
+DeepSeek's own JSONL format is, by contrast, one interchangeable *plugin
+implementation* of a persistence seam the core session model does not
+itself assume exists, consistent with the capability-seam architecture
+documented in full in [The LLM API contract](llm-api-contract.md) §3.4.
+
+```mermaid
+flowchart TD
+    Log["In-memory append-only\nSessionEvent log"]
+    Log -->|"session/event"| Plug["Persistence plugin\n(subscribes, not built into core)"]
+    Plug -->|"on session/flush or dispose"| Disk["JSONL-backed implementation\n(one possible plugin; not the only one)\n-- 'packed chunk rows'"]
+    Disk -->|"Session.fromRestore()"| Validate["Validates envelope structure,\nsequence continuity,\nsurface-transition consistency"]
+    Validate --> Marker{"session/end-seed marker present?"}
+    Marker -->|Yes| Resumed["Genuinely-resumed history"]
+    Marker -->|No| Fresh["Fresh in-process writes\n(or a crash -- ambiguous without the marker)"]
+```
+
+`Session.fromRestore()` reconstructs a session by validating envelope
+structure, sequence continuity, and surface-transition consistency before
+freezing the restored object; a special `session/end-seed` marker
+distinguishes genuinely-resumed history from fresh in-process writes,
+letting a plugin tell whether a prior open bracket (e.g. an unterminated
+turn) represents a crash or a clean prior session boundary -- a
+finer-grained resumption-integrity check than anything stated on the pages
+fetched for either closed harness's own §1/§2 above, though closer in
+spirit to Claude Code's own corruption-resilience hardening history (§1.7)
+than to anything documented for Copilot CLI.
+
+### 4.3 `fork()`: an inclusive boundary, and a rejected (not clipped) open-turn cut
+
+`fork()` accepts a live session or session ID plus an optional **inclusive**
+boundary sequence number, requires that boundary to land outside an open
+turn, and produces a child session with deep-cloned seed events and
+inherited lineage metadata (`parentSession`, `seedLength`, `cwd`); an
+explicit `boundary` parameter enables forking from any between-turn
+position rather than only the tip, and the API **rejects** (rather than
+silently clips) a boundary that would land inside an open turn.
+
+This is strikingly close to, and worth comparing directly against, this
+same page's §3.4 finding for OpenCode's own source-verified
+`Session.fork({sessionID, messageID?})` mechanic: two independently-built,
+fully source-available harnesses have each converged on "fork a session
+from an arbitrary earlier point, not just its tip" as a first-class
+primitive, differing only in the specifics --
+
+| | DeepSeek Harness `fork()` | OpenCode `Session.fork()` |
+|---|---|---|
+| Boundary addressing | Sequence number | Message ID |
+| Boundary semantics | **Inclusive** (boundary itself is kept) | **Exclusive** (walk stops *before* copying the named message) |
+| Invalid-boundary handling | **Rejects** a boundary landing inside an open turn | No open-turn concept in OpenCode's own schema to reject against |
+| Copy mechanics | Deep-cloned seed events; lineage metadata (`parentSession`, `seedLength`, `cwd`) | Fresh ascending IDs per copied row; `parentID`/`tail_start_id` remapped through an `idMap` |
+
+Neither difference is a defect in either harness -- they are two
+independently-arrived-at answers to the same design question, addressed
+through each harness's own native identity scheme (sequence numbers for
+DeepSeek's turn/step model; ascending, self-timestamping message IDs for
+OpenCode's, per §3.2 above), each choosing the boundary convention that
+fits its own addressing scheme most naturally.
+
+---
+
+## 5. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | DeepSeek Harness |
+|---|---|---|---|---|
+| Durable record format | Plaintext JSONL, one line per message/tool-use/tool-result | Session-state files (format undocumented) + a derived SQLite index (`session-store.db`, FTS5) | SQLite database (`opencode.db`, Drizzle ORM, WAL mode) on `dev`; legacy per-message JSON files superseded but still the format some community writeups describe | No first-party format at all in the framework's own core -- an append-only in-memory `SessionEvent` log persisted only by whichever pluggable persistence plugin is mounted (a JSONL "packed chunk rows" implementation is one such plugin, not a core-owned format) |
+| Location | `~/.claude/projects/<project>/<session-id>.jsonl` | `~/.copilot/session-state/<sessionID>/`, index at `~/.copilot/session-store.db` | `<xdgData>/opencode/opencode.db` (e.g. `~/.local/share/opencode/opencode.db`), path overridable via `OPENCODE_DB` | Not stated as a fixed path in the framework's own docs -- plugin-defined, since persistence itself is a pluggable seam rather than a core-owned location |
+| Session ID character | Opaque per the docs; propagated to MCP subprocesses as `CLAUDE_CODE_SESSION_ID` on resume | Opaque per the docs; printed by `/session` and on exit | Structured: `ses_` + embedded timestamp+counter + random suffix, ascending or descending, self-timestamping via `Identifier.timestamp()` | Sequence-numbered internally (the same numbering `fork()`'s boundary parameter addresses); no separate session-ID structure documented on the pages fetched this session |
+| Resume same identity | `--continue` (most recent in cwd), `--resume [name\|id]`, `/resume` -- same session ID, appends | `--continue`/`-r --resume`, `/resume [SESSION-ID]` -- mutually exclusive `--continue`/`--resume` flags | `--continue`/`-c`, `--session <id>`/`-s <id>` | `Session.fromRestore()` -- validates envelope/sequence/surface-transition consistency and distinguishes a genuine resume from a crash via the `session/end-seed` marker; no CLI-flag-level resume syntax documented on the pages fetched this session |
+| Fork/branch semantics | `/branch [name]` or `--fork-session` -- copy-then-redirect in the *same process* if via `/branch` (permission grants carry over); a genuinely new process via CLI flag does not carry them | Not documented as a first-class fork/branch operation on the pages fetched this session | `--fork` + `--continue`/`--session`, backed by `Session.fork({sessionID, messageID?})` -- always a brand-new, fully independent `SessionTable` row from the first write, with an optional exclusive message cutoff | `fork()` -- a live session or session ID plus an optional **inclusive** boundary sequence number; deep-cloned seed events plus lineage metadata (`parentSession`, `seedLength`, `cwd`) |
+| Fork-from-a-specific-point | `/branch` forks at "now" (point in the live conversation), not an arbitrary earlier message | Not found | `Session.fork`'s `messageID` parameter is exactly this: fork truncated at an arbitrary earlier message, source-verified | `fork()`'s `boundary` parameter is the same capability, addressed by sequence number rather than message ID, with an inclusive rather than exclusive cutoff, and an explicit **rejection** (not a silent clip) of a boundary landing inside an open turn |
+| In-session undo/rewind (not a new session) | `/rewind` -- file snapshots under `file-history/<session>/`, five restore modes, rides along across `--resume` | Not found as a distinct mechanism on the pages fetched | `SessionRevert.revert`/`unrevert` -- `session.revert` pointer on the existing row, file state restored via a shadow git repo (`snapshot/<projectID>/<hash>`) sharing object storage with the real repo | Not found on the pages fetched this session |
+| Retention/cleanup | `cleanupPeriodDays` (default 30, `settings.json`), swept on startup; `claude project purge` for explicit, previewable deletion | Not found documented on the pages fetched this session | Not found documented; SQLite DB has no stated retention policy on `dev` | Not documented on the pages fetched this session -- consistent with retention being a persistence-plugin's own concern rather than a core-owned policy |
+| Plaintext/at-rest security note | Explicitly documented as unencrypted; OS file permissions only | Not addressed on the pages fetched | Not addressed in the source read this session | Not addressed on the pages fetched this session |
+| Behavior-change history available | `CHANGELOG.md` -- extensive, session/resume/fork/transcript entries span the full file | `changelog.md` -- extensive, same pattern | None -- no `CHANGELOG.md` in the repo; `dev`-branch source is the only trace of change over time available to this project | None found this session; a large `docs/postmortem/` directory of numbered incident writeups exists in the repository (noted here as an existence finding, not fetched or cited as a behavior-change history for this specific mechanism) |
+
+**The design lesson.** All four products treat "can I get back into
 this conversation after the process exits" as a first-class,
 heavily-hardened feature rather than an afterthought -- both Claude
 Code's and Copilot CLI's own changelogs show a long, ongoing tail of
@@ -857,29 +968,49 @@ pressure a session-durability layer receives once it ships. Where they
 diverge sharply is the *shape* of "forking": Claude Code's `/branch`
 forks the *live, running conversation at the current instant*, and
 does so cheaply when it can stay in one process (reusing in-memory
-permission state); OpenCode's `Session.fork` forks a *stored session at
-an arbitrary earlier message*, which is a strictly more general
-operation the CLI turns into a flag combination (`--fork` plus
-`--session <id>`) rather than an in-conversation command, and pays for
+permission state); OpenCode's `Session.fork` and DeepSeek's `fork()`
+both instead fork a *stored session at an arbitrary earlier point*,
+which is a strictly more general operation than Claude Code's own --
+OpenCode turns it into a CLI flag combination (`--fork` plus
+`--session <id>`) rather than an in-conversation command and pays for
 that generality by always producing a fully independent row rather than
-a same-process shortcut. Copilot CLI's own documentation, of the three,
-says the least about fork/branch mechanics specifically, while saying
-the most about the *relationship between two different stores*
-(complete session-state files versus a derived, rebuildable SQLite
-index) -- a distinction neither other harness's docs draw as sharply,
-because neither documents a comparable derived-index layer sitting on
-top of its primary transcript store. A workflow that needs
-"reproducibly resume exactly this session" can rely on all three; one
-that needs "branch off an arbitrary earlier point in a session that's
-no longer running" is a documented, first-class operation only on
-OpenCode.
+a same-process shortcut, while DeepSeek exposes it as a bare API call
+with its own distinct boundary semantics (§4.3 above: inclusive rather
+than exclusive, sequence-addressed rather than message-ID-addressed, and
+rejecting rather than silently clipping an inside-an-open-turn boundary).
+That two independently-built, fully source-available harnesses converged
+on the same underlying capability -- fork from an arbitrary earlier
+point, not just the tip -- while diverging on every specific mechanical
+choice for expressing it, is itself informative: the *need* for
+arbitrary-point forking appears to be a real, independently-discovered
+design requirement once a harness's session model is sequence-addressable
+at all, not an idiosyncratic feature either team happened to add.
+Copilot CLI's own documentation, of the four, says the least about
+fork/branch mechanics specifically, while saying the most about the
+*relationship between two different stores* (complete session-state
+files versus a derived, rebuildable SQLite index) -- a distinction none
+of the other three harnesses' docs draw as sharply, because none
+documents a comparable derived-index layer sitting on top of its primary
+transcript store. DeepSeek Harness draws a different, equally sharp
+distinction none of the other three make explicitly: persistence itself
+is architected as a pluggable seam the core session model does not
+assume exists at all (§4.2), rather than a first-party format the
+harness itself owns and writes directly -- a structurally different
+answer to "where does the session live" than any of Claude Code's,
+Copilot CLI's, or OpenCode's own fixed-format stores. A workflow that
+needs "reproducibly resume exactly this session" can rely on all four
+harnesses examined here; one that needs "branch off an arbitrary earlier
+point in a session that's no longer running" is a documented, first-class
+operation on two of them -- OpenCode and DeepSeek Harness, its two most
+transparent, fully source-available members.
 
 ---
 
 ## Sources
 
-Fetched 2026-08-01 unless dated 2026-08-17 below (the §1.2 task-tracking-
-persistence research added that date).
+Fetched 2026-08-01 unless dated 2026-08-17 or 2026-08-20 below (the §1.2
+task-tracking-persistence research added the former date; §4's DeepSeek
+Harness section added the latter).
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `https://code.claude.com/docs/en/sessions` -- session storage model,
@@ -995,3 +1126,20 @@ among the three, its own real implementation):**
   `CHANGELOG.md` (confirmed absent at repo root this session), so no
   behavior-change history equivalent to §1.7/§2.4 could be produced for
   this section.
+
+**DeepSeek Harness (authoritative for its own documented behavior; fetched
+20 August 2026, `master` branch of `deepseek-ai/deepseek-harness`,
+developer preview at time of fetch -- see [Hooks and lifecycle
+extensibility](hooks-lifecycle-extensibility.md) §4's Sources for the full
+repository-metadata citation, not repeated here):**
+- `docs/architecture.md` and `docs/glossary.md` -- §4.1's turn/step
+  definitions, the three-domain (session/agent/capability) event split,
+  and the "model-visible means logged" invariant.
+- `docs/subsystems/session.md` -- §4.2's pluggable-persistence-contract
+  finding (no core-owned backend; persistence plugins subscribe to
+  `session/event`, flush on `session/flush`/dispose; the JSONL "packed
+  chunk rows" implementation as one such plugin), `Session.fromRestore()`'s
+  validation steps, the `session/end-seed` resume-vs-crash marker, and
+  §4.3's `fork()` mechanics (inclusive boundary sequence number, the
+  open-turn rejection rule, deep-cloned seed events, `parentSession`/
+  `seedLength`/`cwd` lineage metadata) in full.

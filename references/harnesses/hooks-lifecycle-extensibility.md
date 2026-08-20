@@ -16,8 +16,10 @@ input/output contract and blocking/mutation semantics for each event,
 where the configuration lives, and a changelog-traced history of how
 each system got to its current shape. Hooks (Claude Code's own term),
 hooks (Copilot CLI's own term, deliberately compatible with Claude
-Code's), and plugins (OpenCode's umbrella term, of which lifecycle
-hooks are one part) are, across all three products, **the mechanism a
+Code's), plugins (OpenCode's umbrella term, of which lifecycle hooks
+are one part), and plugins again (DeepSeek Harness's own term, mounted
+into a shared Cordis context rather than loaded as an OpenCode-style
+module -- §4 below) are, across all four products, **the mechanism a
 harness exposes for user-side code to sit directly inside the control
 flow of the agent loop** -- not alongside it the way an MCP tool adds a
 capability the model chooses to invoke, and not as inert content the
@@ -29,14 +31,15 @@ force another turn.
 
 Every claim below is tagged VERIFIED (fetched this session, source
 named) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot
-CLI, and OpenCode are three separate products; a hook event, exit-code
-convention, or configuration key confirmed for one is never assumed to
-hold for another without its own citation -- this matters more than
-usual on this topic because Copilot CLI's own hooks reference
-*explicitly* documents partial format-compatibility with Claude Code's
-hooks (shared PascalCase event names, a Claude-tool-name mapping table,
-even reading `.claude/settings.json` hook entries directly), which
-makes it tempting to assume more overlap than is actually documented.
+CLI, OpenCode, and DeepSeek Harness are four separate products; a hook
+event, exit-code convention, or configuration key confirmed for one is
+never assumed to hold for another without its own citation -- this
+matters more than usual on this topic because Copilot CLI's own hooks
+reference *explicitly* documents partial format-compatibility with
+Claude Code's hooks (shared PascalCase event names, a Claude-tool-name
+mapping table, even reading `.claude/settings.json` hook entries
+directly), which makes it tempting to assume more overlap than is
+actually documented.
 
 ```mermaid
 flowchart TD
@@ -813,6 +816,148 @@ hook contract this page's search did not find.
 
 ---
 
+## 4. DeepSeek Harness
+
+Primary sources, all VERIFIED, fetched 20 August 2026 directly from
+`deepseek-ai/deepseek-harness` (`master` branch, MIT-licensed, in developer
+preview as of this fetch -- "THERE WILL BE COMPATIBILITY-BREAKING CHANGES,"
+per the repository's own README, the same early-instability caveat this
+book already carries for OpenCode's `dev` branch): `README.md`, `AGENTS.md`,
+`docs/architecture.md`, and `docs/subsystems/extensions.md`. DeepSeek
+Harness is built, ground-up, on **Cordis**, a general-purpose plugin
+framework (documented in a separate paper, *A Programming Paradigm for
+Spatiotemporal Composability*, cited by DeepSeek's own docs) that the
+repository vendors directly under `vendor/` rather than merely depending on
+as an npm package -- making it the one harness in this book where the
+extension mechanism is not an add-on the loop calls out to, but the
+substrate the loop itself is composed *from*.
+
+### 4.1 Cordis: registration as a reversible effect, not a fire-and-forget listener
+
+Cordis's own primitive is a shared `ctx` (context) object every plugin
+mounts into. A plugin's only way to affect the running system is to
+register against that context via **`ctx.effect()`** or **`ctx.on()`** --
+and both calls, critically, **return a disposer function**: an explicit,
+first-class handle for unwinding exactly what that one registration
+contributed. `docs/architecture.md` states this as a design absolute, not
+an implementation detail: "there is no privileged core; the system extends
+by mounting new plugins and unwinding their registrations when they
+unload." This is a materially different discipline from an ordinary
+event-bus-with-listeners pattern (the shape [OpenCode's own generic `event`
+hook](hooks-lifecycle-extensibility.md) exhibits, per §3.1 above) that never
+has to think about teardown as a first-class operation: in Cordis, every
+contribution to the shared context is symmetric by construction -- mount
+and unmount are both explicit, code-level operations, not a mount step with
+an implicit, undocumented unmount left to the plugin author's own
+discipline or to process exit.
+
+```mermaid
+flowchart LR
+    P["Plugin's server() function\n(mounted into a running instance)"]
+    P -->|"ctx.effect(fn)"| D1["Returns a disposer:\ncalling it unwinds exactly\nwhat fn registered"]
+    P -->|"ctx.on(event, handler)"| D2["Returns a disposer:\ncalling it removes\nexactly this listener"]
+    D1 --> Unload["Plugin unload / hot-reload /\ncordis/dynamic-retract"]
+    D2 --> Unload
+    Unload --> Clean["No privileged core to fall back to --\nunwinding IS the teardown mechanism,\nnot a side effect of one"]
+```
+
+This registration model sits directly beneath a boot-time composition
+scheme the architecture doc describes in three ordered layers applied to an
+initially empty configuration: **bundles** (e.g. `dsh-base`, supplying model
+adapters, tools, persistence, sandbox, and settings as a foundation),
+**profiles** (named stacks of bundles for a deployment shape, e.g. `web` vs.
+`headless`), and **patches** (profile-level, home-level, or overlay-level
+edits that replace or insert configuration rows by identifier). Each later
+layer can override or add to what came before it, which is how the same
+Cordis substrate produces both a headless CLI build and a browser-served
+web UI from the same underlying plugin set -- every `ctx.effect()`/`ctx.on()`
+registration described above happens once this composed plugin tree is
+actually mounted, not at some separate, hardcoded startup step.
+
+### 4.2 House rules that read like this book's own grounding discipline, applied to code
+
+`AGENTS.md` (the repository's own contributor guidance) states four design
+constraints worth carrying forward verbatim, since they bear directly on
+this page's own subject -- how user-side/extension code is permitted to sit
+inside the loop's control flow: **"Model-visible means logged"** -- anything
+that reaches a model request must be reconstructable from the session log
+(the mechanism behind this is documented from the session-persistence angle
+in [Session & transcript persistence](session-persistence.md) §4);
+**"Plugins, not loop changes"** -- new behaviour goes on documented
+extension points, and changing `agent-loop` itself requires updating
+`docs/architecture.md` in the same change; **"No hardcoded tunables in
+plugins"** -- deployment-varying choices must be validated `Config` fields
+changeable from `cordis.yml`, not literals baked into a plugin's own source;
+and a strict-TypeScript rule that every remaining `any` usage requires an
+explanatory comment. The second rule in particular is the clearest textual
+confirmation that Cordis's plugin substrate is treated, by DeepSeek's own
+engineering discipline, as *the* sanctioned mechanism for extending the
+loop's behaviour -- structurally the same claim this page's own opening
+framing makes about hooks/plugins generally across all harnesses covered
+here, now independently stated as a house rule for a fourth one.
+
+### 4.3 An honest, checked-this-session gap: no confirmed tool-execution hook catalogue
+
+This session specifically fetched `docs/subsystems/extensions.md` looking
+for a pre/post-tool-call-style hook-point catalogue comparable to Claude
+Code's ~30-event catalogue (§1.2 above) or Copilot CLI's 14-event catalogue
+(§2.2 above) or OpenCode's ~20-function `Hooks` interface (§3.2 above). That
+page's fetched content confirmed only Cordis's own *dynamic plugin
+management* events -- `cordis/dynamic-package` (fires on plugin activation),
+`cordis/dynamic-retract` (fires on plugin withdrawal), and
+`cordis/request-run` (fires for approval requests) -- which is a real
+mechanism, but a different layer entirely from a tool-execution hook
+catalogue: it governs hot-loading and unloading *plugins themselves*, not
+observing or intercepting individual tool calls the way `PreToolUse`/
+`PostToolUse`, `preToolUse`/`postToolUse`, or `tool.execute.before`/
+`tool.execute.after` do for the other three harnesses on this page. Whether
+DeepSeek Harness exposes a dedicated, user-authorable tool-execution hook
+surface at all, and if so where it is documented, is left **UNCONFIRMED**
+rather than assumed absent -- this session's fetch of one specific docs page
+did not surface one, but that is not the same as a confirmed absence across
+the full `docs/subsystems/` tree (which names, per its own directory
+listing, over 40 subsystem pages, only a handful of which this book has
+fetched to date).
+
+**Related, and kept separate deliberately:** DeepSeek Harness's own
+capability-seam vocabulary (Service Definition/Provider/Consumer) is a
+different mechanism from the plugin-registration/disposal model described
+in §4.1 -- a capability seam is about *swapping which provider implements an
+interface* (e.g. `ctx.llm`'s choice of `llm-deepseek` vs. `llm-pi-ai`), not
+about *a plugin inserting itself into the control flow at a named point*.
+The seam vocabulary is documented in full, with `ctx.llm` as the worked
+example, in [The LLM API contract](llm-api-contract.md) §3.4 -- not repeated
+here, since this page's own subject is the latter mechanism, not the
+former.
+
+### 4.4 Using Cordis's disposer pattern as a reasoning aid for the two closed harnesses -- BEST CURRENT UNDERSTANDING, UNCONFIRMED
+
+Neither Claude Code's docs (§1 above) nor Copilot CLI's docs (§2 above)
+state what happens to an *already-registered* hook when its own settings
+file is edited mid-session -- both harnesses support editing hook
+configuration without a full process restart, but the mechanism by which a
+stale registration gets torn down (or isn't) is not described on any page
+fetched for either harness's own section above. Cordis models every plugin
+registration as an effect with an explicit disposer (§4.1), meaning any
+framework built this way has a structural answer to "how does a stale
+registration get cleanly torn down" built directly into its substrate,
+rather than left to each hook author's own discipline. **BEST CURRENT
+UNDERSTANDING, UNCONFIRMED:** since both Claude Code and Copilot CLI support
+this kind of mid-session config edit, each most likely has *some* internal
+equivalent of a disposal/re-registration step when a hook's configuration
+changes underneath a live session -- but whether either actually implements
+one, and what it looks like, remains unconfirmed by anything this book has
+fetched from either harness directly. DeepSeek's `ctx.effect()`/`ctx.on()`
+disposer pattern is offered here only as a concrete illustration of what
+such a mechanism could look like in a fully transparent system, never as
+evidence that either closed harness implements something similar --
+inferring a closed harness's internals from an unrelated open harness's
+source is exactly the AUTHORITY OVERREACH this book's grounding discipline
+exists to prevent, so this inference is held at arm's length rather than
+blended into the VERIFIED material in §1 or §2.
+
+---
+
 ## Synthesis
 
 ```mermaid
@@ -835,9 +980,15 @@ flowchart TB
         OC3["2 surfaces: generic observational 'event' bus\nvs ~20 named, typed (input,output) hook functions"]
         OC4["Config: .opencode/plugins/ + ~/.config/opencode/plugins/\n+ opencode.json 'plugin' array (npm)"]
     end
+    subgraph DS["DeepSeek Harness -- Cordis 'plugins'"]
+        DS1["Handler = ctx.effect()/ctx.on() registration\nagainst a shared Cordis context"]
+        DS2["Decision channel: BOTH return a disposer function --\nregistration and teardown are symmetric primitives"]
+        DS3["Confirmed: cordis/dynamic-package,\ncordis/dynamic-retract, cordis/request-run\n(plugin hot-load/unload layer)"]
+        DS4["NOT confirmed: a dedicated tool-execution\nhook catalogue -- left UNCONFIRMED, not absent"]
+    end
 ```
 
-All three products converge on the same underlying need -- a way for
+All four products converge on the same underlying need -- a way for
 user-authored code to sit inside the control flow of the loop, not just
 add a capability the model can choose to call -- but diverge sharply on
 *how* a decision gets communicated back to the harness. Claude Code and
@@ -847,16 +998,18 @@ optional JSON on stdout, with Copilot's own documentation making the
 Claude-format compatibility deliberate rather than incidental (shared
 PascalCase event names, a literal tool-name mapping table, reading
 `.claude/settings.json` hook entries directly, an identical
-8-consecutive-block runaway-loop cap). OpenCode instead keeps the
-contract entirely **in-process**: a plugin is JavaScript/TypeScript
-loaded directly into the same runtime, and a hook communicates a
-decision by mutating a plain object passed by reference or by throwing
-a language-level exception -- there is no subprocess boundary, no exit
-code, and therefore no equivalent of Claude Code's or Copilot's
+8-consecutive-block runaway-loop cap). OpenCode and DeepSeek Harness
+instead keep the contract entirely **in-process**: a plugin is
+JavaScript/TypeScript loaded directly into the same runtime, and a
+decision is communicated either by mutating a plain object passed by
+reference or by throwing a language-level exception (OpenCode) or by
+registering/unregistering an effect against a shared context object
+(DeepSeek's Cordis) -- there is no subprocess boundary, no exit code,
+and therefore no equivalent of Claude Code's or Copilot's
 fail-open-on-timeout safeguard, because there is no separate process to
 time out in the first place (this last point is this page's own
 reasoned inference from the mechanism's shape, not a fact stated by
-any of the three sources directly -- **BEST CURRENT UNDERSTANDING,
+any of the four sources directly -- **BEST CURRENT UNDERSTANDING,
 UNCONFIRMED**). The two process-boundary harnesses also converge, more
 specifically than the general framing suggests, on treating **tool-call
 denial as the one decision worth a fail-closed default**: Claude
@@ -870,6 +1023,29 @@ entirely, since a plugin function throwing an uncaught error is, in a
 single Node/Bun process, closer to a hard failure of the whole session
 than a contained, recoverable subprocess exit -- again, reasoned rather
 than directly sourced.
+
+**A third convergence, DeepSeek Harness's own contribution, on
+reversible registration as an explicit design principle rather than an
+implicit convention.** OpenCode's plugin model already lets a hook
+mutate state or block an action, but neither its docs nor its source, as
+read for §3 above, name teardown/unregistration as a first-class,
+symmetric counterpart to registration -- a plugin simply is or isn't
+loaded for the process's lifetime. Cordis's `ctx.effect()`/`ctx.on()`
+(§4.1) makes the same idea DeepSeek's docs treat as a design absolute
+("there is no privileged core; the system extends by mounting new
+plugins and unwinding their registrations when they unload") into a
+directly returned, callable disposer value every registration produces.
+This does not mean OpenCode's own extension points are somehow
+deficient -- nothing in its docs or source claims registration needs to
+be reversible mid-session the way Cordis's dynamic-plugin-management
+events (`cordis/dynamic-package`/`cordis/dynamic-retract`, §4.3) suggest
+DeepSeek's own deployment model requires -- but it is a genuinely
+different, more explicit answer to "how does an extension point clean up
+after itself" than either OpenCode's own convention-based approach or
+Claude Code's/Copilot CLI's process-exit-based teardown (a hook
+subprocess simply exits; there is nothing to dispose because there was
+never anything mounted into a shared long-lived context in the first
+place).
 
 ---
 
@@ -943,3 +1119,28 @@ not a stable release tag):**
   call sites in §3.4, and the absence of any found `"permission.ask"`
   trigger call site, flagged as UNCONFIRMED rather than absent-by-proof
   in §3.3.
+
+**DeepSeek Harness (authoritative for its own documented behavior; no
+implementation source read for this page specifically -- the Cordis
+plugin framework itself is vendored, not authored, by DeepSeek, per §4's
+own text):**
+- Repository metadata: `gh api repos/deepseek-ai/deepseek-harness`,
+  fetched 20 August 2026 -- MIT license, developer-preview status,
+  "THERE WILL BE COMPATIBILITY-BREAKING CHANGES" warning.
+- `https://github.com/deepseek-ai/deepseek-harness/blob/master/README.md`
+  -- the Cordis-based "everything is a plugin" framing and distribution
+  detail.
+- `https://github.com/deepseek-ai/deepseek-harness/blob/master/AGENTS.md`
+  -- §4.2's four house rules ("Model-visible means logged," "Plugins,
+  not loop changes," "No hardcoded tunables in plugins," the
+  strict-TypeScript `any`-comment rule).
+- `docs/architecture.md` -- §4.1's `ctx.effect()`/`ctx.on()`
+  disposer-returning registration model, the "no privileged core" design
+  absolute, and the bundle -> profile -> patch boot-time composition
+  scheme.
+- `docs/subsystems/extensions.md` -- fetched specifically this session
+  to look for a tool-execution hook catalogue; §4.3's finding that only
+  Cordis's dynamic-plugin-management events
+  (`cordis/dynamic-package`/`cordis/dynamic-retract`/`cordis/request-run`)
+  were confirmed, with a dedicated tool-execution hook surface left
+  UNCONFIRMED rather than assumed absent.
