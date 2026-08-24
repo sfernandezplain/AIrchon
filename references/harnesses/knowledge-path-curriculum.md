@@ -30,12 +30,28 @@ themselves), not a researched claim about how anyone actually learns --
 treat them as a first-draft course skeleton to be iterated on when
 actual courses/exercises get built from it, not as a finished syllabus.
 
+**2026-08-24 revision note.** `reader-proficiency-tiers.md` was revisited
+this session to fold `references/sdlc/` and `references/rag/` into the
+Demiurge and Archon reading lists (see that page's Demiurge- and
+Archon-tier extension subsections); this page was revised to match --
+Cluster 6 (RAG) and Cluster 7 (Agentic-SDLC practitioner mechanics) were
+added to Transition 2, and Cluster 8 (Agentic-SDLC design-space and
+methodology) was added to Transition 3, each with the same per-module
+key-concepts/comprehension-check/exercise shape as the pre-existing
+clusters. Every module in Clusters 6-8 inherits its factual detail from
+`references/rag/` or `references/sdlc/` pages, which in turn attribute
+their own claims to the HuggingFace Cookbook notebooks and Lewis et al.
+(2020), or to the Agentic SDLC Handbook alone -- not to this
+wiki-book's own VERIFIED/BEST-CURRENT-UNDERSTANDING grounding. That
+distinction is restated inline at each new cluster's overview and is not
+optional context to drop when teaching from this page.
+
 ```mermaid
 stateDiagram-v2
     [*] --> Slumberer
     Slumberer --> Gnostic: 2 modules, sequential
-    Gnostic --> Demiurge: 21 modules, 5 thematic clusters
-    Demiurge --> Archon: 10 modules, design-space band
+    Gnostic --> Demiurge: 21 modules, 5 core clusters + Clusters 6-7 (RAG, SDLC mechanics)
+    Demiurge --> Archon: 10 modules, design-space band + Cluster 8 (SDLC design-space)
     Archon --> [*]: primary sources beyond this book
     note right of Slumberer
         capstone: none (entry state)
@@ -47,10 +63,12 @@ stateDiagram-v2
     note right of Demiurge
         capstone: cross-harness mechanism
         comparison + operator config
+        (or Cluster 6/7 variant)
     end note
     note right of Archon
         capstone: from-scratch harness
         design document
+        (or Cluster 8 variant)
     end note
 ```
 
@@ -163,10 +181,18 @@ Copilot CLI's or OpenCode's equivalent looks like." Per
 power-user/administrator depth (hooks, permission rules, MCP servers)
 and compare the same mechanism across all three harnesses -- that
 cross-harness comparison is the band's defining exercise shape, not an
-optional extra.
+optional extra. Per that same page's Demiurge-tier extension
+subsections (added 2026-08-24), this band also now includes two further
+clusters sourced from outside the wiki-book proper -- a RAG cluster
+(`references/rag/`) and an Agentic-SDLC practitioner-mechanics cluster
+(`references/sdlc/`) -- both held to the mechanics-depth bar this
+transition sets, but grounded "the source says"/"the handbook says"
+rather than this book's own VERIFIED/BEST-CURRENT-UNDERSTANDING tagging;
+see `reader-proficiency-tiers.md`'s grounding-status caveat for the exact
+wording this distinction should be taught with.
 
 **Learning objectives.** By the end of this band, the learner can:
-- For any of the five clusters below, name the specific config
+- For any of the five core clusters below, name the specific config
   key/file path/tool name each of Claude Code, Copilot CLI, and
   OpenCode uses for that mechanism, not just a generic description of
   the mechanism.
@@ -185,14 +211,24 @@ optional extra.
 - Compare the same mechanism (memory, orchestration, permissions,
   retries, auth) across all three harnesses and state, with citations,
   where they genuinely converge and where they genuinely diverge.
+- Build a real retrieve-then-generate pipeline and name, at the same
+  parameter granularity as the five core clusters, the specific chunking
+  strategy, embedding model, vector store, or reranker choice it makes
+  and why (Cluster 6).
+- Trace a primitive (rule file, skill, or agent persona) through the
+  Agentic SDLC Handbook's own four-phase Resolve/Materialize/Bind
+  /Activate lifecycle and name which phase a given failure ("the skill
+  never activated") actually occurred in (Cluster 7).
 
 The 21-page core-mechanics band is grouped into five thematic clusters
-below to make it navigable as a course. The clusters are this page's own
-organizing device, not a distinction drawn by the source pages
-themselves -- several pages (session-persistence.md, memory-management.md)
-explicitly cross-reference each other across cluster boundaries, and a
-course built from this skeleton should preserve those cross-references
-rather than teach the clusters as hermetically sealed units.
+below to make it navigable as a course, plus two extension clusters (6
+and 7) covering the RAG and Agentic-SDLC-mechanics material described
+above. The clusters are this page's own organizing device, not a
+distinction drawn by the source pages themselves -- several pages
+(session-persistence.md, memory-management.md) explicitly
+cross-reference each other across cluster boundaries, and a course
+built from this skeleton should preserve those cross-references rather
+than teach the clusters as hermetically sealed units.
 
 ```mermaid
 flowchart TB
@@ -227,8 +263,29 @@ flowchart TB
         MCP["mcp-integration.md"]
         ALI["agent-loop-implementations.md"]
     end
-    C1 --> C2 --> C3 --> C4 --> C5
+    subgraph C6["Cluster 6: RAG (references/rag/)"]
+        RF["foundations.md"]
+        RB["basic-rag-pipeline.md"]
+        RA["advanced-rag-techniques.md"]
+        RV["vector-store-integrations.md"]
+        RS["semantic-caching.md"]
+        RG["structured-generation-for-rag.md"]
+        RE["rag-evaluation.md"]
+        RL["agentic-rag-with-llamaindex.md"]
+        RH["heterogeneous-data-sources.md"]
+    end
+    subgraph C7["Cluster 7: Agentic SDLC practitioner mechanics (references/sdlc/)"]
+        S04["04-the-reference-architecture.md"]
+        S11["11-the-runtime-machine.md"]
+        S12["12-the-instrumented-codebase.md"]
+        S14["14-the-load-lifecycle.md"]
+        S15["15-attention-and-context-economy.md"]
+        S21["21-primitives-as-code.md"]
+        SA["appendix-a-cross-harness-reference.md"]
+    end
+    C1 --> C2 --> C3 --> C4 --> C5 --> C6 --> C7
 ```
+
 
 ### Session breakdown (agenda only), Gnostic -> Demiurge
 
@@ -243,7 +300,12 @@ Transition 1's session breakdown (see that transition's own pointer
 paragraph above and `CHANGELOG.md`). This page's learning objectives,
 clusters, modules, comprehension checks, exercises, and capstone below
 remain the authoritative source that file's agendas point back to -- it
-adds pacing, not new content.
+adds pacing, not new content. **Note (2026-08-24):** that pacing file's
+27-session count was set before Clusters 6 and 7 below existed and
+covers only the original five-cluster/21-module band; a future pacing
+pass on that file (out of scope for this page, per `airchon-teacher`'s
+own domain boundary) is needed to fold in session agendas for the RAG
+and Agentic-SDLC-mechanics clusters this page now documents.
 
 ### Cluster 1: Memory & Context
 
@@ -627,21 +689,310 @@ documented Agent SDK loop, and how does that differ from what
 injection) and observe exactly what happens when the limit is hit --
 does the loop halt, warn, or inject a new instruction?
 
+### Cluster 6: Retrieval-Augmented Generation (`references/rag/`)
+
+**Cluster overview:** how a real RAG pipeline is built, tuned, and
+evaluated -- as opposed to how any one harness decides whether to use
+retrieval at all, which is the Archon-tier
+[context-retrieval-and-agentic-search.md](context-retrieval-and-agentic-search.md)'s
+concern, not this cluster's. Every module below cites `references/rag/`
+pages directly; those pages attribute their own claims to the
+HuggingFace Cookbook notebooks and Lewis et al. (2020), not to this
+wiki-book's own VERIFIED/BEST-CURRENT-UNDERSTANDING grounding.
+
+#### Module: RAG foundations ([../rag/foundations.md](../rag/foundations.md))
+
+**Key concepts:** Lewis et al.'s parametric/non-parametric memory split;
+RAG-Sequence vs. RAG-Token; the HuggingFace Agents Course's agentic-RAG
+reframing of retrieval as one callable tool among several rather than a
+fixed pipeline stage.
+
+**Comprehension check:** What does Lewis et al.'s abstract name as the
+two problems that compound a language model's limited ability to
+"access and precisely manipulate knowledge," and how does non-parametric
+memory address each?
+
+**Exercise:** Take a factual question your own knowledge is uncertain
+on, answer it once from memory alone, then again after retrieving one
+supporting document, and write two sentences on which of Lewis et al.'s
+named failure modes (no provenance, stale knowledge) the second answer
+actually fixed.
+
+#### Module: The basic RAG pipeline ([../rag/basic-rag-pipeline.md](../rag/basic-rag-pipeline.md))
+
+**Key concepts:** the introductory LangChain + Zephyr + FAISS pipeline
+over GitHub issues; `GitHubIssuesLoader` -> `RecursiveCharacterTextSplitter`
+-> embed -> retrieve -> prompt -> generate as the baseline shape every
+later module varies.
+
+**Comprehension check:** Why does the notebook's own worked example
+("how do you combine multiple adapters?") fail when asked of the base
+model with no retrieved context, and what specifically does retrieval
+add back?
+
+**Exercise:** Reproduce the basic pipeline's shape (loader, splitter,
+embedder, retriever, generator) against a small corpus of your own
+choosing, and identify which of the five stages you had to change to
+fit your corpus's format.
+
+#### Module: Advanced RAG techniques ([../rag/advanced-rag-techniques.md](../rag/advanced-rag-techniques.md))
+
+**Key concepts:** the character-vs-token chunking trap (a
+character-based `chunk_size` silently disagreeing with a tokenizer's
+count); PaCMAP embedding-space visualization; ColBERTv2 cross-encoder
+reranking via RAGatouille.
+
+**Comprehension check:** Why does a plain `RecursiveCharacterTextSplitter`
+with a character-based `chunk_size` risk producing chunks that overflow
+an embedding model's actual token budget, and what fix does this page
+document?
+
+**Exercise:** Take the pipeline you built in the previous module, add a
+reranking stage over its top-k retrieved results, and compare the
+top-1 result before and after reranking on the same query.
+
+#### Module: Vector store integrations ([../rag/vector-store-integrations.md](../rag/vector-store-integrations.md))
+
+**Key concepts:** three notebooks swapping the retriever half of the
+basic pipeline onto Milvus, Elasticsearch, and MongoDB Atlas while
+holding the retrieve-then-generate shape constant.
+
+**Comprehension check:** Name one production vector store this page
+documents and the embedding model the corresponding notebook pairs it
+with.
+
+**Exercise:** Swap your own pipeline's in-memory vector index (FAISS or
+similar) for one of the three production stores this page documents,
+and note what changed at the retrieval-call site versus what stayed
+identical.
+
+#### Module: Semantic caching for RAG ([../rag/semantic-caching.md](../rag/semantic-caching.md))
+
+**Key concepts:** cache placement (before retrieval, not before
+generation); FAISS `IndexFlatL2` with a Euclidean distance threshold;
+FIFO eviction.
+
+**Comprehension check:** Why does this page's notebook place the
+semantic cache before the retrieval step rather than before the final
+LLM call, given that a RAG system has two expensive, repeatable steps?
+
+**Exercise:** Add a semantic cache in front of your pipeline's retrieval
+call, using a distance threshold of your choosing, and demonstrate a
+cache hit on two differently-worded queries that carry the same intent.
+
+#### Module: Structured generation for RAG ([../rag/structured-generation-for-rag.md](../rag/structured-generation-for-rag.md))
+
+**Key concepts:** source-snippet highlighting as a provenance mechanism;
+the naive JSON-prompting approach and where it breaks; Outlines'
+logit-biasing constrained-decoding mechanism as the fix.
+
+**Comprehension check:** What provenance problem, named back in
+`foundations.md`, does this page's source-highlighting feature
+concretely solve?
+
+**Exercise:** Modify your pipeline's generation step to output a
+structured answer object that names which retrieved chunk(s) the answer
+draws from, using either prompting or a constrained-decoding library.
+
+#### Module: RAG evaluation ([../rag/rag-evaluation.md](../rag/rag-evaluation.md))
+
+**Key concepts:** synthetic QA-dataset generation from the knowledge
+base itself; groundedness/relevance/standalone-ness critique agents as
+a quality filter; an LLM-as-judge (GPT-4-style) scoring rubric.
+
+**Comprehension check:** Name the three critique-agent scores this
+page's pipeline filters a synthetic QA pair on, and what happens to a
+pair that fails any one of them.
+
+**Exercise:** Generate five synthetic QA pairs from your own pipeline's
+knowledge base, critique each on this page's three axes, and run the
+surviving pairs through an LLM-as-judge comparison of your pipeline's
+answer against the synthetic "true" answer.
+
+#### Module: Agentic RAG with LlamaIndex ([../rag/agentic-rag-with-llamaindex.md](../rag/agentic-rag-with-llamaindex.md))
+
+**Key concepts:** LlamaIndex's Loading/Indexing/Querying three-phase
+framing as an alternative vocabulary to LangChain's load/split/embed
+/index/retrieve/prompt/generate; a fully local Ollama + Llama 2 +
+`BAAI/bge-base-en-v1.5` stack chosen specifically to avoid an
+OpenAI-by-default dependency.
+
+**Comprehension check:** What does this page identify as LlamaIndex's
+"OpenAI-by-default trap," and what concrete substitution does the
+notebook make to avoid it?
+
+**Exercise:** Rebuild your basic pipeline (or a subset of it) using
+LlamaIndex instead of LangChain, and note which of its three named
+phases (Loading/Indexing/Querying) corresponds to which of your original
+pipeline's stages.
+
+#### Module: RAG over heterogeneous data sources ([../rag/heterogeneous-data-sources.md](../rag/heterogeneous-data-sources.md))
+
+**Key concepts:** Unstructured's partition-then-chunk pipeline for mixed
+document formats (PDF, PPTX, EPUB, HTML) in one corpus; Jina Reranker v2
+scoring whole SQL table schemas directly, with no vector index at all.
+
+**Comprehension check:** Why does the SQL-backed notebook this page
+documents skip the usual chunk-and-embed retrieval step entirely, and
+what does it use instead?
+
+**Exercise:** Pick one document in a format your existing pipeline
+cannot currently ingest (a PDF, a PPTX, or similar), add it to your
+knowledge base using Unstructured's partition-then-chunk approach this
+page documents, and confirm the pipeline retrieves from it correctly.
+
+### Cluster 7: Agentic SDLC practitioner mechanics (`references/sdlc/`)
+
+**Cluster overview:** the Agentic SDLC Handbook's own instrumented
+-codebase discipline -- primitive types, load modes, the four-phase
+lifecycle, and the package/lockfile model that governs how markdown
+files actually reach and influence a model's context, at the same
+mechanics depth as Clusters 1-5, but sourced single-source from the
+handbook ("the handbook says") rather than this wiki-book's own
+cross-verified pages.
+
+#### Module: The reference architecture and the runtime machine ([../sdlc/04-the-reference-architecture.md](../sdlc/04-the-reference-architecture.md), [../sdlc/11-the-runtime-machine.md](../sdlc/11-the-runtime-machine.md))
+
+**Key concepts:** the Human/Agent/Platform three-layer participant
+model (Ch. 4); the four parts of the agentic runtime machine --
+Model/Harness/Agent Source Code/Client -- and "the harness is the
+compiler" framing (Ch. 11); cross-harness file-naming incompatibility as
+a direct consequence of the Agent Source Code layer having no shared
+standard.
+
+**Comprehension check:** In the "harness is the compiler" framing, what
+plays the role of source code, and what plays the role of the compiled
+artifact?
+
+**Exercise:** Name one concrete cross-harness file-naming incompatibility
+(e.g. `CLAUDE.md` vs. `AGENTS.md`) and explain, using the four-part
+runtime-machine model, why the same markdown content still produces
+different behavior in two harnesses despite meaning the same thing to a
+human reader.
+
+#### Module: The instrumented codebase ([../sdlc/12-the-instrumented-codebase.md](../sdlc/12-the-instrumented-codebase.md))
+
+**Key concepts:** the seven primitive types (instructions, and six
+others this page's own table covers); the five load modes (eager
+preload, lazy on-demand, dispatcher-mediated, user-invoked,
+event-driven); the instrumentation audit as a practice for converting
+tacit team knowledge into structured, harness-loadable files.
+
+**Comprehension check:** Name the five load modes this page documents,
+and give one primitive type whose load mode is "eager preload, scoped by
+`applyTo` glob."
+
+**Exercise:** Pick a real convention from a codebase you know that only
+lives "in the team's heads" (an unwritten pattern, a deprecated approach
+to avoid), and write it up as one of the seven primitive types, choosing
+the load mode that best matches when an agent should actually see it.
+
+#### Module: The load lifecycle ([../sdlc/14-the-load-lifecycle.md](../sdlc/14-the-load-lifecycle.md))
+
+**Key concepts:** the four-phase Resolve -> Materialize -> Bind ->
+Activate pipeline; the three binding modes; the phantom-dependency and
+bundle-leakage anti-patterns; the governing claim that "a skill... can
+fail to bind -- and the harness will not tell you why."
+
+**Comprehension check:** A skill with correct frontmatter, in the right
+directory, with a sharp description, fails to activate with no error
+message. Per this page's own vocabulary, which phase is the most likely
+point of failure, and why does the fix rarely live in the skill file
+itself?
+
+**Exercise:** Take a primitive you wrote in the previous module's
+exercise and trace it explicitly through all four phases, naming which
+tool or actor owns each phase and how many times per session/install
+each phase runs.
+
+#### Module: Attention and context economy ([../sdlc/15-attention-and-context-economy.md](../sdlc/15-attention-and-context-economy.md))
+
+**Key concepts:** window (hard token ceiling) vs. attention (a smaller,
+position-sensitive effective-focus cache); context rot and attention
+starvation as two distinct silent-failure modes; the U-shaped attention
+curve (citing Liu et al.'s "Lost in the Middle" and Anthropic's
+needle-in-a-haystack evaluations).
+
+**Comprehension check:** What is the difference between "an instruction
+the model has read" and "an instruction the model has seen," per this
+page's own governing claim, and which of the two does attention
+starvation describe?
+
+**Exercise:** Construct a test prompt that places one explicit,
+technically-in-scope instruction in the middle of a long document, run
+it against a real model, and check whether the instruction was followed
+-- then repeat with the same instruction moved to the start or end and
+compare.
+
+#### Module: Primitives as code ([../sdlc/21-primitives-as-code.md](../sdlc/21-primitives-as-code.md))
+
+**Key concepts:** the package model (one skill = one Module/Facade, a
+bundle = a Composite, a dependency edge = a Package Reference); the
+lockfile pinning a resolved dependency graph by content hash;
+overrides and versioning as the mechanism that keeps two teams' shared
+content from drifting apart.
+
+**Comprehension check:** In this page's opening scenario, two skills
+disagree about a shared review checklist. What structural problem, per
+this page's own diagnosis, caused the disagreement, and how does
+treating the checklist as a package (rather than embedding it in each
+skill) fix it?
+
+**Exercise:** Take two primitives you have written (in this cluster's
+earlier exercises or elsewhere) that share some content, and refactor
+that shared content into a single declared dependency both primitives
+reference, rather than each embedding its own copy.
+
+#### Module: Appendix A, the cross-harness reference ([../sdlc/appendix-a-cross-harness-reference.md](../sdlc/appendix-a-cross-harness-reference.md))
+
+**Key concepts:** the master comparison table mapping ten APM primitive
+concepts (project-wide rules, scope-attached rules, personas, skills,
+hooks, MCP config, session compaction, and others) to their concrete
+file/config convention across five harnesses (Copilot, Claude Code,
+Cursor, Codex CLI, OpenCode).
+
+**Comprehension check:** Pick one row of this page's master table (e.g.
+"project-wide rules") and name the concrete file/path convention it
+gives for two different harnesses.
+
+**Exercise:** Extend this page's own table with one additional row for
+a primitive concept it does not cover, filling in the concrete
+file/config convention for at least three of the five harnesses,
+citing where you found or verified each cell.
+
 ### Capstone: cross-harness mechanism comparison + operator configuration
 
-Choose one cluster above. For that cluster's mechanism (e.g. "how
-context gets compressed mid-run," or "how a permission decision gets
-enforced"), produce two artifacts: (1) a comparison table with one row
-per harness (Claude Code, Copilot CLI, OpenCode) naming the specific
-config key/file path/tool name/limit each uses for that mechanism, with
-a citation to the source page for each cell; and (2) a real, working
-configuration file (a `settings.json`, a hooks config, a permission
-rule set, etc.) for at least one of those harnesses that deliberately
-exercises the documented limit or gate -- not a toy example, a
-configuration you actually ran against a live session and can show the
-output of. A grader checks that the table's cells are traceable to the
-cited page (not invented) and that the configuration artifact actually
-does what it claims when run.
+Choose one cluster above (Clusters 1-5 for a cross-harness mechanism
+comparison, or Cluster 6/7 for an equivalent artifact grounded in the
+RAG or Agentic-SDLC material instead -- see the variant instructions
+below). For that cluster's mechanism (e.g. "how context gets compressed
+mid-run," or "how a permission decision gets enforced"), produce two
+artifacts: (1) a comparison table with one row per harness (Claude Code,
+Copilot CLI, OpenCode) naming the specific config key/file path/tool
+name/limit each uses for that mechanism, with a citation to the source
+page for each cell; and (2) a real, working configuration file (a
+`settings.json`, a hooks config, a permission rule set, etc.) for at
+least one of those harnesses that deliberately exercises the documented
+limit or gate -- not a toy example, a configuration you actually ran
+against a live session and can show the output of. A grader checks that
+the table's cells are traceable to the cited page (not invented) and
+that the configuration artifact actually does what it claims when run.
+
+**Cluster 6/7 variant.** Clusters 6 and 7 have no second harness to
+compare against (RAG-the-technique and the SDLC handbook's
+instrumented-codebase discipline are each single-source, not
+three-implementations-of-one-mechanism like Clusters 1-5). A learner
+choosing this variant instead produces: (1) a working artifact from one
+of that cluster's own exercises above (a real pipeline component for
+Cluster 6, a real primitive/lockfile pairing for Cluster 7) that you
+actually ran and can show the output of; and (2) a short comparison
+note, with citations, of how that cluster's mechanism differs from the
+closest analogous mechanism in Clusters 1-5 (e.g. RAG's semantic-cache
+placement vs. `caching.md`'s prompt-prefix caching; the SDLC handbook's
+load lifecycle vs. `instruction-context-budget.md`'s eager-load budget)
+-- the point of the note is to keep the two epistemic registers (this
+book's own VERIFIED tagging vs. Clusters 6/7's single-source attribution)
+visibly distinct rather than blurred together.
 
 ---
 
@@ -658,7 +1009,13 @@ testing pyramids, multi-agent topologies, and observability strategies
 from scratch -- the ten pages in this band are original design-space
 surveys and syntheses, not single-harness research reports, and the
 exercises below are correspondingly generative rather than
-observational.
+observational. Per that same page's Archon-tier extension subsection
+(added 2026-08-24), this band also now includes a ten-item Agentic-SDLC
+design-space/methodology cluster (Cluster 8 below, `references/sdlc/`)
+-- original synthesis and methodology in the same generative-not
+-observational spirit as the ten core pages, but grounded "the handbook
+says" rather than this book's own VERIFIED/BEST-CURRENT-UNDERSTANDING
+tagging.
 
 **Learning objectives.** By the end of this band, the learner can:
 - Take a documented negative finding (a mechanism no shipped harness
@@ -676,6 +1033,13 @@ observational.
 - Distinguish a genuine technical ceiling from a deliberate,
   team-specific scope decision when a page raises that question, and
   argue for one interpretation using the page's own evidence.
+- Critique the Agentic SDLC Handbook's own original methodology (the
+  five-phase execution meta-process, the Rosetta Stone pattern
+  catalogue, the 19-anti-pattern taxonomy) against this book's own
+  independently-grounded design-space pages where the two overlap, and
+  check a named methodology claim against at least one of the
+  handbook's own real-world case studies rather than accepting it in
+  the abstract.
 
 ### Session breakdown (agenda only), Demiurge -> Archon
 
@@ -692,6 +1056,11 @@ and 2's own session breakdowns (see their pointer paragraphs above and
 `CHANGELOG.md`). This page's learning objectives, modules, comprehension
 checks, exercises, and capstone below remain the authoritative source
 that file's agendas point back to -- it adds pacing, not new content.
+**Note (2026-08-24):** as with the Transition 2 pacing file, this
+13-session count predates Cluster 8 below and covers only the original
+ten-page band; a future pacing pass on that file (out of scope for this
+page) is needed to fold in session agendas for the Agentic-SDLC
+design-space cluster.
 
 ### Module: The multi-agent coordination design space ([multi-agent-coordination-design-space.md](multi-agent-coordination-design-space.md))
 
@@ -868,6 +1237,175 @@ hypothetical new interactive dialog in a TUI harness, specifying which
 primitives compose into which composite, and where a modal
 keybinding-stack push/pop would need to occur.
 
+### Cluster 8: Agentic SDLC design-space and methodology (`references/sdlc/`)
+
+**Cluster overview:** the Agentic SDLC Handbook's own original synthesis
+and methodology material -- a practitioner's-mindset overview, an
+authoring-craft discipline (PROSE), a control-boundary thesis
+(deterministic/probabilistic), a multi-agent composition catalogue, a
+five-phase execution methodology, a Gang-of-Four pattern catalogue, a
+19-item anti-pattern taxonomy, a recursive-composition synthesis, and
+four real-world case studies plus a worked-example appendix -- held to
+the same generative, argue-from-primitives bar as the ten core modules
+above, but single-source ("the handbook says") rather than
+independently cross-verified.
+
+#### Module: The practitioner's mindset ([../sdlc/09-10-part-iii-preface-and-practitioners-mindset.md](../sdlc/09-10-part-iii-preface-and-practitioners-mindset.md))
+
+**Key concepts:** the eight terms practitioners cannot avoid (Primitive,
+Manifest, Lockfile, CODEOWNERS, Harness, Subagent, Recursion bound, MCP);
+the five-layer supply chain restated from Ch. 4; the four composition
+patterns (Panel/Wave/Scatter-Gather/Subagent) named as the field's
+converged vocabulary before Ch. 17 develops them mechanically.
+
+**Comprehension check:** Name the four composition patterns this
+overview introduces, and which one the handbook treats as the "anchor
+case" that concentrates every other discipline into one observable
+instance.
+
+**Exercise:** Using only this page's eight practitioner terms, write a
+250-word abstract description of a hypothetical multi-agent code review
+-- the same "stay abstract, use only the vocabulary given" discipline
+Transition 1's own capstone required, now applied to SDLC vocabulary
+instead of agent-loop vocabulary.
+
+#### Module: The PROSE framework ([../sdlc/prose-framework.md](../sdlc/prose-framework.md))
+
+**Key concepts:** the five constraints (Progressive Disclosure, Reduced
+Scope, Orchestrated Composition, Safety Boundaries, Explicit Hierarchy)
+and their paired anti-patterns; the handbook's own framing of PROSE as
+"an opinionated discipline, not a standards body or a published spec."
+
+**Comprehension check:** Name one of PROSE's five constraints, its
+paired anti-pattern, and one concrete authoring practice this page gives
+for satisfying the constraint.
+
+**Exercise:** Critique PROSE's five constraints against this book's own
+[System-prompt / agent-instruction design as a
+craft](system-prompt-design-as-craft.md), naming one point where the two
+converge on the same underlying practice under different names, and one
+point where they diverge.
+
+#### Module: The deterministic/probabilistic boundary ([../sdlc/16-deterministic-probabilistic-boundary.md](../sdlc/16-deterministic-probabilistic-boundary.md))
+
+**Key concepts:** the "two computers, one program" framing; the seam
+where "the model proposes; the gate disposes"; strong-form vs. weak-form
+supervised execution; hallucination as a system property rather than a
+model defect.
+
+**Comprehension check:** What does this page's opening example (an
+agent fabricating a customer name and creating a real GitHub issue)
+argue was the actual root cause of the incident, in the chapter's own
+vocabulary?
+
+**Exercise:** Take a hypothetical new agent capability of your choosing,
+and specify exactly where its seam sits -- which actions the
+probabilistic side may only propose, and what deterministic gate must
+approve them before they take effect.
+
+#### Module: Multi-agent orchestration ([../sdlc/17-multi-agent-orchestration.md](../sdlc/17-multi-agent-orchestration.md))
+
+**Key concepts:** the single- vs. multi-agent decision matrix (files
+changed, concerns, dependency shape, expertise, time pressure, context
+-overload risk); the Writer/Reviewer/Tester specialization pattern; the
+one-file-one-agent rule.
+
+**Comprehension check:** Per this page's decision matrix, name two
+dimensions that push a task toward multiple agents rather than one, and
+state the approximate file-count boundary this page gives (while noting
+its own caveat about that boundary's precision).
+
+**Exercise:** Critique this page's composition patterns against this
+book's own [The multi-agent coordination design
+space](multi-agent-coordination-design-space.md), naming which of that
+page's topology categories (centralized/decentralized/layered/
+blackboard/consensus/market-based) each of Panel/Wave/Scatter-Gather
+/Subagent most closely maps to.
+
+#### Module: The execution meta-process ([../sdlc/18-the-execution-meta-process.md](../sdlc/18-the-execution-meta-process.md))
+
+**Key concepts:** the five-phase AUDIT/PLAN/WAVE/VALIDATE/SHIP
+methodology; the plan-approval gate described as "the single most
+important gate"; the one-file-one-agent rule carried over from Ch. 17;
+the ADAPT loop for handling escalations mid-execution.
+
+**Comprehension check:** Name the five phases in order, and state which
+one this page's own text singles out as the "highest-impact moment in
+the entire process."
+
+**Exercise:** Apply the five-phase methodology, on paper, to a
+hypothetical 40-file change of your own choosing -- naming what an
+AUDIT pass would need to look for, how you would decompose the work
+into waves, and what a VALIDATE pass would run after each wave.
+
+#### Module: Architectural patterns, a Rosetta Stone ([../sdlc/19-architectural-patterns-rosetta-stone.md](../sdlc/19-architectural-patterns-rosetta-stone.md))
+
+**Key concepts:** the four-layer substrate (Foundation/Assembly
+/Composition/Execution); the precise/partial/weak-or-none classical
+-analogue rating scheme; the claim that Composition-layer patterns map
+cleanest to Gang-of-Four because "composition has been a solved problem
+in software since the 1990s."
+
+**Comprehension check:** Name this page's four architectural layers in
+order, and state which one Ch. 14's load lifecycle belongs to.
+
+**Exercise:** Pick one pattern from this page's catalogue rated
+"partial" or "weak/none," and argue, using this book's own independently
+-grounded pages as evidence, whether a cleaner classical analogue exists
+than the one this page settles on.
+
+#### Module: Anti-patterns and failure modes ([../sdlc/20-anti-patterns-and-failure-modes.md](../sdlc/20-anti-patterns-and-failure-modes.md))
+
+**Key concepts:** the 19-anti-pattern taxonomy, each mapped to one of
+PROSE's five constraints; the governing claim that "AI failures don't
+crash, they produce plausible wrong output"; the anti-patterns'
+handbook-stated origin, each "born from a failure."
+
+**Comprehension check:** Name two anti-patterns this page maps to the
+same PROSE constraint, and explain in one sentence each how they differ
+in symptom despite sharing a root-cause category.
+
+**Exercise:** Pick one anti-pattern from this page's table, find (or
+construct) a real transcript exhibiting its symptom, and write a
+one-paragraph root-cause diagnosis and fix in this page's own
+symptom/root-cause/fix/recovery format.
+
+#### Module: The reference architecture, earned ([../sdlc/22-the-reference-architecture-earned.md](../sdlc/22-the-reference-architecture-earned.md))
+
+**Key concepts:** composition as a recursive Skill-Persona-Persona
+-Skill triplet applied at every depth; the Maya's-PR-#4711 worked
+example (a Security Reviewer dispatching a fresh CVE Triage Skill
+mid-review when it hits a change class outside its own rubric).
+
+**Comprehension check:** In the Maya's-PR-#4711 example, what triggers
+the Security Reviewer to dispatch a new Skill mid-thread, and what does
+that Skill load in turn?
+
+**Exercise:** Design a hypothetical review pipeline of your own that
+applies this page's "one composition rule, applied many times" claim to
+at least three levels of recursive depth, naming what dispatches what
+at each level.
+
+#### Module: Case studies and the Genesis worked example ([../sdlc/23-case-study-apm-overhaul.md](../sdlc/23-case-study-apm-overhaul.md), [../sdlc/24-case-study-handbook-writing.md](../sdlc/24-case-study-handbook-writing.md), [../sdlc/25-case-study-publishing-pipeline.md](../sdlc/25-case-study-publishing-pipeline.md), [../sdlc/26-case-study-growth-engine.md](../sdlc/26-case-study-growth-engine.md), [../sdlc/appendix-b-genesis-worked-example.md](../sdlc/appendix-b-genesis-worked-example.md))
+
+**Key concepts:** PR #394's 75-file/6-agent-panel/8-plan-iteration/5
+-wave overhaul and its "context remains finite, output remains
+probabilistic, human judgment is the differentiator" lessons; the
+11-persona/4-pod handbook-writing project; the five-fix PDF-rendering
+publishing pipeline; the growth-engine project's platform-limitation
+escalation and persona-drift incident; Genesis's own before/after fix of
+a panel-in-one-thread anti-pattern into fan-out-with-arbiter.
+
+**Comprehension check:** Name one concrete numeric detail from the PR
+#394 case study (file count, agent count, plan-iteration count, or wave
+count) and one named escalation type from that same case study.
+
+**Exercise:** Read the Genesis worked example's before/after fix, and
+apply the same diagnostic move (name the anti-pattern, name why it
+"looks like X but executes as Y," name the concrete fix) to one
+composition choice in a real or hypothetical multi-agent system of your
+own.
+
 ### Capstone: from-scratch harness design document
 
 Produce a design document (not code) for one substantial, genuinely
@@ -891,3 +1429,17 @@ pages (not invented ones) and that its open-questions section is
 honest rather than decorative -- an Archon-tier deliverable that claims
 to have resolved everything has failed the capstone as surely as one
 that cites nothing.
+
+**Cluster 8 variant.** A learner may instead root the capstone in
+Cluster 8: propose a from-scratch feature or fix for a gap Cluster 8's
+own pages surface (an unresolved anti-pattern, a missing re
+-verification step in the load lifecycle, a genuinely new composition
+pattern beyond Panel/Wave/Scatter-Gather/Subagent), following the same
+four-part structure above but citing Cluster 8's pages and at least one
+of its case studies in place of the ten core Archon-band pages. The same
+grader standard applies, with one addition specific to this variant: the
+document must explicitly flag, in its own text, that its cited findings
+carry Cluster 8's "the handbook says" grounding status rather than this
+book's own VERIFIED tagging -- omitting that distinction is treated as a
+capstone failure in its own right, not a stylistic nicety, per this
+book's grounding discipline.

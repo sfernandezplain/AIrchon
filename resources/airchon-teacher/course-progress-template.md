@@ -18,7 +18,7 @@ only classifying into a tier.
 
 **Tier (course):** Gnostic -> Demiurge
 **Course file:** resources/airchon-teacher/gnostic-to-demiurge-sessions.md
-**Total sessions:** 27
+**Total sessions:** 45
 **Next course (after this one):** Demiurge -> Archon
 **Harness:** Claude Code
 **Last updated:** [auto-filled, every interaction]
@@ -41,8 +41,9 @@ only classifying into a tier.
     2 -- Static vs. dynamic budget allocation
   - Items uncovered: 3 -- Budget exhaustion failure modes;
     4 -- Trade-offs in reserving headroom
-  - Paused: 2026-08-19 -- reader chose to continue another day after
-    item 2; resume at item 3 (see CD8)
+  - Paused: 2026-08-19 -- reader explicitly chose to pause instead of
+    continuing right after confirming item 2 was done; resume at item 3
+    (see CD8)
   - Exercise: not yet reached
 - [x] Session 3 -- Context compression
   - Items covered: 1 -- Summarization vs. eviction; 2 -- Compression
@@ -50,6 +51,16 @@ only classifying into a tier.
   - Session exam: passed (7/10, 2026-08-19) -- purely conceptual
     session, no scaffold-eligible artifact (CD4 step 4) -- see
     ~/.airchon/session-3.exam.md for the full question/answer record
+- [ ] Session 4 -- Tool-result caching
+  - Items covered: 1 -- Cache key derivation
+  - Items pending confirmation: 2 -- Cache invalidation triggers
+    (fully taught -- the conversation ended, e.g. a context compaction,
+    before the reader replied to the "ready to continue?" gate CD4
+    asks after every item; per CD8, resume by re-asking that same gate,
+    never by re-teaching the item from scratch)
+  - Items uncovered: 3 -- Stale-cache failure modes;
+    4 -- Trade-offs against always-fresh reads
+  - Exercise: not yet reached
 - [... one entry per session in the course file, straight through to
   the final capstone session, in that file's own order and numbering;
   each one ends in EITHER an "Exercise:" line (scaffold-backed, graded
@@ -108,30 +119,48 @@ their current tier and which course they're taking, so there is nothing
 here that needs to be withheld from them.
 
 **Update this file after every interaction, not only at session or
-exercise boundaries.** Per-item covered/uncovered state, the exact
-exercise statement once presented, and each transition-exam
-question/answer/outcome must all be persisted as they happen -- CD8
-("Resume After Interruption") depends on this file, not on conversation
-recall, being the source of truth for where a reader actually is.
+exercise boundaries.** Per-item covered/uncovered/pending-confirmation
+state, the exact exercise statement once presented, and each
+transition-exam question/answer/outcome must all be persisted as they
+happen -- CD8 ("Resume After Interruption") depends on this file, not
+on conversation recall, being the source of truth for where a reader
+actually is.
 
-**Items covered/uncovered are recorded by number AND a short name, never
-a bare number.** ("1 -- What memory means in a harness context", not
-just "1".) An item only moves from uncovered to covered once CD4's own
-bar for coverage is met -- its full documented scope actually taught
-through, not a first pass or a turn simply ending -- so this list is
-also the authoritative record of what has genuinely been taught, not a
-running commentary on what's been touched on. The name exists so a
+**Items covered/uncovered/pending-confirmation are recorded by number
+AND a short name, never a bare number.** ("1 -- What memory means in a
+harness context", not just "1".) An item moves from uncovered to
+covered in two gated stages, never in one automatic step (CD4 step 2):
+first, its full documented scope must actually be taught through -- not
+a first pass or a turn simply ending -- which alone still leaves it
+uncovered, not covered; second, and only after CD4 pauses and asks, the
+reader must explicitly reply that they're ready to continue (or choose
+to pause) before the write to "covered" happens. Teaching-complete with
+no reply yet is its own third state, **Items pending confirmation**,
+used only when the conversation broke off between finishing the
+explanation and the reader's reply (CD8 resumes those by re-asking the
+gate, never by re-teaching). This list is therefore the authoritative
+record of what has genuinely been taught AND acknowledged, not a
+running commentary on what's been touched on or a teacher's own
+unilateral judgment that a topic is "done." The name exists so a
 resume (same day or days later, per CD8) can name the exact pickup
 point at a glance instead of forcing a re-read of the whole session's
 agenda in the course file.
 
 **A `Paused:` line records a reader-chosen break, distinct from an
-uncontrolled interruption.** CD4 asks the reader after every completed
-item whether to continue or pause for another day; when they choose to
-pause, log the date and which item they're resuming at here. Its
+uncontrolled interruption AND distinct from an item sitting in Items
+pending confirmation.** CD4 pauses after every item's teaching finishes
+and asks the reader directly whether they're ready to continue or
+would rather pause for another day; only once that reply lands does
+CD4 write the item as covered -- and if the reply was "pause," log the
+date and which item they're resuming at here in the same write. Its
 absence doesn't mean anything went wrong -- most sessions likely
 complete without ever needing it -- it only appears when the reader
-explicitly chose not to continue in the same sitting.
+explicitly chose not to continue in the same sitting, after having
+already confirmed the just-finished item. It never appears together
+with that same item still listed under Items pending confirmation --
+an item is either confirmed-and-paused-after (a `Paused:` line, item
+listed covered) or never got a reply at all (an Items pending
+confirmation entry, no `Paused:` line yet), never both at once.
 
 **Every session ends in exactly one practical assessment, never both.**
 CD4 decides, per session, whether the exercise task maps to a real

@@ -353,3 +353,233 @@ into its concrete deliverable steps:
    capstone's own grading criteria: that it engages with real cited
    findings from the ten Cluster A/B pages, and that its open-questions
    section is honest rather than decorative.
+
+---
+
+## Extension (2026-08-24): Cluster 8 session additions
+
+**Why this section exists, appended rather than folded in above.**
+`knowledge-path-curriculum.md`'s 2026-08-24 revision note added Cluster
+8 (Agentic SDLC design-space and methodology, sourced from
+`references/sdlc/`) to this transition after the 13-session breakdown
+above was already written. That page's own note under "Session
+breakdown (agenda only), Demiurge -> Archon" flags this explicitly: "as
+with the Transition 2 pacing file, this 13-session count predates
+Cluster 8 below and covers only the original ten-page band." Per this
+file's operating rule -- preserve existing session numbering, never
+renumber or rewrite a session once taught from -- the fix is additive:
+Sessions 1-13 above are untouched, and Cluster 8 gets its own sessions
+numbered 14 onward, continuing the sequence rather than being spliced
+in before the existing Session 13 capstone. A course already in
+progress against the original 13 sessions is unaffected; a course
+starting fresh now runs all 24 sessions straight through, with the
+original Session 13 capstone still sitting where it always did (the
+ten core Cluster A/B pages only) and Cluster 8's own capstone variant
+arriving as the new Session 24 below.
+
+**Grounding-status reminder, restated per `knowledge-path-curriculum.md`'s
+own instruction not to drop it when teaching from this page.** Every
+item in Cluster 8's sessions below is sourced from `references/sdlc/`
+pages, attributed "the handbook says" to the Agentic SDLC Handbook, not
+independently cross-verified the way Clusters A and B's ten pages are.
+It does not carry this wiki-book's own VERIFIED/BEST-CURRENT
+-UNDERSTANDING tagging -- say so explicitly when teaching this cluster,
+the same distinction `knowledge-path-curriculum.md`'s Cluster 8 overview
+and Archon-tier learning objectives both restate inline.
+
+**Why 11 more sessions, not fewer or more.** Cluster 8 carries 9 module
+sections (`09-10-part-iii-preface-and-practitioners-mindset.md` through
+the bundled case-studies-and-appendix-B module), the last of which
+alone cites five separate sources (four case studies plus the Genesis
+worked-example appendix) -- carrying, in total, 27 discrete
+key-concept items when each module's own "Key concepts" field is broken
+into its constituent teaching points at the same granularity the
+original 13-session rationale above used, ranging module-by-module from
+2 items (`prose-framework.md`, `22-the-reference-architecture-earned.md`)
+to 5 (the case-studies module, one item per case study/appendix). The
+same three failure modes the original rationale above rejected apply
+again: one session for the whole cluster would force all 27 items into
+a single sitting; one session per module with no synthesis session (9
+sessions) would leave the comprehension-check-and-exercise-selection
+practice this book's other clusters group into their own synthesis
+session with nowhere to happen; splitting any one module's already
+-short 2-3-item key-concepts list across two sessions reproduces the
+"so thin it's pointless" failure this file's opening rationale already
+named. **9 module-content sessions** (one per module, sized to that
+module's own key-concepts granularity, 2-5 items), plus **1
+cluster-synthesis session** (walking all nine modules' comprehension
+checks plus selecting one representative exercise to actually run --
+larger than Cluster A/B's own 6-item synthesis sessions because Cluster
+8 itself has nearly double the module count of either, not because a
+different grouping principle was applied), plus **1 capstone-variant
+session** (covering `knowledge-path-curriculum.md`'s own "Cluster 8
+variant" of the Transition-3 capstone) is the smallest count avoiding
+all three failure modes, continuing the numbering as Sessions 14-24.
+
+```mermaid
+flowchart TB
+    subgraph C8["Cluster 8: Agentic SDLC design-space and methodology (Sessions 14-23)"]
+        U14["S14 Practitioner's mindset (3)"] --> U15["S15 PROSE framework (2)"]
+        U15 --> U16["S16 Det/prob boundary (4)"]
+        U16 --> U17["S17 Multi-agent orchestration (3)"]
+        U17 --> U18["S18 Execution meta-process (4)"]
+        U18 --> U19["S19 Architectural patterns Rosetta Stone (3)"]
+        U19 --> U20["S20 Anti-patterns and failure modes (3)"]
+        U20 --> U21["S21 Reference architecture, earned (2)"]
+        U21 --> U22["S22 Case studies + Genesis example (5)"]
+        U22 --> U23["S23 Cluster 8 synthesis (10)"]
+    end
+    C8 --> U24["S24 Cluster 8 capstone variant (6)"]
+```
+
+---
+
+## Cluster 8: Agentic SDLC design-space and methodology (Sessions 14-23)
+
+**Session 14 -- The practitioner's mindset.** Items to cover, in
+order:
+1. The eight terms practitioners cannot avoid: Primitive, Manifest,
+   Lockfile, CODEOWNERS, Harness, Subagent, Recursion bound, MCP.
+2. The five-layer supply chain restated from Ch. 4.
+3. The four composition patterns (Panel/Wave/Scatter-Gather/Subagent)
+   named as the field's converged vocabulary before Ch. 17 develops them
+   mechanically.
+
+**Session 15 -- The PROSE framework.** Items to cover, in order:
+1. The five constraints (Progressive Disclosure, Reduced Scope,
+   Orchestrated Composition, Safety Boundaries, Explicit Hierarchy) and
+   their paired anti-patterns.
+2. The handbook's own framing of PROSE as "an opinionated discipline,
+   not a standards body or a published spec."
+
+**Session 16 -- The deterministic/probabilistic boundary.** Items to
+cover, in order:
+1. The "two computers, one program" framing.
+2. The seam where "the model proposes; the gate disposes."
+3. Strong-form vs. weak-form supervised execution.
+4. Hallucination as a system property rather than a model defect.
+
+**Session 17 -- Multi-agent orchestration (Cluster 8).** Items to
+cover, in order:
+1. The single- vs. multi-agent decision matrix (files changed,
+   concerns, dependency shape, expertise, time pressure, context
+   -overload risk).
+2. The Writer/Reviewer/Tester specialization pattern.
+3. The one-file-one-agent rule.
+
+**Session 18 -- The execution meta-process.** Items to cover, in
+order:
+1. The five-phase AUDIT/PLAN/WAVE/VALIDATE/SHIP methodology.
+2. The plan-approval gate described as "the single most important
+   gate."
+3. The one-file-one-agent rule carried over from Ch. 17.
+4. The ADAPT loop for handling escalations mid-execution.
+
+**Session 19 -- Architectural patterns, a Rosetta Stone.** Items to
+cover, in order:
+1. The four-layer substrate: Foundation/Assembly/Composition/Execution.
+2. The precise/partial/weak-or-none classical-analogue rating scheme.
+3. The claim that Composition-layer patterns map cleanest to
+   Gang-of-Four because "composition has been a solved problem in
+   software since the 1990s."
+
+**Session 20 -- Anti-patterns and failure modes.** Items to cover, in
+order:
+1. The 19-anti-pattern taxonomy, each mapped to one of PROSE's five
+   constraints.
+2. The governing claim that "AI failures don't crash, they produce
+   plausible wrong output."
+3. The anti-patterns' handbook-stated origin, each "born from a
+   failure."
+
+**Session 21 -- The reference architecture, earned.** Items to cover,
+in order:
+1. Composition as a recursive Skill-Persona-Persona-Skill triplet
+   applied at every depth.
+2. The Maya's-PR-#4711 worked example: a Security Reviewer dispatching
+   a fresh CVE Triage Skill mid-review when it hits a change class
+   outside its own rubric.
+
+**Session 22 -- Case studies and the Genesis worked example.** Items to
+cover, in order:
+1. PR #394's 75-file/6-agent-panel/8-plan-iteration/5-wave overhaul and
+   its "context remains finite, output remains probabilistic, human
+   judgment is the differentiator" lessons.
+2. The 11-persona/4-pod handbook-writing project.
+3. The five-fix PDF-rendering publishing pipeline.
+4. The growth-engine project's platform-limitation escalation and
+   persona-drift incident.
+5. Genesis's own before/after fix of a panel-in-one-thread anti-pattern
+   into fan-out-with-arbiter.
+
+**Session 23 -- Cluster 8 synthesis.** No new material -- every item
+here is integration of Sessions 14-22, not a new concept:
+1. Walk 09-10-part-iii-preface-and-practitioners-mindset.md's
+   comprehension check: the four composition patterns this overview
+   introduces, and which one the handbook treats as the "anchor case."
+2. Walk prose-framework.md's comprehension check: one of PROSE's five
+   constraints, its paired anti-pattern, and one concrete authoring
+   practice this page gives for satisfying it.
+3. Walk 16-deterministic-probabilistic-boundary.md's comprehension
+   check: what this page's opening example (an agent fabricating a
+   customer name and creating a real GitHub issue) argues was the
+   actual root cause of the incident.
+4. Walk 17-multi-agent-orchestration.md's comprehension check: two
+   dimensions this page's decision matrix names as pushing a task
+   toward multiple agents, and the approximate file-count boundary it
+   gives (noting its own caveat about that boundary's precision).
+5. Walk 18-the-execution-meta-process.md's comprehension check: the
+   five phases in order, and which one this page singles out as the
+   "highest-impact moment in the entire process."
+6. Walk 19-architectural-patterns-rosetta-stone.md's comprehension
+   check: this page's four architectural layers in order, and which one
+   Ch. 14's load lifecycle belongs to.
+7. Walk 20-anti-patterns-and-failure-modes.md's comprehension check:
+   two anti-patterns this page maps to the same PROSE constraint, and
+   how they differ in symptom despite sharing a root-cause category.
+8. Walk 22-the-reference-architecture-earned.md's comprehension check:
+   in the Maya's-PR-#4711 example, what triggers the Security Reviewer
+   to dispatch a new Skill mid-thread, and what that Skill loads in
+   turn.
+9. Walk the case-studies module's comprehension check: one concrete
+   numeric detail from the PR #394 case study, and one named escalation
+   type from that same case study.
+10. Run one representative exercise from this cluster (recommended:
+    the case-studies module's -- read the Genesis worked example's
+    before/after fix, and apply the same diagnostic move (name the
+    anti-pattern, name why it "looks like X but executes as Y," name
+    the concrete fix) to one composition choice in a real or
+    hypothetical multi-agent system of your own; this exercise is the
+    natural capstone of the cluster's own build-up since it draws on
+    the practitioner vocabulary, PROSE constraints, and anti-pattern
+    taxonomy taught across Sessions 14-20).
+
+---
+
+## Session 24 -- Cluster 8 capstone variant
+
+No new material -- every item here is execution of
+`knowledge-path-curriculum.md`'s own "Cluster 8 variant" of the
+Transition-3 capstone, broken into its concrete deliverable steps:
+1. Propose a from-scratch feature or fix for a gap Cluster 8's own
+   pages surface (an unresolved anti-pattern, a missing re
+   -verification step in the load lifecycle, a genuinely new
+   composition pattern beyond Panel/Wave/Scatter-Gather/Subagent).
+2. State the design problem in the vocabulary of the relevant Cluster 8
+   page(s) covered in Sessions 14-22.
+3. Survey what Cluster 8's own pages and at least one of its case
+   studies establish about the gap, with citations to the specific
+   page(s) that established that finding.
+4. Propose a concrete design -- reusing named existing primitives from
+   this book (including Clusters A/B's own primitives, where a suitable
+   one exists) rather than inventing new machinery gratuitously.
+5. Name at least one open question the design does not resolve,
+   flagged honestly as unresolved rather than papered over.
+6. Explicitly flag, in the document's own text, that its cited findings
+   carry Cluster 8's "the handbook says" grounding status rather than
+   this book's own VERIFIED tagging -- per this variant's own grading
+   standard, omitting that distinction is treated as a capstone failure
+   in its own right, not a stylistic nicety. Self-check (or
+   peer-review) the whole document against both this and the original
+   capstone's grading criteria: real cited findings (not invented ones),
+   and an honest rather than decorative open-questions section.

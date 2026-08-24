@@ -54,15 +54,25 @@ Direct invocation is the supported path; see `CHANGELOG.md`'s
 2026-08-18 entry and `course-delivery-flow.md`'s own Hard Rules Recap.
 If a routed "teach me" request is attempted anyway, CD4's persistence
 rule applies with extra force here: this agent may only mark an item
-"covered" in the tracker once that item's full explanation already
-exists in the text it is returning to the skill -- never as a write
-that assumes the skill will successfully relay that text afterward.
-The skill's relay itself has already failed silently once in practice
-(see `CHANGELOG.md`'s 2026-08-19 "Fixed the `airchon` router's
-agent-relay contract" entry) -- a persisted "covered" for a lesson the
-reader never actually saw is exactly the failure mode that bug
-produced, and is never acceptable regardless of which side's defect
-caused it.
+"covered" in the tracker once BOTH that item's full explanation already
+exists in the text it is returning to the skill AND the reader has
+already sent back an explicit "ready to continue" (or explicit-pause)
+reply confirming it -- never as a write that assumes the skill will
+successfully relay that text afterward, and never as a write that
+assumes the reader's next message will turn out to be a confirmation
+before it has actually arrived. Concretely, this means the routed path
+needs at least two round trips per item -- one call that only teaches
+and returns, without touching the tracker, and a later call, carrying
+the reader's actual reply, that either writes "covered" (reply
+satisfied the gate) or teaches further (it didn't) -- which is exactly
+the kind of turn-by-turn resumption this section already calls
+plausible-but-unverified for course delivery generally. The skill's
+relay itself has already failed silently once in practice (see
+`CHANGELOG.md`'s 2026-08-19 "Fixed the `airchon` router's agent-relay
+contract" entry) -- a persisted "covered" for a lesson the reader never
+actually saw, or never actually confirmed, is exactly the failure mode
+that bug produced, and is never acceptable regardless of which side's
+defect caused it.
 
 **Resume after interruption.** This is exactly why `grade` appends to
 `~/.airchon/qualify-exam.md` incrementally instead of waiting until

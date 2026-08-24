@@ -49,8 +49,8 @@ them.
 stateDiagram-v2
     [*] --> Slumberer
     Slumberer --> Gnostic: agent-topology.md + agent-loop.md
-    Gnostic --> Demiurge: the 21-page core-mechanics band
-    Demiurge --> Archon: the 10-page design-space / original-survey band
+    Gnostic --> Demiurge: 21-page core-mechanics band + RAG/SDLC-mechanics extensions
+    Demiurge --> Archon: 10-page design-space band + SDLC design-space extension
     Archon --> [*]: primary sources beyond this book
     note right of Slumberer
         vibecoding, no vocabulary,
@@ -66,13 +66,20 @@ stateDiagram-v2
         can trace a real request
         through one harness's
         actual documented/source
-        -verified machinery
+        -verified machinery, incl.
+        a real RAG pipeline and
+        the SDLC handbook's own
+        instrumented-codebase
+        mechanics
     end note
     note right of Archon
         can justify what a NEW
         harness should do, incl.
         where none has a settled
-        answer yet
+        answer yet -- and can
+        critique the SDLC
+        handbook's own methodology
+        band the same way
     end note
 ```
 
@@ -200,6 +207,31 @@ what separates this tier from Archon.
   circuit breakers, fallback chains) while solving the same
   single-outbound-request failure-recovery problem
   ([retries.md](retries.md)).
+- Can build and reason about a real retrieval-augmented-generation
+  pipeline at the same config/parameter granularity as the
+  core-mechanics band -- e.g. why `RecursiveCharacterTextSplitter`'s
+  character-based `chunk_size` silently disagrees with a transformer
+  tokenizer's token count and the token-aware fix
+  ([Advanced RAG techniques](../rag/advanced-rag-techniques.md)), where
+  a semantic cache sits (before retrieval, not before generation) and
+  why FIFO eviction against a Euclidean `IndexFlatL2` threshold was
+  chosen over an LRU policy
+  ([Semantic caching for RAG](../rag/semantic-caching.md)), and how a
+  synthetic-QA/critique-agent/LLM-as-judge evaluation pipeline is
+  actually built rather than merely described
+  ([RAG evaluation](../rag/rag-evaluation.md)) -- treating RAG as a
+  technique with its own mechanics, prerequisite to (and distinct from)
+  the Archon-tier question of whether any given harness *should* use it.
+- Can operate the Agentic SDLC Handbook's instrumented-codebase
+  machinery at the same depth: name the seven primitive types and their
+  load modes, trace a primitive through the four-phase
+  Resolve/Materialize/Bind/Activate lifecycle, and explain the
+  window-vs-attention distinction and the U-shaped attention curve as a
+  mechanism *distinct from but concordant with* this book's own
+  [context-compression.md](context-compression.md)/[memory-management.md](memory-management.md) --
+  while keeping straight that this material's authority is a single
+  external source (`references/sdlc/`, "the handbook says"), not
+  independently cross-verified the way this book's own pages are.
 - Is not yet expected to have an opinion on the open design-space
   questions this book's original-survey pages raise, or to have
   attempted a from-scratch synthesis of a mechanism no shipped harness
@@ -239,6 +271,82 @@ vs. memory-management.md's compaction-survival split, or
 fan-out.md vs. handoff-mechanism.md vs. orchestration.md's three-way
 split of "who launches, what crosses the boundary, who holds the
 plan").
+
+### Demiurge tier extensions: RAG and Agentic-SDLC practitioner mechanics
+
+Two reference areas outside this wiki-book -- `references/rag/` and
+`references/sdlc/` -- were added to this project after the four-tier
+rubric above was first written, and this page is being revisited per
+its own closing instruction (below) to slot them in rather than leave
+them unclassified. Both extend the Demiurge tier's reading list; neither
+displaces or shortens the 21-page core-mechanics band above, which
+remains this tier's primary gate.
+
+**Grounding-status caveat, load-bearing for both extensions.** Everything
+in this subsection is sourced from areas with a *weaker* grounding
+discipline than this wiki-book's own VERIFIED/BEST-CURRENT-UNDERSTANDING
+tagging. `references/rag/` attributes claims directly to the HuggingFace
+Cookbook notebooks and Lewis et al. (2020) -- "the source says," with no
+independent cross-verification beyond what the source itself contains.
+`references/sdlc/` attributes claims to the Agentic SDLC Handbook (Daniel
+Meppiel) alone -- "the handbook says," re-checked only against the
+handbook's own live chapter text, never against harness docs or any other
+independent authority. A Demiurge-tier reader who has internalized this
+extension's reading list is fluent in RAG-the-technique and in the
+handbook's instrumented-codebase discipline, not in a claim this book
+itself has independently verified the way it has verified, say, Claude
+Code's `settings.json` merge order.
+
+- **RAG cluster (9 pages, `references/rag/`):**
+  [RAG foundations](../rag/foundations.md),
+  [The basic RAG pipeline](../rag/basic-rag-pipeline.md),
+  [Advanced RAG techniques](../rag/advanced-rag-techniques.md),
+  [Vector store integrations](../rag/vector-store-integrations.md),
+  [Semantic caching for RAG](../rag/semantic-caching.md),
+  [Structured generation for RAG](../rag/structured-generation-for-rag.md),
+  [RAG evaluation](../rag/rag-evaluation.md),
+  [Agentic RAG with LlamaIndex](../rag/agentic-rag-with-llamaindex.md),
+  and [RAG over heterogeneous data sources](../rag/heterogeneous-data-sources.md).
+  This cluster is assigned here, rather than folded into the Gnostic
+  entry pair, because its depth matches the core-mechanics band's own
+  granularity -- specific chunk-size/tokenizer mismatches, specific
+  reranker models (ColBERTv2 via RAGatouille), specific cache-eviction
+  policies, specific vector-store integrations (Milvus, Elasticsearch,
+  MongoDB Atlas) -- not the harness-agnostic abstraction the Gnostic tier
+  is deliberately scoped to. It is also, concretely, the direct
+  prerequisite body of knowledge for the already-existing Archon-tier
+  page [Context retrieval / RAG vs. agentic search as a design
+  space](context-retrieval-and-agentic-search.md), which presumes a
+  reader already knows what a real RAG pipeline's moving parts are
+  before it asks whether a harness *should* reach for one as its
+  code-discovery strategy.
+- **Agentic-SDLC practitioner-mechanics cluster (7 pages,
+  `references/sdlc/`):**
+  [The Agentic SDLC reference architecture](../sdlc/04-the-reference-architecture.md)
+  (Ch. 4), [The agentic runtime machine](../sdlc/11-the-runtime-machine.md)
+  (Ch. 11), [The instrumented codebase](../sdlc/12-the-instrumented-codebase.md)
+  (Ch. 12), [The load lifecycle](../sdlc/14-the-load-lifecycle.md)
+  (Ch. 14), [Attention and context economy](../sdlc/15-attention-and-context-economy.md)
+  (Ch. 15), [Primitives as code](../sdlc/21-primitives-as-code.md)
+  (Ch. 21), and [Appendix A: the cross-harness
+  reference](../sdlc/appendix-a-cross-harness-reference.md). These seven
+  pages are this cluster's *mechanics* half: the seven primitive types
+  and their five load modes, the four-phase Resolve/Materialize/Bind
+  /Activate pipeline, the window-vs-attention distinction and the
+  U-shaped attention curve, and the package/lockfile/override model that
+  turns a primitive from a file into a versioned dependency -- material
+  that sits at the same "trace a real thing through its actual mechanism"
+  depth as this tier's core-mechanics band, just sourced single-source
+  from the handbook rather than cross-verified against harness docs. The
+  handbook's own Appendix A master comparison table (ten primitive
+  concepts across five harnesses' concrete file/config conventions) is
+  assigned here specifically because it functions as a cross-harness
+  ready-reference of exactly the kind a Demiurge-tier reader is expected
+  to be able to produce from the core-mechanics band's own pages. The
+  remaining, more speculative/methodological half of this source
+  (PROSE, multi-agent orchestration patterns, anti-patterns, the
+  execution meta-process, the Rosetta Stone pattern catalogue, and the
+  case studies) is assigned at Archon tier instead -- see below.
 
 ## Tier 4 -- Archon (the HERO end)
 
@@ -304,6 +412,22 @@ merely reproducing one.
   and an MCP/plugin supply-chain trust model addressing identity,
   code-safety, and continuity as separable axes
   ([MCP supply-chain trust/vetting](mcp-supply-chain-trust.md)).
+- Can critique, from primitives, the Agentic SDLC Handbook's own
+  original methodological and design-space material -- for example,
+  arguing whether the five-phase AUDIT/PLAN/WAVE/VALIDATE/SHIP execution
+  meta-process ([The execution meta-process](../sdlc/18-the-execution-meta-process.md))
+  is a genuinely general discipline or an artifact of the specific
+  PR #394 case study it was extracted from, or whether the Rosetta
+  Stone pattern catalogue's "precise/partial/weak-or-none" classical
+  -analogue ratings ([Architectural patterns: a Rosetta
+  Stone](../sdlc/19-architectural-patterns-rosetta-stone.md)) hold up
+  against this book's own, independently-grounded treatment of the same
+  structural problems (e.g. comparing its Composition-layer GoF mapping
+  against [Tool schema / interface design](tool-schema-and-interface-design.md)'s
+  own few-powerful-vs-many-narrow tradeoff) -- while keeping straight
+  that this material carries the weaker "the handbook says" grounding
+  status described in the Demiurge-tier extension above, not this
+  book's own VERIFIED/BEST-CURRENT-UNDERSTANDING tagging.
 
 **Reading list, Demiurge -> Archon (the design-space / original
 -survey / production-completeness band, 10 pages):**
@@ -330,6 +454,64 @@ relationship to built-in-tools.md) and then go one level further, into
 territory where the honest answer is sometimes "no shipped harness has
 solved this," which is precisely the terrain an Archon-tier reader
 needs to be comfortable reasoning in.
+
+### Archon tier extension: the Agentic-SDLC design-space/methodology cluster
+
+**Reading list extension (10 items, `references/sdlc/`):**
+[Part III preface & the practitioner's
+mindset](../sdlc/09-10-part-iii-preface-and-practitioners-mindset.md)
+(Ch. 9-10), [The PROSE framework](../sdlc/prose-framework.md) (Ch. 13),
+[The deterministic/probabilistic
+boundary](../sdlc/16-deterministic-probabilistic-boundary.md) (Ch. 16),
+[Multi-agent orchestration](../sdlc/17-multi-agent-orchestration.md)
+(Ch. 17), [The execution meta-process](../sdlc/18-the-execution-meta-process.md)
+(Ch. 18), [Architectural patterns: a Rosetta
+Stone](../sdlc/19-architectural-patterns-rosetta-stone.md) (Ch. 19),
+[Anti-patterns and failure modes](../sdlc/20-anti-patterns-and-failure-modes.md)
+(Ch. 20), [The reference architecture,
+earned](../sdlc/22-the-reference-architecture-earned.md) (Ch. 22), the
+four Part IV case studies read as one bundled item ([APM auth + logging
+overhaul](../sdlc/23-case-study-apm-overhaul.md),
+[handbook-writing](../sdlc/24-case-study-handbook-writing.md),
+[publishing pipeline](../sdlc/25-case-study-publishing-pipeline.md),
+[growth engine](../sdlc/26-case-study-growth-engine.md)), and
+[Appendix B: Genesis worked
+example](../sdlc/appendix-b-genesis-worked-example.md).
+
+This ten-item extension is assigned at Archon rather than Demiurge tier
+for the same reason the ten-page core design-space band above is: each
+item is original synthesis or methodology, not a mechanics report, and
+each demands the reader argue about tradeoffs rather than trace a
+config value. PROSE's five constraints (Progressive Disclosure, Reduced
+Scope, Orchestrated Composition, Safety Boundaries, and Explicit
+Hierarchy) are a craft discipline for authoring agent-facing artifacts,
+directly parallel in kind to this book's own
+[System-prompt / agent-instruction design as a
+craft](system-prompt-design-as-craft.md); the Rosetta Stone chapter's
+four-layer substrate (Foundation/Assembly/Composition/Execution) and its
+precise/partial/weak-or-none Gang-of-Four analogue ratings is a
+pattern-catalogue exercise of the same shape this book's own
+[Advanced/novel planning and execution
+architectures](advanced-planning-and-execution-architectures.md) and
+[The multi-agent coordination design
+space](multi-agent-coordination-design-space.md) perform, just against a
+different (single-source, practitioner-methodology) corpus; the
+19-anti-pattern taxonomy and the five-phase AUDIT/PLAN/WAVE/VALIDATE/SHIP
+execution meta-process are exactly the kind of "no shipped harness (or
+in this case, no shipped methodology) has a settled, universally-agreed
+answer" terrain this tier's definition names; and the four case studies
+plus Appendix B's Genesis worked example are load-bearing because they
+let an Archon-tier reader check whether a named methodology actually
+survives contact with a real, messy, citation-bearing production
+incident (PR #394's 75-file/6-agent/8-plan-iteration/5-wave overhaul;
+Genesis's own before/after panel-in-one-thread fix) rather than only
+reading well in the abstract. As with the Demiurge-tier extension above,
+this material's grounding status is "the handbook says," re-verified
+only against the handbook's own live chapter text -- an Archon-tier
+reader engaging with it critically (per this tier's own capacities list)
+is expected to hold that epistemic status in mind, not to treat a
+methodology claim here with the same confidence as a VERIFIED claim
+about Claude Code's or OpenCode's actual source.
 
 **Ceiling note.** This book is a necessary but explicitly insufficient
 input at Archon tier. It is written LAZY, on demand, as real questions
@@ -384,4 +566,16 @@ This page will need revisiting as new topic pages are added to
 `references/harnesses/` -- a newly written page should be slotted into
 one of the three post-Slumberer reading lists (or flagged as not yet
 fitting any of them) rather than left unclassified, so this rubric
-stays a live map of the book rather than a snapshot of it.
+stays a live map of the book rather than a snapshot of it. The same now
+holds for `references/sdlc/` and `references/rag/`: this page was
+revisited on 2026-08-24 to fold both areas' pages into the Demiurge- and
+Archon-tier reading lists as the two extension subsections above
+document, and any future page added to either area should likewise be
+slotted into an existing tier band (or flagged as not yet fitting one)
+rather than left unclassified. Both extensions carry a grounding-status
+caveat this page's original four bands did not need to state, because
+neither `references/sdlc/` nor `references/rag/` uses this wiki-book's
+own VERIFIED/BEST-CURRENT-UNDERSTANDING tagging -- see the
+"grounding-status caveat" paragraph under the Demiurge tier's extension
+subsection for the exact wording a reader or mentor should carry forward
+when discussing this material's evidentiary weight.

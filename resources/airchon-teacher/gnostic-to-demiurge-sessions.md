@@ -449,3 +449,315 @@ broken into its concrete deliverable steps:
    own grading criteria: every table cell traceable to the cited page
    rather than invented, and the configuration artifact actually doing
    what it claims when run.
+
+---
+
+## Extension (2026-08-24): Clusters 6-7 session additions
+
+**Why this section exists, appended rather than folded in above.**
+`knowledge-path-curriculum.md`'s 2026-08-24 revision note added two
+clusters to this transition after the 27-session breakdown above was
+already written: Cluster 6 (Retrieval-Augmented Generation, sourced from
+`references/rag/`) and Cluster 7 (Agentic SDLC practitioner mechanics,
+sourced from `references/sdlc/`). That page's own note under "Session
+breakdown (agenda only), Gnostic -> Demiurge" flags this explicitly: the
+27-session count "was set before Clusters 6 and 7 below existed and
+covers only the original five-cluster/21-module band." Per this file's
+operating rule -- preserve existing session numbering, never renumber or
+rewrite a session once taught from -- the fix is additive: Sessions 1-27
+above are untouched, and the two new clusters get their own sessions
+numbered 28 onward, continuing the sequence rather than being spliced in
+before the existing Session 27 capstone. A course already in progress
+against the original 27 sessions is unaffected; a course starting fresh
+now runs all 45 sessions straight through, with the original Session 27
+capstone still sitting where it always did (per-cluster, Clusters 1-5
+only) and the two new clusters' own capstone variant arriving as the new
+Session 45 below.
+
+**Grounding-status reminder, restated per `knowledge-path-curriculum.md`'s
+own instruction not to drop it when teaching from this page.** Every
+item in Cluster 6's sessions below is sourced from `references/rag/`
+pages, which attribute their own claims to the HuggingFace Cookbook
+notebooks and Lewis et al. (2020). Every item in Cluster 7's sessions
+below is sourced from `references/sdlc/` pages, attributed "the handbook
+says" to the Agentic SDLC Handbook. Neither carries this wiki-book's own
+VERIFIED/BEST-CURRENT-UNDERSTANDING tagging -- say so explicitly when
+teaching either cluster, the same distinction
+`knowledge-path-curriculum.md`'s Cluster 6 and Cluster 7 overviews each
+restate inline.
+
+**Why 18 more sessions, not fewer or more.** Cluster 6 carries 9 modules
+(`references/rag/foundations.md` through `heterogeneous-data-sources.md`)
+and Cluster 7 carries 6 (`04-the-reference-architecture.md`/`11-the
+-runtime-machine.md` treated as one paired module, through `appendix-a
+-cross-harness-reference.md`), for 15 modules total -- fewer than
+Transition 2's original 21, but each carries a genuinely hands-on,
+build-something exercise (Cluster 6 especially: reproduce a pipeline,
+add a reranker, swap a vector store, add a cache, evaluate it) rather
+than the original band's more observational "read a config key, predict
+its behavior, confirm it" exercise shape. The same three session-count
+failure modes the original 27-session rationale above rejected apply
+again here: one session per cluster (2 sessions) would force 6-19
+key-concept items covering nine build-on-each-other pipeline stages into
+one sitting; one session per module with no synthesis (15 sessions)
+would leave nowhere for the comprehension-check-and-exercise-selection
+practice the other five clusters group into their own synthesis session;
+splitting any one module's already-short 2-4-item key-concepts list
+across two sessions reproduces the "so thin it's pointless" failure this
+file's opening rationale already named. **15 module-content sessions
+-- one per module, sized to that module's own key-concepts granularity
+(2-4 items, matching Cluster 6's own Vector-store-integrations and
+Agentic-RAG-with-LlamaIndex modules being the thinnest at 2 apiece, and
+Cluster 7's Load-lifecycle module being the richest at 4)**, plus **2
+cluster-synthesis sessions** (one per cluster, following that cluster's
+module sessions, walking every module's comprehension check plus
+selecting one representative exercise to actually run), plus **1
+capstone-variant session** (covering `knowledge-path-curriculum.md`'s
+own "Cluster 6/7 variant" of the Transition-2 capstone, since Clusters 6
+and 7 have no second/third harness to cross-compare against the way
+Clusters 1-5 do) is the smallest count avoiding all three failure modes,
+continuing the numbering as Sessions 28-45.
+
+```mermaid
+flowchart TB
+    subgraph C6["Cluster 6: RAG (Sessions 28-37)"]
+        T28["S28 Foundations (3)"] --> T29["S29 Basic pipeline (2)"]
+        T29 --> T30["S30 Advanced techniques (3)"]
+        T30 --> T31["S31 Vector stores (2)"]
+        T31 --> T32["S32 Semantic caching (3)"]
+        T32 --> T33["S33 Structured generation (3)"]
+        T33 --> T34["S34 RAG evaluation (3)"]
+        T34 --> T35["S35 Agentic RAG/LlamaIndex (2)"]
+        T35 --> T36["S36 Heterogeneous sources (2)"]
+        T36 --> T37["S37 Cluster 6 synthesis (10)"]
+    end
+    subgraph C7["Cluster 7: SDLC practitioner mechanics (Sessions 38-44)"]
+        T38["S38 Ref. architecture + runtime machine (4)"] --> T39["S39 Instrumented codebase (3)"]
+        T39 --> T40["S40 Load lifecycle (4)"]
+        T40 --> T41["S41 Attention/context economy (3)"]
+        T41 --> T42["S42 Primitives as code (3)"]
+        T42 --> T43["S43 Appendix A cross-harness ref (2)"]
+        T43 --> T44["S44 Cluster 7 synthesis (7)"]
+    end
+    C6 --> C7
+    C7 --> T45["S45 Clusters 6/7 capstone variant (4)"]
+```
+
+---
+
+## Cluster 6: Retrieval-Augmented Generation (Sessions 28-37)
+
+**Session 28 -- RAG foundations.** Items to cover, in order:
+1. Lewis et al.'s parametric/non-parametric memory split.
+2. RAG-Sequence vs. RAG-Token.
+3. The HuggingFace Agents Course's agentic-RAG reframing of retrieval as
+   one callable tool among several rather than a fixed pipeline stage.
+
+**Session 29 -- The basic RAG pipeline.** Items to cover, in order:
+1. The introductory LangChain + Zephyr + FAISS pipeline over GitHub
+   issues.
+2. The `GitHubIssuesLoader` -> `RecursiveCharacterTextSplitter` -> embed
+   -> retrieve -> prompt -> generate baseline shape every later module
+   varies.
+
+**Session 30 -- Advanced RAG techniques.** Items to cover, in order:
+1. The character-vs-token chunking trap: a character-based `chunk_size`
+   silently disagreeing with a tokenizer's count.
+2. PaCMAP embedding-space visualization.
+3. ColBERTv2 cross-encoder reranking via RAGatouille.
+
+**Session 31 -- Vector store integrations.** Items to cover, in order:
+1. Three notebooks swapping the retriever half of the basic pipeline
+   onto Milvus, Elasticsearch, and MongoDB Atlas.
+2. What stays constant (the retrieve-then-generate shape) while the
+   store underneath changes.
+
+**Session 32 -- Semantic caching for RAG.** Items to cover, in order:
+1. Cache placement before retrieval, not before generation.
+2. FAISS `IndexFlatL2` with a Euclidean distance threshold.
+3. FIFO eviction.
+
+**Session 33 -- Structured generation for RAG.** Items to cover, in
+order:
+1. Source-snippet highlighting as a provenance mechanism.
+2. The naive JSON-prompting approach and where it breaks.
+3. Outlines' logit-biasing constrained-decoding mechanism as the fix.
+
+**Session 34 -- RAG evaluation.** Items to cover, in order:
+1. Synthetic QA-dataset generation from the knowledge base itself.
+2. Groundedness/relevance/standalone-ness critique agents as a quality
+   filter.
+3. An LLM-as-judge (GPT-4-style) scoring rubric.
+
+**Session 35 -- Agentic RAG with LlamaIndex.** Items to cover, in
+order:
+1. LlamaIndex's Loading/Indexing/Querying three-phase framing as an
+   alternative vocabulary to LangChain's load/split/embed/index/retrieve
+   /prompt/generate.
+2. A fully local Ollama + Llama 2 + `BAAI/bge-base-en-v1.5` stack chosen
+   specifically to avoid an OpenAI-by-default dependency.
+
+**Session 36 -- RAG over heterogeneous data sources.** Items to cover,
+in order:
+1. Unstructured's partition-then-chunk pipeline for mixed document
+   formats (PDF, PPTX, EPUB, HTML) in one corpus.
+2. Jina Reranker v2 scoring whole SQL table schemas directly, with no
+   vector index at all.
+
+**Session 37 -- Cluster 6 synthesis.** No new material -- every item
+here is integration of Sessions 28-36, not a new concept:
+1. Walk foundations.md's comprehension check: the two problems Lewis et
+   al.'s abstract names as compounding a language model's limited
+   ability to "access and precisely manipulate knowledge," and how
+   non-parametric memory addresses each.
+2. Walk basic-rag-pipeline.md's comprehension check: why the notebook's
+   worked example fails against the base model with no retrieved
+   context, and what retrieval specifically adds back.
+3. Walk advanced-rag-techniques.md's comprehension check: why a
+   character-based `chunk_size` risks overflowing an embedding model's
+   token budget, and the fix this page documents.
+4. Walk vector-store-integrations.md's comprehension check: one
+   production vector store this page documents and the embedding model
+   its notebook pairs it with.
+5. Walk semantic-caching.md's comprehension check: why the cache sits
+   before retrieval rather than before the final LLM call.
+6. Walk structured-generation-for-rag.md's comprehension check: the
+   provenance problem (named back in foundations.md) this page's
+   source-highlighting feature concretely solves.
+7. Walk rag-evaluation.md's comprehension check: the three
+   critique-agent scores a synthetic QA pair is filtered on, and what
+   happens to a pair that fails any one of them.
+8. Walk agentic-rag-with-llamaindex.md's comprehension check: LlamaIndex's
+   "OpenAI-by-default trap" and the concrete substitution the notebook
+   makes to avoid it.
+9. Walk heterogeneous-data-sources.md's comprehension check: why the
+   SQL-backed notebook skips the usual chunk-and-embed retrieval step
+   entirely, and what it uses instead.
+10. Run one representative exercise from this cluster (recommended:
+    rag-evaluation.md's -- generate five synthetic QA pairs from your
+    own pipeline's knowledge base, critique each on this page's three
+    axes, and run the surviving pairs through an LLM-as-judge comparison
+    against your pipeline's real answers; this exercise is the natural
+    capstone of the cluster's own build-up since it requires the
+    pipeline built and varied across Sessions 28-36 to already exist).
+
+---
+
+## Cluster 7: Agentic SDLC practitioner mechanics (Sessions 38-44)
+
+**Session 38 -- The reference architecture and the runtime machine.**
+Items to cover, in order:
+1. The Human/Agent/Platform three-layer participant model (Ch. 4).
+2. The four-part agentic runtime machine: Model/Harness/Agent Source
+   Code/Client (Ch. 11).
+3. "The harness is the compiler" framing (Ch. 11).
+4. Cross-harness file-naming incompatibility as a direct consequence of
+   the Agent Source Code layer having no shared standard.
+
+**Session 39 -- The instrumented codebase.** Items to cover, in order:
+1. The seven primitive types this page's own table covers.
+2. The five load modes: eager preload, lazy on-demand, dispatcher
+   -mediated, user-invoked, event-driven.
+3. The instrumentation audit as a practice for converting tacit team
+   knowledge into structured, harness-loadable files.
+
+**Session 40 -- The load lifecycle.** Items to cover, in order:
+1. The four-phase Resolve -> Materialize -> Bind -> Activate pipeline.
+2. The three binding modes.
+3. The phantom-dependency and bundle-leakage anti-patterns.
+4. The governing claim that "a skill... can fail to bind -- and the
+   harness will not tell you why."
+
+**Session 41 -- Attention and context economy.** Items to cover, in
+order:
+1. Window (hard token ceiling) vs. attention (a smaller, position
+   -sensitive effective-focus cache).
+2. Context rot and attention starvation as two distinct silent-failure
+   modes.
+3. The U-shaped attention curve, citing Liu et al.'s "Lost in the
+   Middle" and Anthropic's needle-in-a-haystack evaluations.
+
+**Session 42 -- Primitives as code.** Items to cover, in order:
+1. The package model: one skill = one Module/Facade, a bundle = a
+   Composite, a dependency edge = a Package Reference.
+2. The lockfile pinning a resolved dependency graph by content hash.
+3. Overrides and versioning as the mechanism keeping two teams' shared
+   content from drifting apart.
+
+**Session 43 -- Appendix A, the cross-harness reference.** Items to
+cover, in order:
+1. The ten APM primitive concepts this page's master table covers
+   (project-wide rules, scope-attached rules, personas, skills, hooks,
+   MCP config, session compaction, and others).
+2. The five harnesses (Copilot, Claude Code, Cursor, Codex CLI,
+   OpenCode) that table maps each concept's concrete file/config
+   convention across.
+
+**Session 44 -- Cluster 7 synthesis.** No new material -- every item
+here is integration of Sessions 38-43, not a new concept:
+1. Walk the reference-architecture-and-runtime-machine module's
+   comprehension check: in the "harness is the compiler" framing, what
+   plays the role of source code, and what plays the role of the
+   compiled artifact.
+2. Walk 12-the-instrumented-codebase.md's comprehension check: the five
+   load modes, and one primitive type whose load mode is "eager
+   preload, scoped by `applyTo` glob."
+3. Walk 14-the-load-lifecycle.md's comprehension check: given a skill
+   with correct frontmatter, in the right directory, with a sharp
+   description, that fails to activate with no error message -- which
+   phase is the most likely point of failure, and why the fix rarely
+   lives in the skill file itself.
+4. Walk 15-attention-and-context-economy.md's comprehension check: the
+   difference between "an instruction the model has read" and "an
+   instruction the model has seen," and which one attention starvation
+   describes.
+5. Walk 21-primitives-as-code.md's comprehension check: the structural
+   problem behind two skills disagreeing about a shared review
+   checklist, and how treating the checklist as a package fixes it.
+6. Walk appendix-a-cross-harness-reference.md's comprehension check:
+   one row of its master table and the concrete file/path convention it
+   gives for two different harnesses.
+7. Run one representative exercise from this cluster (recommended:
+   21-primitives-as-code.md's -- take two primitives you have already
+   written in this cluster's earlier exercises that share some content,
+   and refactor that shared content into a single declared dependency
+   both primitives reference, rather than each embedding its own copy;
+   this exercise is the natural capstone of the cluster's own build-up
+   since it requires primitives already written in Sessions 39-40 to
+   already exist).
+
+---
+
+## Session 45 -- Clusters 6/7 capstone variant
+
+No new material -- every item here is execution of
+`knowledge-path-curriculum.md`'s own "Cluster 6/7 variant" of the
+Transition-2 capstone, broken into its concrete deliverable steps. This
+variant exists because Clusters 6 and 7 have no second or third harness
+to cross-compare against the way the original Session 27 capstone
+(Clusters 1-5) does -- RAG-the-technique and the SDLC handbook's
+instrumented-codebase discipline are each single-source material, not
+three-implementations-of-one-mechanism:
+1. Choose Cluster 6 or Cluster 7, and select one working artifact you
+   already produced in one of that cluster's own exercises above (a
+   real pipeline component for Cluster 6, a real primitive/lockfile
+   pairing for Cluster 7) -- one you actually ran and can show the
+   output of.
+2. Produce a short comparison note, with citations, of how that
+   cluster's mechanism differs from the closest analogous mechanism in
+   Clusters 1-5 (e.g. Cluster 6's semantic-cache placement before
+   retrieval vs. `caching.md`'s server-side prompt-prefix reuse; Cluster
+   7's four-phase load lifecycle vs. `instruction-context-budget.md`'s
+   eager-load budget).
+3. Explicitly flag, in the note's own text, that the chosen cluster's
+   cited findings carry Cluster 6's or Cluster 7's own single-source
+   grounding status ("the source says" for RAG, "the handbook says" for
+   SDLC) rather than this wiki-book's own VERIFIED/BEST-CURRENT
+   -UNDERSTANDING tagging -- omitting that distinction is a capstone
+   failure in its own right, not a stylistic nicety, per this book's own
+   grounding discipline.
+4. Self-check (or peer-review) both artifacts against the capstone
+   variant's own grading criteria: the artifact actually runs/works as
+   claimed, and the comparison note keeps the two epistemic registers
+   (this book's VERIFIED tagging vs. the chosen cluster's single-source
+   attribution) visibly distinct rather than blurred together.

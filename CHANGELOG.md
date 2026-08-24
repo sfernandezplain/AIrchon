@@ -1,3 +1,39 @@
+## 2026-08-24 -- Made agenda-item completion in Course-Delivery Flow a manual, reader-triggered gate
+
+`course-delivery-flow.md`'s CD4 previously wrote an agenda item to
+`~/.airchon/course-progress.md` as "covered" the instant its
+explanation was genuinely complete and shown to the reader, and only
+*then* asked whether to continue or pause -- so the tracker could
+already show an item done before the reader had said anything back.
+The operator asked for the opposite ordering: teach the item fully,
+then PAUSE and wait for the reader to explicitly signal readiness
+("ok" / "continue" / "next" / "got it" / "understood," or an explicit
+choice to pause) -- only that reply, never the end of the teaching text
+itself, triggers the tracker write and the move to the next item. This
+is a manual gate on ITEM completion within a session, distinct from
+and layered underneath the session-level continue-or-pause choice CD4
+already had; the two are now the same reply, gated in the same place,
+rather than the write happening before the ask.
+
+Reworked CD4 step 2's bullets in `course-delivery-flow.md` around this
+ordering (teaching-complete is necessary but not sufficient; PAUSE and
+ask; only an explicit affirmative or explicit-pause reply satisfies the
+gate; only then write "covered" and advance), updated its top-of-file
+`stateDiagram-v2` to show the new `AwaitConfirm` / `MarkCovered` states
+instead of an auto-covered self-loop, updated CD2's resume note, CD8's
+resume discipline (a still-open gate is re-asked, never re-taught, and
+is its own third state distinct from covered/uncovered), and the Hard
+Rules Recap. Added a third per-item tracker state, **Items pending
+confirmation**, to `course-progress-template.md` (with a worked
+example and updated prose notes) for the case where teaching finished
+but the conversation broke off before the reader's reply arrived --
+distinct from both "covered" and plain "uncovered." Updated
+`airchon-teacher.agent.md`'s intro paragraph and
+`routed-invocation-protocol.md`'s course-delivery note to match (the
+routed path now needs two round trips per item: one that teaches
+without writing, one carrying the reader's actual reply that either
+writes "covered" or continues teaching).
+
 ## 2026-08-24 -- Added `references/sdlc/` for content the wiki-book correctly excludes
 
 The operator pointed `airchon-mentor` at the Agentic SDLC Handbook
