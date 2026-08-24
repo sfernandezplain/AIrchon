@@ -19,28 +19,31 @@ hooks (Copilot CLI's own term, deliberately compatible with Claude
 Code's), plugins (OpenCode's umbrella term, of which lifecycle hooks
 are one part), plugins again (DeepSeek Harness's own term, mounted
 into a shared Cordis context rather than loaded as an OpenCode-style
-module -- §4 below), and extensions (pi's own term, in-process
-TypeScript modules -- §5 below) are, across all five products, **the
-mechanism a harness exposes for user-side code to sit directly inside
-the control flow of the agent loop** -- not alongside it the way an MCP
-tool adds a capability the model chooses to invoke, and not as inert
-content the way a skill or a memory file is. A hook runs whether or not
-the model "wants" it to, at a point the harness itself defines, and it
-can, in every harness covered here, change what happens next: deny a
-tool call, rewrite its arguments, inject text into the conversation, or
-force another turn.
+module -- §4 below), extensions (pi's own term, in-process
+TypeScript modules -- §5 below), and hooks once more (Hermes Agent's own
+term for three genuinely distinct dispatch systems -- §6 below) are,
+across all six products, **the mechanism a harness exposes for
+user-side code to sit directly inside the control flow of the agent
+loop** -- not alongside it the way an MCP tool adds a capability the
+model chooses to invoke, and not as inert content the way a skill or a
+memory file is. A hook runs whether or not the model "wants" it to, at a
+point the harness itself defines, and it can, in every harness covered
+here, change what happens next: deny a tool call, rewrite its arguments,
+inject text into the conversation, or force another turn.
 
 Every claim below is tagged VERIFIED (fetched this session, source
 named) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot
-CLI, OpenCode, DeepSeek Harness, and pi are five separate products; a
-hook event, exit-code convention, or configuration key confirmed for one
-is never assumed to hold for another without its own citation -- this
-matters more than usual on this topic because Copilot CLI's own hooks
-reference *explicitly* documents partial format-compatibility with
-Claude Code's hooks (shared PascalCase event names, a Claude-tool-name
-mapping table, even reading `.claude/settings.json` hook entries
-directly), which makes it tempting to assume more overlap than is
-actually documented.
+CLI, OpenCode, DeepSeek Harness, pi, and Hermes Agent are six separate
+products; a hook event, exit-code convention, or configuration key
+confirmed for one is never assumed to hold for another without its own
+citation -- this matters more than usual on this topic because Copilot
+CLI's own hooks reference *explicitly* documents partial
+format-compatibility with Claude Code's hooks (shared PascalCase event
+names, a Claude-tool-name mapping table, even reading
+`.claude/settings.json` hook entries directly), and Hermes' own shell
+hooks independently converge on Claude Code's exit-code-2 convention
+(§6.3) -- both real findings, but neither licenses assuming more overlap
+than is actually documented anywhere else.
 
 ```mermaid
 flowchart TD
@@ -1160,6 +1163,128 @@ skills directory without the user hand-editing `settings.json`.
 
 ---
 
+## 6. Hermes Agent (Nous Research)
+
+Primary source: `hermes-agent.nousresearch.com/docs/user-guide/features/hooks`,
+VERIFIED, fetched 24 August 2026 (WebFetch). Hermes Agent is a sixth,
+independent, self-hosted product with no dependency on any harness
+covered elsewhere on this page -- see
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§6 for this book's fuller architectural introduction, not repeated here.
+Hermes is the single richest point of direct, mechanism-level
+convergence with this page's own subject matter found in this book to
+date, and is worth treating precisely rather than folded into a one-line
+"same idea, different harness" note.
+
+### 6.1 Three distinct hook systems under one shared name
+
+```mermaid
+flowchart LR
+    subgraph GH["Gateway hooks"]
+        direction TB
+        G1["HOOK.yaml + handler.py\nin ~/.hermes/hooks/"] --> G2["events: [...] incl.\nwildcards e.g. command:*"]
+        G2 --> G3["gateway:startup, session:start,\nagent:start, agent:step,\nagent:end, command:*"]
+    end
+    subgraph PH["Plugin hooks"]
+        direction TB
+        P1["ctx.register_hook()\nin plugin register()"] --> P2["Directive/Control:\npre_tool_call, pre_llm_call,\npre_verify"]
+        P1 --> P3["Transform: transform_tool_result,\ntransform_terminal_output,\ntransform_llm_output"]
+        P1 --> P4["Observer: post_tool_call,\npost_llm_call, subagent_start/stop,\non_stream_*"]
+    end
+    subgraph SH["Shell hooks"]
+        direction TB
+        S1["hooks: block in\n~/.hermes/config.yaml"] --> S2["stdin: JSON payload\nstdout: JSON response\nexit code 2 blocks"]
+        S2 --> S3["fail_closed: true on\ntimeout/spawn error"]
+    end
+```
+
+Hermes ships **three distinct hook systems**, unlike any single-mechanism
+catalogue this page documents for the other five harnesses. **Gateway
+hooks** are declared as a `HOOK.yaml` + `handler.py` pair under
+`~/.hermes/hooks/<name>/`, run gateway-side only (relevant because
+Hermes also runs as a persistent, multi-platform messaging gateway, not
+only as a local CLI), and subscribe to named events including
+`gateway:startup`, `session:start`, `agent:start`, `agent:step` (fired
+on "Each tool-calling loop iteration"), `agent:end`, and a
+wildcard-capable `command:*` -- "handler.py requirements: Must contain
+function named `handle`. Receives `event_type: str` and `context:
+dict`." **Plugin hooks** register programmatically via
+`ctx.register_hook()` inside a plugin's own `register()` function and
+run in both CLI and gateway contexts, split into three named categories
+that map almost one-for-one onto this page's own vocabulary for Claude
+Code: **directive/control hooks** (`pre_tool_call` -- "block, approve,
+or modify tool arguments before execution"; `pre_llm_call` -- inject
+context into the user message; `pre_verify` -- gate code-verification
+decisions) that can *change control flow*, exactly the authority §1.4
+documents for Claude Code's `PreToolUse`; **transform hooks**
+(`transform_tool_result`, `transform_terminal_output`,
+`transform_llm_output`, `transform_api_error_classification`) that
+*replace* content rather than merely gate it, closest in shape to §1.7's
+documented v2.1.121 `PostToolUse`-replaces-tool-output capability; and
+**observer hooks** (`post_tool_call`, `post_llm_call`,
+`on_session_start`/`_end`/`_finalize`/`_reset`,
+`subagent_start`/`_stop`, `on_stream_start`/`_delta`/`_end`,
+`pre_api_request`/`post_api_request`/`api_request_error`) whose return
+values are explicitly ignored. `pre_tool_call`'s own return shapes are
+quoted directly and are structurally near-identical to Claude Code's
+`PreToolUse` `permissionDecision` payloads (§1.4): `{"action": "block",
+"message": "Reason"}`, `{"action": "approve", "message": "Why",
+"rule_key": "optional"}`, and `{"action": "modify", "args": {"key":
+"new_value"}}`, with "The first valid directive wins (Python plugins
+registered first, then shell hooks)."
+
+### 6.2 Shell hooks: the exact same wire protocol as Claude Code's, independently arrived at
+
+**Shell hooks** are the third system and the one with the most literal
+cross-harness convergence on this page: any executable can be
+registered under a `hooks:` block in `~/.hermes/config.yaml`, matched by
+tool name via a `matcher` field ("`matcher: "terminal|write_file"`"),
+invoked as a subprocess receiving a JSON payload on stdin
+(`hook_event_name`, `tool_name`, `tool_input`, `session_id`, `cwd`,
+`extra`) and permitted to return a JSON response on stdout in the same
+shapes plugin hooks use -- and, quoted directly, "**Exit code 2:**
+Special meaning for `pre_tool_call` -- blocks tool call." This is the
+*exact same* exit-code-2-blocks convention §1.4 documents as Claude
+Code's own, source-and-docs-confirmed rule ("only exit code 2 blocks
+anything... only exit code 2 does anything"), now found a second time,
+independently, in a harness built by a wholly different organization
+with no shared codebase -- a genuinely strong convergence data point,
+distinct from Copilot CLI's own *deliberate*, documented
+format-compatibility with Claude Code (§2.1/§2.6): nothing in Hermes'
+own docs states this convention was borrowed from Claude Code, so this
+page treats it as an independent reinvention rather than assuming a
+borrowing relationship neither source states.
+
+### 6.3 `fail_closed`, a persisted consent allowlist, and outbound webhooks
+
+Hermes additionally supports a `fail_closed: true` per-hook flag (a
+spawn error or timeout *blocks* the tool rather than allowing it
+through -- the opposite default from Claude Code's own documented
+fail-open timeout behavior for most non-`PreToolUse` events, §1.4, and
+from Copilot CLI's own universally-fail-open-on-timeout rule, §2.3,
+which explicitly reasons that "a slow or unreachable hook must not
+silently block tool calls or work, even when the hook was deployed by
+an administrator as policy" -- Hermes' opt-in `fail_closed` takes the
+opposite security posture for whichever individual hook sets it). A
+first-use consent model persists `(event, command)` approval decisions
+to `~/.hermes/shell-hooks-allowlist.json` (bypassable via
+`--accept-hooks`/`HERMES_ACCEPT_HOOKS=1`/`hooks_auto_accept: true`), a
+persisted per-command consent mechanism with no directly comparable
+equivalent named in this page's Claude Code, Copilot CLI, or OpenCode
+sections. Hermes also supports outbound signed webhooks that POST JSON
+payloads to external HTTP endpoints on named lifecycle events -- a
+delivery mechanism this page's own §1.5 documents Claude Code's `http`
+handler type providing in a broadly similar shape. The precedence rule
+across all three of Hermes' own hook systems is stated plainly: "The
+first valid block wins -- the aggregator returns as soon as any
+callback produces `{"action": "block", "message": str}` with a
+non-empty message" -- first-match-wins evaluation, the same discipline
+this book's [deterministic-orchestration.md](deterministic-orchestration.md)
+and [middleware-composed-agent-harnesses.md](middleware-composed-agent-harnesses.md)
+§10 both already document for their own respective rule lists.
+
+---
+
 ## Synthesis
 
 ```mermaid
@@ -1194,9 +1319,15 @@ flowchart TB
         PI3["~25 named events across startup/session/agent/model/tool\ncadences, incl. before_provider_headers/request/response --\na wire-level vantage no other harness's catalogue reaches"]
         PI4["Config: extension FILE location itself\n(~/.pi/agent/extensions/, .pi/extensions/, settings.json,\n-e flag) -- no separate hook-registration key"]
     end
+    subgraph HM["Hermes Agent -- 'hooks' (3 distinct systems)"]
+        HM1["3 handler shapes: declarative gateway HOOK.yaml/handler.py,\nprogrammatic Python plugin ctx.register_hook(),\ndrop-in shell-script hooks"]
+        HM2["Decision channel: JSON stdin/stdout (shell/gateway),\ndirect Python call (plugin) -- exit code 2 blocks (shell)"]
+        HM3["3 plugin-hook categories: directive/control,\ntransform, observer -- first-valid-block-wins precedence"]
+        HM4["Config: ~/.hermes/hooks/<name>/ (gateway),\nplugin register() (programmatic),\n~/.hermes/config.yaml hooks: block (shell)"]
+    end
 ```
 
-All five products converge on the same underlying need -- a way for
+All six products converge on the same underlying need -- a way for
 user-authored code to sit inside the control flow of the loop, not just
 add a capability the model can choose to call -- but diverge sharply on
 *how* a decision gets communicated back to the harness. Claude Code and
@@ -1206,7 +1337,15 @@ optional JSON on stdout, with Copilot's own documentation making the
 Claude-format compatibility deliberate rather than incidental (shared
 PascalCase event names, a literal tool-name mapping table, reading
 `.claude/settings.json` hook entries directly, an identical
-8-consecutive-block runaway-loop cap). OpenCode, DeepSeek Harness, and
+8-consecutive-block runaway-loop cap). Hermes Agent's own **shell hooks**
+(§6.2) join this same process-boundary family from a sixth, unrelated
+codebase, independently reinventing the identical exit-code-2-blocks
+convention with no documented borrowing relationship to Claude Code --
+while its **gateway** and **plugin** hooks sit on the *other* side of
+this split, dispatched as declarative YAML-driven subprocess handlers
+and direct in-process Python function calls respectively, meaning Hermes
+alone straddles both halves of this page's own process-boundary/in-process
+divide within a single product. OpenCode, DeepSeek Harness, and
 pi instead keep the contract entirely **in-process**: a plugin or
 extension is JavaScript/TypeScript loaded directly into the same
 runtime, and a decision is communicated either by mutating a plain
@@ -1231,6 +1370,12 @@ blocks anything and that a rules-level deny always outranks a hook's
 own softer verdict, while Copilot's reference states the fail-closed/
 fail-open asymmetry explicitly by event, singling out `preToolUse` as
 the one place where even a hook *crashing* still denies the call.
+Hermes' own `fail_closed` flag (§6.3) makes this same choice an explicit,
+opt-in, per-hook setting rather than a fixed per-event rule -- a third,
+more granular answer to the same fail-open-vs-fail-closed question, and
+the only one of the three process-boundary harnesses that lets the hook
+author, rather than the platform's own event catalogue, decide which
+side of that line an individual hook sits on.
 OpenCode's, DeepSeek's, and pi's in-process models each sidestep the
 question of a crashing hook denying by default entirely, since a plugin
 or extension function throwing an uncaught error is, in a single
@@ -1393,3 +1538,12 @@ own text):**
   [Permissions & sandboxing architecture](permissions-and-sandboxing.md) §5's own
   Sources) -- the extension-permissions statement quoted in §5's own opening paragraph,
   not re-derived here.
+
+**Hermes Agent (authoritative for its own documented behavior; fetched 24 August
+2026 from `hermes-agent.nousresearch.com/docs/`):**
+- `hermes-agent.nousresearch.com/docs/user-guide/features/hooks` (WebFetch) -- the
+  primary source for all of §6: the full three-hook-system catalogue
+  (gateway/plugin/shell), every named event and hook category quoted in §6.1, the
+  `pre_tool_call`/`pre_llm_call` return shapes, the exit-code-2 rule (§6.2), the
+  `fail_closed` flag, the shell-hook consent/allowlist model, and outbound webhooks
+  (§6.3).

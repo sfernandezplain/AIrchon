@@ -1,4 +1,4 @@
-# Built-in skills -- Claude Code, GitHub Copilot CLI, OpenCode
+# Built-in skills -- Claude Code, GitHub Copilot CLI, OpenCode, pi, and Hermes Agent
 
 What ships as a *skill* out of the box in each harness -- as distinct
 from a skill a user or repo author writes themselves -- and how each
@@ -17,9 +17,9 @@ see [Handoff mechanism](handoff-mechanism.md).
 
 Every claim below is tagged VERIFIED (fetched this session from the
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code,
-Copilot CLI, and OpenCode are three separate products from three
-separate organizations -- nothing confirmed for one is assumed for
-another. Sources and fetch dates at the bottom.
+Copilot CLI, OpenCode, pi, and Hermes Agent are five separate products
+from five separate organizations -- nothing confirmed for one is
+assumed for another. Sources and fetch dates at the bottom.
 
 ---
 
@@ -429,7 +429,99 @@ skill's full content to load, not merely its description.
 
 ---
 
-## 5. Synthesis -- four different meanings of "built-in"
+## 5. Hermes Agent (Nous Research)
+
+Source for this section: VERIFIED, fetched 24 August 2026 directly from
+`hermes-agent.nousresearch.com/docs/user-guide/features/skills` (WebFetch).
+Hermes Agent is a fifth, independent, self-hosted product -- see
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md) §6
+for this book's fuller architectural introduction to the harness itself,
+not repeated here.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Level0: startup
+    Level0 --> Level0: skills_list() -- metadata only,\n~3,000 tokens for ALL skills
+    Level0 --> Level1: model decides a skill\nis relevant
+    Level1 --> Level1: skill_view(name) --\nfull SKILL.md content
+    Level1 --> Level2: agent follows instructions,\nneeds a reference file
+    Level2 --> Level2: skill_view(name, path) --\none specific reference file
+    Level2 --> [*]
+```
+
+### 5.1 A second, independently sourced instance of the `agentskills.io` standard
+
+"Skills are on-demand knowledge documents the agent can load when
+needed. They follow a **progressive disclosure** pattern to minimise
+token usage and are compatible with the
+[agentskills.io](https://agentskills.io/specification) open standard."
+This is the **second** independent instance this book has now sourced
+of a harness explicitly targeting that named, shared, cross-vendor
+specification -- the first being pi (§4.1 above, "Pi implements the
+Agent Skills standard, warning about most violations but remaining
+lenient"), and a third being LangChain's Deep Agents per this book's
+[middleware-composed-agent-harnesses.md](middleware-composed-agent-harnesses.md)
+§7. Three independently-built harnesses now cite the identical outside
+specification by name, meaningfully strengthening the case that
+`agentskills.io` is a real, multi-adopter standardization point rather
+than a specification named by only one project.
+
+### 5.2 Loading discipline exposed as named, model-callable tools -- distinctive among every skills mechanism this page has sourced
+
+The loading discipline is explicitly three-leveled and, distinctively
+among every skills mechanism this page has sourced so far, exposed
+through **named tool calls a model invokes directly** rather than an
+implicit framework-side discovery step: **Level 0**, `skills_list()`,
+returns "metadata only (~3,000 tokens)" for every installed skill;
+**Level 1**, `skill_view(name)`, retrieves one skill's full `SKILL.md`
+content; **Level 2**, `skill_view(name, path)`, loads one specific
+reference file from that skill's own directory -- "The agent only loads
+the full skill content when it actually needs it." Neither Claude
+Code's, Copilot CLI's, OpenCode's, nor pi's own progressive-disclosure
+mechanism (§1-§4 above) is documented as exposing this loading step as
+an explicit tool the model calls by name; each instead treats the
+description-then-full-body handoff as an implicit consequence of the
+model reading a file or the harness itself deciding what to inject.
+
+### 5.3 Autonomous, in-session skill authorship as an encouraged default behaviour
+
+The `SKILL.md` format itself matches this page's existing convention
+almost exactly (YAML frontmatter naming `name`, `description`,
+`version`, `platforms`, followed by markdown sections such as "When to
+Use," "Procedure," "Pitfalls," and "Verification"), corroborating
+[instruction-context-budget.md](instruction-context-budget.md)'s own
+independently-observed frontmatter-plus-body shape a further time. What
+is genuinely new here relative to every other skills mechanism this
+page has sourced -- including Deep Agents' own skills mechanism, which
+treats skills as "typically read-only developer-defined resources" --
+is **autonomous, in-session skill authorship as a first-class,
+encouraged behavior**: the agent uses a `skill_manage` tool (actions
+`create`, `patch`, `edit`, `delete`, `write_file`, `remove_file`) to
+write its own skills, and the system prompt itself is documented as
+actively encouraging this -- "record a non-trivial workflow with
+`skill_manage` for future reuse." This stands in sharpest contrast with
+this page's own §5's-sibling finding for Copilot CLI (§2): Copilot
+CLI's Forge/`/chronicle skills review` pipeline also produces
+harness-authored skill drafts, but stages every one for **human
+review** before it becomes real, where Hermes' `skill_manage` tool
+writes directly, with no equivalent named review gate in the docs
+fetched this session -- two genuinely different points on the same
+"who authors a new skill" spectrum, not the same mechanism described
+in different words.
+
+Skills are invoked as slash commands stackable in a single message
+("`/github-pr-workflow /test-driven-development fix issue #123 and open
+a PR`" loads both sequentially, with parsing stopping "at the first
+token that isn't an installed skill" to avoid misreading arguments
+containing forward slashes), and human-approval gating is available via
+a `skills.write_approval: true` config key -- an optional, admin-facing
+lever that brings Hermes' own default-autonomous posture closer to
+Copilot CLI's default-reviewed one, when an operator chooses to enable
+it.
+
+---
+
+## 6. Synthesis -- five different meanings of "built-in"
 
 ```mermaid
 flowchart TD
@@ -447,6 +539,15 @@ flowchart TD
         O1["No confirmed bundled skills"]
         O2["User/project-authored only,<br/>via the generic skill tool +<br/>permission-gated discovery"]
     end
+    subgraph PI["pi"]
+        PI1["No confirmed bundled skills<br/>(same evidentiary posture as OpenCode)"]
+        PI2["Named agentskills.io conformance<br/>+ first-class cross-harness directory reuse<br/>(reads ~/.claude/skills, ~/.codex/skills directly)"]
+    end
+    subgraph HM["Hermes Agent"]
+        HM1["No confirmed bundled skills"]
+        HM2["Named agentskills.io conformance +<br/>3-level skills_list()/skill_view() tool-callable<br/>progressive disclosure"]
+        HM3["Autonomous self-authorship via skill_manage<br/>-- encouraged default, no review gate<br/>unless skills.write_approval: true is set"]
+    end
 ```
 
 **"Built-in" splits into at least three distinct claims, and they
@@ -461,8 +562,11 @@ per-surface asymmetry within one vendor's own product line, not a
 documentation inconsistency. (3) Generated by the harness's own
 tooling from observed usage, then held for human review before
 becoming real -- Copilot CLI's Forge/`/chronicle skills review`
-pipeline, the only confirmed instance of this pattern across all three
-harnesses in this book.
+pipeline; and (4), Hermes' own `skill_manage` tool (§5.3), the harness
+authoring new skills **without** a human-review gate by default, a
+distinct fourth point on the same spectrum found nowhere else in this
+page -- autonomous authorship exists at both a reviewed and an
+unreviewed default across the five harnesses this page now documents.
 
 **OpenCode is the one harness with no confirmed built-in skill content
 of its own at all.** Its skill mechanism reads as a deliberately
@@ -474,25 +578,44 @@ Claude Code's bundled-skill set or Copilot CLI's Forge-driven
 auto-drafting.
 
 **The directory-sharing convergence is real and already load-bearing
-elsewhere in this book.** All three harnesses' skill-discovery logic
-reads `.claude/skills` as one of their own search paths (Copilot CLI
-and OpenCode both do so explicitly, per their own docs), meaning a
-skill authored for Claude Code is very likely to be picked up
-unmodified by the other two without any porting step -- a rare case of
-de facto cross-harness portability in a book that otherwise stresses
-how little transfers between these three products. The `SKILL.md`
-frontmatter itself is not identically shaped across all three,
-however: Claude Code's field set is by far the largest (`context: fork`,
-`agent`, `background`, `hooks`, `paths`, `shell`, string substitutions,
-and more, per [Instruction context budget](instruction-context-budget.md)),
-Copilot CLI's confirmed set is smaller (`name`, `description`, `license`,
+elsewhere in this book, and pi turns it into an explicit, first-party
+feature rather than an emergent side effect.** Claude Code's, Copilot
+CLI's, and OpenCode's skill-discovery logic all read `.claude/skills`
+as one of their own search paths (Copilot CLI and OpenCode both do so
+explicitly, per their own docs), meaning a skill authored for Claude
+Code is very likely to be picked up unmodified by the other two without
+any porting step -- a rare case of de facto cross-harness portability
+in a book that otherwise stresses how little transfers between these
+products. pi's own docs go one step further and document a dedicated
+"Using Skills from Other Harnesses" configuration example instructing a
+user to add `~/.claude/skills` and `~/.codex/skills` directly to pi's
+own `skills` settings array (§4.3) -- the most explicit, first-party-endorsed
+instance of this portability pattern this book has found anywhere, not
+an inferred convergence from independently-written discovery-path lists.
+Hermes' own progressive-disclosure format targets `agentskills.io`
+directly by name rather than converging on it by observation (§5.1),
+alongside pi (§4.1) -- a real, named, cross-vendor specification two
+independently-built harnesses now explicitly implement, distinct from
+the emergent `.claude/skills`-path convergence the first three harnesses
+merely happen to share. The `SKILL.md` frontmatter itself is not
+identically shaped across any of the five, however: Claude Code's field
+set is by far the largest (`context: fork`, `agent`, `background`,
+`hooks`, `paths`, `shell`, string substitutions, and more, per
+[Instruction context budget](instruction-context-budget.md)), Copilot
+CLI's confirmed set is smaller (`name`, `description`, `license`,
 `allowed-tools`, plus changelog-only `argument-hint` and
-`disable-model-invocation`), and OpenCode's is smaller still (`name`,
-`description`, `license`, `compatibility`, `metadata`) -- so a skill
-written against Claude Code's fuller frontmatter surface may load on
-the other two harnesses with unrecognized fields silently ignored
-(OpenCode's docs state this explicitly), rather than with equivalent
-behavior actually preserved.
+`disable-model-invocation`), pi's sits in between (§4.4: adding
+`compatibility`, `metadata`, and its own `disable-model-invocation`),
+and OpenCode's is smaller still (`name`, `description`, `license`,
+`compatibility`, `metadata`) -- so a skill written against Claude
+Code's fuller frontmatter surface may load on the others with
+unrecognized fields silently ignored (OpenCode's and pi's docs both
+state this explicitly), rather than with equivalent behavior actually
+preserved. Hermes' own frontmatter (`name`, `description`, `version`,
+`platforms`, §5.3) is closest in size to OpenCode's and pi's, though
+this session did not find a stated ignore-unknown-fields policy in the
+one Hermes docs page fetched -- left as an open gap rather than assumed
+to match the other harnesses' documented leniency.
 
 ---
 
@@ -509,6 +632,8 @@ behavior actually preserved.
 | `github/copilot-cli` `changelog.md` (via `gh api`) | 2026-07-31 | Copilot CLI's own behavior-change history: the v1.0.17 built-in skill, `configure-copilot` sub-agent (v1.0.3), Forge draft-skill generation and `/chronicle skills review` (v1.0.66/v1.0.70), `argument-hint` (v1.0.64) and `disable-model-invocation` honoring (v1.0.74) |
 | `opencode.ai/docs/skills` | 2026-07-31 | OpenCode's `SKILL.md` frontmatter, discovery paths, `skill` tool invocation, `permission` model for the `skill` key |
 | `gh api search/code` against `anomalyco/opencode` | 2026-07-31 | Corroborating (not proving) the absence of any bundled `SKILL.md` in that repository's indexed code |
+| `github.com/earendil-works/pi`'s `packages/coding-agent/docs/skills.md` (via `gh api`) | 2026-08-20 | pi's own `agentskills.io` conformance statement and named deviation (§4.1), its no-confirmed-bundled-skills posture (§4.2), the "Using Skills from Other Harnesses" cross-harness directory example (§4.3), its frontmatter field set (§4.4), and its `/skill:name` invocation/reliability caveat (§4.5) |
+| `hermes-agent.nousresearch.com/docs/user-guide/features/skills` (WebFetch) | 2026-08-24 | Hermes' own `agentskills.io` conformance statement (§5.1), the `skills_list()`/`skill_view()` tool-callable three-level progressive disclosure (§5.2), the `SKILL.md` frontmatter fields, the `skill_manage` autonomous-authorship tool and its contrast with Copilot CLI's reviewed pipeline (§5.3), the stacked slash-command invocation syntax, and the `skills.write_approval` config key |
 
 Not consulted this session, and therefore not cited above: direct
 inspection of `anomalyco/opencode`'s `dev`-branch source for the

@@ -12,8 +12,8 @@ and how the fanned-out results rejoin the turn that launched them. The
 general Thought/Action/Observation loop in [agent-loop.md](agent-loop.md)
 frames one step as one Action; fan-out is the case where a single step's
 Action is actually N independent actions issued together, and each of the
-four products researched here answers "what happens to those N actions"
-differently -- at more than one layer, in most of the four cases.
+five products researched here answers "what happens to those N actions"
+differently -- at more than one layer, in most of the five cases.
 
 ---
 
@@ -576,20 +576,113 @@ not an inherently unsafe gap.
 
 ---
 
-## 5. Synthesis
+## 5. Hermes Agent (Nous Research)
 
-| Dimension | Claude Code (in-conversation subagents) | Claude Code (background agents) | Claude Code (Workflow `pipeline()`) | Copilot CLI (custom-agent + `/fleet`) | OpenCode (`Task` fan-out) | DeepSeek Harness (`SubagentRuntime`) |
-|---|---|---|---|---|---|---|
-| Launch unit | Several `Agent`-tool calls, model-issued | One prompt per dispatch, user/script-issued | One `pipeline()` call in a script, runtime-driven | Several tool calls in one turn (mandatory since GA); `/fleet` decomposes further | Several `task` tool calls batched into one assistant message (prompted convention) | `SubagentRuntime.start()` (one-shot) or `.startContinuable()` (weak-completion-guarantee dispatch), per call |
-| Concurrency ceiling | 20 running (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`), documented default | None documented -- bounded by subscription/rate-limit quota | 16 concurrent, runtime-enforced, hard cap | Configurable via `/settings`, no documented default number found | None found; `FiberSet` dispatch appears architecturally unbounded | None documented; only a qualitative guard ("a shared capacity controller may delay... but must not couple... to a sibling") |
-| Total-count ceiling | 200 per session (`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`) | None documented | 1,000 agents per run, hard cap | `subagents.maxDepth` bounds nesting (128 max for usage-based billing), not total count | None found | None found |
-| Actual dispatch mechanism | Background execution by default (v2.1.198+); each Agent-tool call proceeds without blocking the turn | One-at-a-time manual/scripted dispatch, no batch API | Runtime executes script's `pipeline()` loop directly, throttled by the runtime itself | Parallel tool execution at the assistant-turn level (mandatory since 0.0.418); `/fleet`'s own parallel dispatch mechanics undocumented beyond "the orchestrator will run subagents in parallel" | Provider stream's `tool-call` events each forked as an independent Effect fiber via `FiberSet.run(..., startImmediately: true)` -- source-verified, not just documented | Provider validates capability, resolves a durable descriptor, publishes the child; `startContinuable()` resolves on inbox-accept, not on completion |
-| Join / barrier semantics | Results return individually as background-completion notifications; no single "wait for all" primitive documented | Independent sessions, each polled/attached separately; no cross-session join | Runtime tracks each agent's result as the run progresses; script's own `await`s determine ordering | Undocumented beyond "output... incorporated into the parent agent's response" | `FiberSet.awaitEmpty(settlements)` is an explicit, source-verified barrier: the turn's tool-execution phase does not end until every forked call settles | `SubagentRun` handle settles independently per one-shot call; no cross-agent join primitive documented |
-| Context inheritance at spawn | Documented separately in [handoff-mechanism.md](handoff-mechanism.md) (forks vs. named subagents) | N/A | N/A | Undocumented on the pages fetched | Per-call, source-verified (§3.2-3.3 above) | Explicit per-provider `inheritsParentContext` descriptor: `true` for fork providers (parent-log seed), `false` for spawn/ACP providers -- context inheritance explicitly decoupled from authority/tool-grant inheritance |
-| Per-call depth/permission re-check | Depth limit checked at spawn time per call; concurrent-slot check per call | N/A -- independent sessions | N/A -- workflow agents run in a fixed `acceptEdits` posture set once per run | Depth/concurrency limits configurable, but whether checked per-call or per-batch is undocumented | Source-verified: depth chain walk and permission derivation both re-run independently per fiber, not shared across the batch | Every child gets "a new flat scope rather than inheriting parent registrations" -- authority is never inherited regardless of the context-inheritance descriptor |
-| Verifiability | Docs-only (closed source) | Docs-only | Docs-only, but unusually mechanistic (concrete numeric caps) | Changelog-traced version history (real, dated, but implementation itself unpublished) | Docs **and** live `dev`-branch source for the actual concurrency primitive, cross-checked this session | Docs-only (`docs/subsystems/subagent.md`), but unusually mechanistic and explicit about what is deliberately left unstated |
+Source for this section: VERIFIED, fetched 24 August 2026 directly from
+`hermes-agent.nousresearch.com/docs/user-guide/features/overview` and
+`.../user-guide/bot-mode` (both WebFetch). Hermes Agent is a fifth,
+independent, self-hosted product -- see
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§6 for this book's fuller architectural introduction to the harness
+itself, not repeated here.
 
-**The design lesson.** All four products let a single turn request
+### 5.1 `delegate_task`: isolated context, restricted toolset, and a *separate terminal session* per subagent
+
+```mermaid
+sequenceDiagram
+    participant Main as Main AIAgent instance
+    participant DT as delegate_task tool
+    participant Sub as Child agent instance
+
+    Main->>DT: delegate_task(description, ...)
+    DT->>Sub: spawn (isolated context,\nrestricted toolset,\nown terminal session)
+    Note over Sub: up to 3 concurrent subagents\nby default (configurable)
+    Sub->>DT: result
+    DT->>Main: tool result
+```
+
+"The `delegate_task` tool spawns child agent instances with isolated
+context, restricted toolsets, and their own terminal sessions. Run 3
+concurrent subagents by default (configurable) for parallel
+workstreams." This is the same isolated-context/final-report delegation
+shape this page documents across Claude Code, Copilot CLI, OpenCode,
+and DeepSeek Harness (§1-§4 above) -- every harness this book has now
+examined reinvents "spawn an isolated worker, get back a result, don't
+pollute the parent's context" independently, and Hermes' concrete
+concurrency default (3, configurable) is a numeric ceiling stated
+plainly where OpenCode's and DeepSeek's own dispatch mechanisms (§3-§4)
+are documented as carrying none. The distinctive detail here is that
+**each subagent gets its own terminal session**, not merely an isolated
+message-context window -- a Hermes subagent can hold a genuinely
+separate shell/container state from its parent, not just a separate
+conversation transcript. VERIFIED (`docs.../developer-guide/architecture`,
+per this book's [permissions-and-sandboxing.md](permissions-and-sandboxing.md)
+§6 sourcing): the implementation lives in a named module,
+`delegate_tool.py`, described as enabling "hierarchical task
+decomposition within the conversation loop" -- named and located, but
+not independently source-read this session, so the exact isolation
+mechanics (whether restart, fresh context, or a forked snapshot) are
+held to **BEST CURRENT UNDERSTANDING, UNCONFIRMED** beyond what the
+Features Overview quote states directly.
+
+### 5.2 Bot Mode: named specialist profiles coordinating in a shared group chat
+
+"Bot Mode transforms Hermes profiles into named specialists with
+distinct roles, models, memory, and skills," each "fundamentally... a
+Hermes profile -- isolated config, memory, skills, credentials, and
+chat history" stored at `~/.hermes/profiles/<name>/`. This is a
+genuinely different multi-agent coordination shape from anything this
+page's other four harnesses document: not a supervisor/subagent
+hierarchy (Claude Code's, Copilot CLI's, and OpenCode's own §1-§3), not
+DeepSeek's flat one-shot/continuable dispatch (§4), but **independent
+peer agents deciding per-turn whether to speak at all**, inside a
+shared, human-visible group-chat surface. In group interactions, bots
+participate through "up to three serial rounds of member turns," and
+participation is voluntary per turn -- "not every Bot replies to every
+message" -- with an escalation channel for flagging a human: "`@user` --
+the group row shows a needs you badge when that happens." This is
+closer in shape to a Slack/Discord multi-bot channel than to any fan-out
+mechanic documented elsewhere on this page, and this book's own
+[multi-agent-coordination-design-space.md](multi-agent-coordination-design-space.md)
+-- a GENERAL-CONCEPTS page surveying topology/blackboard/consensus/market-based
+coordination patterns in the abstract -- has not previously sourced this
+specific "voluntary peer participation in a shared, human-visible
+channel" shape from any of Claude Code, Copilot CLI, or OpenCode; it is
+named here as a genuinely new data point for that page's own map,
+without this page attempting to re-derive that page's own topology
+vocabulary. The dedicated Bot Mode documentation page, fetched
+separately from the `delegate_task` overview, explicitly declined to
+connect Bot Mode to `delegate_task`/parallel-subagent workstreams -- a
+real, source-confirmed absence of a documented link between the two
+features, not an assumption this page is making on the harness's
+behalf. Configuration requires only `name`, `title`, and `description`
+at minimum, with an "Advanced disclosure" surface for pinning specific
+models/providers, defining a custom `SOUL.md` persona per bot (cross-referenced
+to [memory-management.md](memory-management.md) §3.4's fuller `SOUL.md`
+treatment), and toggling individual skills/toolsets/MCP servers and
+credential sharing per bot -- reinforcing the same "platform-agnostic
+core" finding this book's [permissions-and-sandboxing.md](permissions-and-sandboxing.md)
+§6 names for Hermes' shared `AIAgent` class: "Because Bots are profiles,
+everything has a terminal equivalent" -- a Bot's entire configuration
+surface is reachable and reproducible from the plain CLI, not a
+GUI-only feature bolted on separately.
+
+---
+
+## 6. Synthesis
+
+| Dimension | Claude Code (in-conversation subagents) | Claude Code (background agents) | Claude Code (Workflow `pipeline()`) | Copilot CLI (custom-agent + `/fleet`) | OpenCode (`Task` fan-out) | DeepSeek Harness (`SubagentRuntime`) | Hermes Agent (`delegate_task` + Bot Mode) |
+|---|---|---|---|---|---|---|---|
+| Launch unit | Several `Agent`-tool calls, model-issued | One prompt per dispatch, user/script-issued | One `pipeline()` call in a script, runtime-driven | Several tool calls in one turn (mandatory since GA); `/fleet` decomposes further | Several `task` tool calls batched into one assistant message (prompted convention) | `SubagentRuntime.start()` (one-shot) or `.startContinuable()` (weak-completion-guarantee dispatch), per call | One `delegate_task` tool call per child; Bot Mode's own group-chat participation is a per-turn, per-bot voluntary decision, not a launch call at all |
+| Concurrency ceiling | 20 running (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`), documented default | None documented -- bounded by subscription/rate-limit quota | 16 concurrent, runtime-enforced, hard cap | Configurable via `/settings`, no documented default number found | None found; `FiberSet` dispatch appears architecturally unbounded | None documented; only a qualitative guard ("a shared capacity controller may delay... but must not couple... to a sibling") | 3 concurrent, configurable -- a stated numeric default, unlike OpenCode's and DeepSeek's own undocumented ceilings |
+| Total-count ceiling | 200 per session (`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`) | None documented | 1,000 agents per run, hard cap | `subagents.maxDepth` bounds nesting (128 max for usage-based billing), not total count | None found | None found | None found on pages fetched |
+| Actual dispatch mechanism | Background execution by default (v2.1.198+); each Agent-tool call proceeds without blocking the turn | One-at-a-time manual/scripted dispatch, no batch API | Runtime executes script's `pipeline()` loop directly, throttled by the runtime itself | Parallel tool execution at the assistant-turn level (mandatory since 0.0.418); `/fleet`'s own parallel dispatch mechanics undocumented beyond "the orchestrator will run subagents in parallel" | Provider stream's `tool-call` events each forked as an independent Effect fiber via `FiberSet.run(..., startImmediately: true)` -- source-verified, not just documented | Provider validates capability, resolves a durable descriptor, publishes the child; `startContinuable()` resolves on inbox-accept, not on completion | `delegate_task` spawns a child with its own terminal session (one of Hermes' seven backends); Bot Mode dispatch is a per-turn broadcast to all profiles in the group, each independently deciding whether to respond |
+| Join / barrier semantics | Results return individually as background-completion notifications; no single "wait for all" primitive documented | Independent sessions, each polled/attached separately; no cross-session join | Runtime tracks each agent's result as the run progresses; script's own `await`s determine ordering | Undocumented beyond "output... incorporated into the parent agent's response" | `FiberSet.awaitEmpty(settlements)` is an explicit, source-verified barrier: the turn's tool-execution phase does not end until every forked call settles | `SubagentRun` handle settles independently per one-shot call; no cross-agent join primitive documented | `delegate_task` returns its result as an ordinary tool result to the parent; Bot Mode caps group turns at "up to three serial rounds" rather than a join barrier |
+| Context inheritance at spawn | Documented separately in [handoff-mechanism.md](handoff-mechanism.md) (forks vs. named subagents) | N/A | N/A | Undocumented on the pages fetched | Per-call, source-verified (§3.2-3.3 above) | Explicit per-provider `inheritsParentContext` descriptor: `true` for fork providers (parent-log seed), `false` for spawn/ACP providers -- context inheritance explicitly decoupled from authority/tool-grant inheritance | Isolated context per `delegate_task` child (stated directly, not itemized into a descriptor); model/provider/credentials inherit automatically from the parent when set to `"auto"` (cross-referenced, not repeated, against [model-routing-and-selection.md](model-routing-and-selection.md) §5) |
+| Per-call depth/permission re-check | Depth limit checked at spawn time per call; concurrent-slot check per call | N/A -- independent sessions | N/A -- workflow agents run in a fixed `acceptEdits` posture set once per run | Depth/concurrency limits configurable, but whether checked per-call or per-batch is undocumented | Source-verified: depth chain walk and permission derivation both re-run independently per fiber, not shared across the batch | Every child gets "a new flat scope rather than inheriting parent registrations" -- authority is never inherited regardless of the context-inheritance descriptor | `delegate_task` children get a "restricted toolset" per spawn, per the Features Overview quote; the exact re-check granularity is not itemized beyond that in the one docs page fetched |
+| Verifiability | Docs-only (closed source) | Docs-only | Docs-only, but unusually mechanistic (concrete numeric caps) | Changelog-traced version history (real, dated, but implementation itself unpublished) | Docs **and** live `dev`-branch source for the actual concurrency primitive, cross-checked this session | Docs-only (`docs/subsystems/subagent.md`), but unusually mechanistic and explicit about what is deliberately left unstated | Docs-only; a named implementation module (`delegate_tool.py`) is pointed to but not independently source-read this session |
+
+**The design lesson.** All five products let a single turn request
 several independent workers, but only OpenCode's mechanism is checkable
 all the way down to the actual concurrency primitive: Claude Code and
 Copilot CLI both describe fan-out from the outside (a documented pattern,
@@ -604,7 +697,7 @@ a documentation-only source, naming exactly which guarantees it declines
 to make (a numeric cap, a specific scheduling algorithm for its own
 "Ralph round" workflow) rather than leaving them simply unaddressed.
 Three further asymmetries matter for anyone building against more than
-one of these products. First, **the "coarser" layer exists on two of four
+one of these products. First, **the "coarser" layer exists on two of five
 products in different states of documentation maturity**: Claude Code's
 background agents (`claude agents`) and Copilot CLI's Sessions sidebar
 solve the same problem -- dispatching and monitoring many independent
@@ -630,7 +723,7 @@ unbounded fan-out; for DeepSeek, the stated design intent is explicitly
 that a provider-owned "shared capacity controller" absorbs this role
 instead of a hardcoded number, a deliberate architectural choice rather
 than a gap in the documentation. Third, **DeepSeek Harness is the only
-one of the four to draw context-inheritance and authority-inheritance
+one of the five to draw context-inheritance and authority-inheritance
 apart as two independently governed axes of the spawn decision** --
 Claude Code's fork-vs-named-subagent split ([handoff-mechanism.md](handoff-mechanism.md))
 and OpenCode's `Task`-tool dispatch (§3 above) both make a single
@@ -640,6 +733,21 @@ statement that tool/service authority is a *separate* knob; DeepSeek's
 docs-stated guarantee that authority is never carried over regardless of
 that descriptor's value -- a genuinely sharper articulation of a design
 question the other three harnesses' own documentation leaves implicit.
+**Hermes Agent adds a fourth axis this page had not previously sourced
+from any harness**: `delegate_task`'s own numeric default (3 concurrent,
+configurable) is a stated ceiling where OpenCode's and DeepSeek's
+dispatch mechanisms document none, and its Bot Mode coordination pattern
+(§5.2) is not a fan-out mechanism in the sense every other row of this
+table describes at all -- there is no launch call, no join
+barrier, and no result that "rejoins" a parent turn, only independent
+peer profiles each deciding per-turn whether to speak in a shared,
+persistent channel. Naming that distinction precisely matters: Hermes is
+the one harness in this book with *both* a conventional,
+launch-call-and-rejoin fan-out mechanism (`delegate_task`) *and* a second,
+structurally unrelated multi-agent pattern that this page's own
+dimension-by-dimension table cannot cleanly score, because the questions
+the table asks ("what's the launch unit," "what's the join barrier")
+presuppose a shape Bot Mode does not have.
 
 ---
 
@@ -730,3 +838,17 @@ repository-metadata citation, not repeated here):**
 - `docs/glossary.md` -- the "Ralph loop"/"Ralph round" terminology named
   but not mechanically documented, flagged in §4.3 as an open follow-up
   rather than guessed at.
+
+**Hermes Agent (authoritative for its own documented behavior; fetched 24 August
+2026 from `hermes-agent.nousresearch.com/docs/`):**
+- `hermes-agent.nousresearch.com/docs/user-guide/features/overview` (WebFetch)
+  -- §5.1's `delegate_task` tool description and its 3-concurrent-subagent
+  default, cross-referenced against the same page's own separately-cited
+  Context Files/Checkpoints material already used in
+  [memory-management.md](memory-management.md) §3.5.
+- `hermes-agent.nousresearch.com/docs/user-guide/bot-mode` (WebFetch) --
+  §5.2's full Bot-Mode-as-named-profile model, the up-to-three-serial-rounds
+  group-chat mechanic, the `@user` escalation badge, bot configuration
+  fields, and the "everything has a terminal equivalent" closing statement,
+  alongside its explicit non-coverage of `delegate_task`/parallel
+  workstreams.

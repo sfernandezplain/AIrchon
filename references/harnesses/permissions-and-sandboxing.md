@@ -1,4 +1,4 @@
-# Permissions & sandboxing architecture -- Claude Code, GitHub Copilot CLI, OpenCode, DeepSeek Harness, and pi
+# Permissions & sandboxing architecture -- Claude Code, GitHub Copilot CLI, OpenCode, DeepSeek Harness, pi, and Hermes Agent
 
 **Scope note.** [Configuration](configuration.md) already covers the permission-rule
 *schema* -- where `permissions.allow`/`permissions.deny` live, how they merge across
@@ -16,9 +16,9 @@ source name a real, acknowledged escape hatch or residual risk in that architect
 
 Every claim is tagged VERIFIED (fetched this session from a named source) or BEST
 CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, DeepSeek
-Harness, and pi (Earendil Works) are five separate products from five separate
-organizations/authors -- a mechanism confirmed for one is never assumed to hold for
-another without its own citation.
+Harness, pi (Earendil Works), and Hermes Agent (Nous Research) are six separate products
+from six separate organizations/authors -- a mechanism confirmed for one is never
+assumed to hold for another without its own citation.
 
 ---
 
@@ -893,7 +893,108 @@ not for the baseline local-agent risk profile it has already publicly disclaimed
 
 ---
 
-## 6. Synthesis
+## 6. Hermes Agent (Nous Research)
+
+Source for this section: VERIFIED, fetched 24 August 2026 directly from
+`hermes-agent.nousresearch.com/docs/user-guide/security` (WebFetch). Hermes
+Agent is a sixth, independent, self-hosted product -- see [Hooks and
+lifecycle extensibility](hooks-lifecycle-extensibility.md) §6 for this
+book's fuller architectural introduction to the harness itself (three
+entry points funnelled into one `AIAgent` class, seven sandboxed terminal
+execution backends), not repeated here.
+
+### 6.1 An explicit, named rejection of "trust the LLM"
+
+Hermes states its own threat model in direct, comparative language rather
+than leaving a reader to infer it: "Hermes employs a **defence-in-depth
+security model** with eight distinct layers. The system explicitly
+rejects an 'trust the LLM' approach, instead requiring human oversight for
+destructive operations." This is worth placing directly beside this
+book's own [middleware-composed-agent-harnesses.md](middleware-composed-agent-harnesses.md)
+§12 finding for LangChain's Deep Agents, which quotes that project's own
+README stating the opposite design choice verbatim: "Deep Agents follows
+a 'trust the LLM' model... Enforce boundaries at the tool/sandbox level,
+not by expecting the model to self-police." Two harnesses, sourced
+independently, name the *identical phrase* -- "trust the LLM" -- and land
+on opposite sides of it as a stated design choice, as clean a
+side-by-side security-philosophy contrast as this page has sourced
+anywhere.
+
+Hermes' **command-approval system** is configured via
+`~/.hermes/config.yaml` with three named modes: **Smart** (the default --
+"An auxiliary LLM assesses risk, auto-approving low-risk commands whilst
+escalating uncertain cases to manual prompts" -- a classifier-shaped
+mechanism directly comparable to Claude Code's own auto-mode classifier,
+§1.4 above, though Hermes' own docs do not describe its scope of trust or
+evaluation pipeline in the same depth Anthropic's docs give for Claude
+Code), **Manual** ("Always prompts users for dangerous command approval"),
+and **Off** ("Disables all approval checks (equivalent to `--yolo`)").
+Beneath even `--yolo` sits a **hardline blocklist** -- quoted directly:
+"some commands are so catastrophic -- irreversible filesystem wipes, fork
+bombs, direct block-device writes -- that Hermes refuses to run them
+**regardless** of `--yolo`," naming `rm -rf /`, fork bombs, and piping a
+remote URL into an interpreter specifically. This is a stricter floor
+than any of this page's other five harnesses is documented as shipping
+under their own respective full-bypass modes: Claude Code's
+`bypassPermissions` retains only an `rm -rf /`/`rm -rf ~` circuit breaker
+(§1.2) and refuses root/sudo outright (§1.6) but otherwise removes every
+other check; Copilot CLI's `--yolo`/`--allow-all` and DeepSeek's
+`danger-full-access` (§4.1-4.2) each remove their own equivalent checks
+entirely with no named hardline exception list; pi ships no bypass mode
+to compare against because it ships no gate at all (§5.1).
+
+### 6.2 Container isolation as a second, independent layer -- with an explicit trade-off against the approval system
+
+Container isolation sits beneath the approval system as a second,
+independent layer, not a substitute for it: Docker terminal backends
+(cross-referenced to this book's fan-out.md-adjacent coverage of Hermes'
+seven terminal backends) run with `--cap-drop ALL` plus selective
+capability restoration, `--security-opt no-new-privileges`,
+`--pids-limit 256`, and size-restricted `nosuid` temporary filesystems --
+and, tellingly, "Dangerous command approval is **skipped** for
+containerised backends since the container itself constitutes the
+security boundary," an explicit, self-aware trade of one enforcement
+layer for another depending on which terminal backend is active. This is
+architecturally the same two-independent-layer shape Claude Code's own
+sandbox-plus-classifier design uses (§1.4-1.5 above,
+`autoAllowBashIfSandboxed`), and DeepSeek's own two-axis preset model
+(§4.2) bundling `sandbox/mode` with `approval/policy` -- three harnesses
+independently arriving at "the OS/container boundary can substitute for
+the approval prompt, but the two are logically separable knobs, not one
+linear scale."
+
+Gateway-side **user authorization** -- relevant because Hermes runs not
+only as a local CLI but as a persistent, multi-platform messaging gateway
+(Telegram/Discord/Slack/WhatsApp/Signal) -- resolves through a six-step
+precedence chain (per-platform allow-all flags, DM-pairing approved
+lists, platform-specific allowlists, a global allowlist, a global
+allow-all flag, and a hard **default: deny**), with a DM-pairing scheme
+using 8-character codes, 1-hour expiry, cryptographic randomness, and
+rate-limiting/lockout on repeated failures. None of this page's other
+five harnesses -- being single-user terminal tools rather than
+multi-tenant messaging bots -- has an equivalent surface to compare this
+against; it is a genuinely new category of permission concern this page
+had not previously sourced from any harness.
+
+### 6.3 A named, two-adversary-class threat-model taxonomy, reconfirming a split this page already draws for Claude Code
+
+Hermes' own stated **threat model taxonomy** distinguishes two adversary
+classes explicitly rather than treating all misbehavior as one category:
+"**honest-but-wrong agents** (addressed via approval prompts and deny
+rules)" versus "**deliberately adversarial processes** (mitigated
+through isolated backends and egress-restricted environments)," with an
+explicit disclaimer that "Write guards and denial rules are explicitly
+not designed as sandboxes against compromised agents running
+uncontained." This is the same fundamental split §1.1 above documents
+Claude Code's own prompt-injection threat model drawing between an
+honestly-mistaken model and a genuinely compromised one -- independently
+reconfirmed here for a sixth harness, strengthening the case that this
+two-adversary-class framing is close to an industry convention rather
+than one team's own idiosyncratic taxonomy.
+
+---
+
+## 7. Synthesis
 
 ```mermaid
 flowchart TD
@@ -917,16 +1018,29 @@ flowchart TD
     subgraph PI["pi"]
         PI1["NO rule engine at all --\n--tools/--exclude-tools is a static,\nsession-start-only allowlist"] --> PIExec["Process executes with FULL\nhost-process privileges --\nNO prompt, NO classifier,\nNO OS containment, by design"]
     end
+    subgraph HM["Hermes Agent"]
+        HM1["Command-approval system\n(Smart classifier / Manual / Off)"] --> HM2["Hardline blocklist --\nsurvives even Off/--yolo"]
+        HM2 --> HM3["Terminal backend chosen\n(local / Docker / SSH / etc.)"]
+        HM3 -->|"containerized backend"| HM4["Container isolation substitutes\nfor the approval check entirely"]
+        HM3 -->|"local backend"| HM5["Approval system is the only gate --\nno OS sandbox on the local backend itself"]
+    end
 ```
 
-**All four rule-bearing harnesses converge on the same two-part shape at the
+**All five rule-bearing harnesses converge on the same two-part shape at the
 rule-evaluation layer**: an allow/ask/deny classification, plus a second-order
 mechanism to reduce per-action prompting once a session has established some trust
 (Claude Code's classifier and dropped-broad-rules-on-entry behavior; Copilot CLI's
 session-persisted approvals and `--yolo`; OpenCode's session-scoped `always`;
 DeepSeek's shipped `workspace-write`/`danger-full-access` presets pre-bundling both
-knobs at once). pi has no equivalent layer to converge on at all -- not a thinner
-version of the same rule engine, but its documented absence. Where the four rule-bearing
+knobs at once; Hermes' own Smart-mode auxiliary-LLM classifier, §6.1). pi has no
+equivalent layer to converge on at all -- not a thinner version of the same rule
+engine, but its documented absence. Hermes is a genuinely new data point on a
+question none of the other four harnesses raises at all: **a hardline blocklist
+surviving every other bypass**, §6.1's `rm -rf /`/fork-bomb/`curl | sh` refusal list
+that holds even under Hermes' own equivalent of `--yolo`. Claude Code comes closest
+with its narrower `rm -rf /`/`rm -rf ~` circuit breaker inside `bypassPermissions`
+(§1.2), but no other harness in this book documents a blocklist framed explicitly as
+surviving its own full-bypass mode by design. Where the four rule-bearing
 harnesses diverge sharply is at exactly the layer this page exists to describe: **Claude
 Code, Copilot CLI, and DeepSeek Harness each back their rule layer with a second,
 OS-enforced containment boundary that holds even if the rule layer is fooled**
@@ -949,7 +1063,13 @@ name Seatbelt on macOS and bubblewrap on Linux as their own sandbox backends (§
 a genuine convergence between two unrelated engineering teams on the same low-level
 tools rather than a coincidence of vocabulary; Copilot CLI's own `/sandbox` docs name
 no equivalent low-level primitive this book has found, describing only "an
-operating-system sandbox" generically (§2.3).
+operating-system sandbox" generically (§2.3). Hermes' own docs name no OS-level
+sandboxing primitive for its **local** terminal backend either -- its containment
+story for that backend is the approval system alone (§6.1-6.2); Hermes' isolation
+instead concentrates in its container/remote backends (Docker's named
+`--cap-drop`/`--security-opt`/`--pids-limit` flag set, §6.2), a process-container
+boundary rather than a Seatbelt/bubblewrap-style OS sandbox wrapping every backend
+uniformly the way Claude Code's and DeepSeek's sandboxes do.
 
 **A classifier and an OS sandbox solve different halves of the same prompt-fatigue
 problem, and only Claude Code currently ships both.** The classifier (§1.4) substitutes
@@ -970,7 +1090,11 @@ Harness's `danger-full-access` preset are, structurally, the same lever under th
 different names -- a genuine three-way convergence, across one closed harness, one
 enterprise-managed closed harness, and one fully open harness, on making sandbox
 opt-out an explicit, scary-named, individually-triggered action rather than a silent
-default. Claude Code's and Copilot CLI's versions are both on by default and both
+default. Hermes' own `Off` command-approval mode is a fourth instance of the same
+convention (named plainly as "equivalent to `--yolo`," §6.1) -- but, distinctively
+among the four, it is the one instance in this book where the escape hatch's own name
+is qualified by a documented exception (the hardline blocklist, §6.1) rather than being
+an unconditional all-clear the way the other three are documented. Claude Code's and Copilot CLI's versions are both on by default and both
 triggered by a failed sandboxed command, requiring a user to decline a bypass prompt
 each time to keep the sandbox's guarantee intact; DeepSeek's `danger-full-access` is
 instead a named preset a deployment opts into wholesale rather than a per-failure
@@ -1111,3 +1235,12 @@ Sources for the full repository-metadata citation, not repeated here):**
   creator, fetched this session) -- §5.1's "full YOLO mode"/security-theatre design
   rationale, cited as a first-party statement of intent, cross-checked against (not
   substituted for) `security.md`'s own independently-worded reasoning.
+
+**Hermes Agent (authoritative for its own documented behavior; fetched 24 August
+2026 from `hermes-agent.nousresearch.com/docs/`):**
+- `hermes-agent.nousresearch.com/docs/user-guide/security` (WebFetch) -- §6's full
+  eight-layer defence-in-depth model, the "trust the LLM" rejection statement, the
+  three command-approval modes (Smart/Manual/Off), the hardline blocklist, the
+  container-isolation flag set and its approval-skip trade-off, the six-step gateway
+  authorization chain, the DM-pairing scheme, and the honest-but-wrong-vs-adversarial
+  threat-model taxonomy.

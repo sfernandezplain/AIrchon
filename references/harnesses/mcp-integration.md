@@ -1,13 +1,14 @@
-# MCP integration -- Claude Code vs. GitHub Copilot CLI
+# MCP integration -- Claude Code, GitHub Copilot CLI, and Hermes Agent
 
 How each harness discovers, registers, connects to, and invokes MCP
-servers. Written for someone building a server that must work on both.
+servers. Written for someone building a server that must work across
+harnesses.
 
 Every claim below is tagged VERIFIED (fetched this session from the
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Sources and
-fetch dates at the bottom. Claude Code and Copilot CLI are separate
-products from separate companies -- nothing confirmed for one is
-assumed for the other.
+fetch dates at the bottom. Claude Code, Copilot CLI, and Hermes Agent
+are separate products from separate organizations -- nothing confirmed
+for one is assumed for another.
 
 ---
 
@@ -432,44 +433,128 @@ missing":
 
 ---
 
-## 3. Synthesis -- what actually differs
+## 3. Hermes Agent (Nous Research)
 
-| Dimension | Claude Code | Copilot CLI |
-|---|---|---|
-| Wrapper object | `mcpServers` | `mcpServers`, bare top-level keys also accepted in project files |
-| stdio type value | `"stdio"` | `"local"` |
-| Remote types | `http` (alias `streamable-http`), `sse` (deprecated), `ws` | `http`, `sse` (deprecated) |
-| WebSocket | Yes, JSON-config only | No confirmed support |
-| User-level file | `~/.claude.json` | `~/.copilot/mcp-config.json` (relocatable via `COPILOT_HOME`) |
-| Project file | `.mcp.json` at project root | `.mcp.json` (walked up to repo root) or `.github/mcp.json` |
-| `env` semantics | `${VAR}` / `${VAR:-default}` expansion | literal by default; `${VAR}` for a reference |
-| Per-server tool filter | none in config; permissions instead | `tools` field (`*` or comma-separated list) |
-| Deferred loading opt-out | `alwaysLoad: true` | `deferTools` |
-| Permission addressing | `mcp__server__tool` | `SERVER(tool_name)` or `SERVER` |
-| Server instructions in prompt | yes, and central to tool search | opt-in via `--allow-all-mcp-server-instructions` |
-| Per-session override flag | `--mcp-config` (referenced in docs) | `--additional-mcp-config` (inline JSON or `@file`) |
-| Built-in server always present | reserved names include `workspace`, `claude-in-chrome`, `computer-use` | GitHub MCP server |
+Source for this section: VERIFIED, fetched 24 August 2026 directly from
+`hermes-agent.nousresearch.com/docs/user-guide/features/mcp` (WebFetch).
+Hermes Agent is a third, independent, self-hosted product -- see
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§6 for this book's fuller architectural introduction to the harness
+itself, not repeated here.
+
+### 3.1 Discovery, config, and transports
+
+"Hermes discovers MCP servers at startup and registers their tools into
+the normal tool registry" -- the same tool registry this book's
+[built-in-skills.md](built-in-skills.md) and
+[permissions-and-sandboxing.md](permissions-and-sandboxing.md) §6
+document Hermes' own 70+ built-in tools self-registering into, not a
+separate MCP-only surface the way neither Claude Code's nor Copilot
+CLI's own tool-dispatch layer requires either. Servers are configured
+under `mcp_servers` in `~/.hermes/config.yaml` with both **stdio**
+(subprocess, e.g. `npx -y @modelcontextprotocol/server-github`) and
+**HTTP** (remote URL plus headers, supporting API keys, OAuth, and
+client-certificate mTLS) transports -- the same two-transport split §1.2
+and §2.2 above document for both of this book's closed-source harnesses,
+here confirmed a third time for an independently-built, self-hosted
+product.
+
+### 3.2 Tool namespacing, filtering, and dynamic re-discovery
+
+MCP tools are namespaced to avoid collisions with Hermes' own 70+
+built-in tools -- "`mcp_<server_name>_<tool_name>`" -- a simpler,
+single-fixed-prefix convention than either Claude Code's
+`mcp__<server-name>__<tool-name>` (§1.6) or Copilot CLI's
+`SERVER(tool_name)` permission-addressing scheme (§2.4); none of the
+three harnesses' naming conventions are interchangeable, reinforcing
+this page's own closing point (§4) that permission-rule syntax and tool
+naming are per-harness client policy, never part of the portable MCP
+protocol surface itself. Per-server tool filtering supports both
+whitelisting (`tools.include`) and blacklisting (`tools.exclude`),
+including glob patterns for large tool surfaces (`exclude:
+["*_radar_*"]`) -- a coarser, but directly comparable, control to
+Copilot CLI's own `tools` field (§2.2, `*` or a comma-separated list)
+and a materially different mechanism from Claude Code's own tool-count
+strategy, which manages surface size via deferred schema loading
+(`ToolSearch`, §1.6) rather than per-server include/exclude filtering.
+Hermes also supports **dynamic runtime re-discovery**: "MCP servers can
+notify Hermes when their available tools change... Hermes automatically
+re-fetches the server's tool list and updates the registry" -- a
+live-update capability neither §1 nor §2 documents for Claude Code or
+Copilot CLI (both instead honour `list_changed` notifications
+per-connection, §1.6, without this page finding a stated broader
+re-discovery guarantee), and worth flagging as a genuinely new finding
+for this page's own eventual follow-up on the other two harnesses'
+equivalent behavior, rather than assumed to also be true of them
+(AUTHORITY OVERREACH guard).
+
+### 3.3 Tool-result sanitisation
+
+Tool results additionally undergo security sanitisation -- "stripping
+invisible Unicode TAG characters whilst preserving legitimate emoji
+sequences" -- before being shown to the model, a narrow but concrete
+content-sanitisation step this book's own
+[mcp-supply-chain-trust.md](mcp-supply-chain-trust.md) page has not
+previously sourced for any harness, and a different, narrower concern
+than that page's own attack-taxonomy coverage (tool description
+poisoning, tool shadowing, tool-name squatting, rug pulls) -- Hermes'
+own mechanism sanitises tool *output* content specifically, not the
+tool *definition* trust questions that page's own attack taxonomy
+addresses.
+
+---
+
+## 4. Synthesis -- what actually differs
+
+| Dimension | Claude Code | Copilot CLI | Hermes Agent |
+|---|---|---|---|
+| Wrapper object | `mcpServers` | `mcpServers`, bare top-level keys also accepted in project files | `mcp_servers` under `~/.hermes/config.yaml` |
+| stdio type value | `"stdio"` | `"local"` | Implicit -- a `command`-shaped entry (e.g. `npx -y @modelcontextprotocol/server-github`) rather than a discriminated `type` value documented on the one page fetched |
+| Remote types | `http` (alias `streamable-http`), `sse` (deprecated), `ws` | `http`, `sse` (deprecated) | HTTP (remote URL, headers, API key/OAuth/mTLS) |
+| WebSocket | Yes, JSON-config only | No confirmed support | Not found on the page fetched |
+| User-level file | `~/.claude.json` | `~/.copilot/mcp-config.json` (relocatable via `COPILOT_HOME`) | `~/.hermes/config.yaml` |
+| Project file | `.mcp.json` at project root | `.mcp.json` (walked up to repo root) or `.github/mcp.json` | Not found on the page fetched -- config is documented as the single `~/.hermes/config.yaml` (or `$HERMES_HOME`-relative per profile, per [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §6's own per-profile isolation finding) |
+| `env` semantics | `${VAR}` / `${VAR:-default}` expansion | literal by default; `${VAR}` for a reference | Not documented on the page fetched |
+| Per-server tool filter | none in config; permissions instead | `tools` field (`*` or comma-separated list) | `tools.include`/`tools.exclude`, glob-pattern-capable |
+| Deferred loading opt-out | `alwaysLoad: true` | `deferTools` | Not applicable -- no deferred-loading strategy documented; tools register directly into the flat registry |
+| Permission addressing | `mcp__server__tool` | `SERVER(tool_name)` or `SERVER` | `mcp_<server_name>_<tool_name>` (single fixed prefix, not a permission-rule-specific syntax distinct from the tool's own registered name) |
+| Server instructions in prompt | yes, and central to tool search | opt-in via `--allow-all-mcp-server-instructions` | Not documented on the page fetched |
+| Per-session override flag | `--mcp-config` (referenced in docs) | `--additional-mcp-config` (inline JSON or `@file`) | Not found on the page fetched |
+| Built-in server always present | reserved names include `workspace`, `claude-in-chrome`, `computer-use` | GitHub MCP server | None found -- Hermes' own built-in capability comes from its 70+ native tools, not a bundled MCP server |
+| Dynamic tool-list re-discovery | `list_changed` notification honoured per-connection; no broader re-discovery guarantee found | `list_changed`-style behavior not independently confirmed on pages fetched | Explicit, named runtime re-discovery: a connected server can push a change notification and Hermes re-fetches and updates the registry live |
+| Tool-result content sanitisation | Not found as a named MCP-specific step (general prompt-injection mitigations exist elsewhere, per [system-prompt-design-as-craft.md](system-prompt-design-as-craft.md)) | Not found as a named MCP-specific step | Named Unicode-TAG-character stripping on tool results specifically |
 
 **The three things that matter most if you are writing one server for
-both.** First, `type` is genuinely incompatible -- `stdio` vs `local` --
-so you cannot ship one config file, only one *server*. Second, `env`
-semantics are inverted enough to leak a literal string where you meant a
-secret, or vice versa; write `${VAR}` in both and you are correct on
-both (Claude Code expands it, Copilot CLI treats it as a reference).
-Third, everything above the protocol -- permission rule syntax, deferred
-loading opt-out field, whether your `instructions` string is even read
--- is per-harness client policy, so keep it out of your server's
-assumptions.
+Claude Code and Copilot CLI specifically.** First, `type` is genuinely
+incompatible -- `stdio` vs `local` -- so you cannot ship one config
+file, only one *server*. Second, `env` semantics are inverted enough to
+leak a literal string where you meant a secret, or vice versa; write
+`${VAR}` in both and you are correct on both (Claude Code expands it,
+Copilot CLI treats it as a reference). Third, everything above the
+protocol -- permission rule syntax, deferred loading opt-out field,
+whether your `instructions` string is even read -- is per-harness
+client policy, so keep it out of your server's assumptions. Hermes adds
+a real, third data point to this same lesson rather than an exception to
+it: its own `mcp_<server_name>_<tool_name>` namespacing, `tools.include`/`tools.exclude`
+filtering, and dynamic re-discovery behavior (§3.2) are, again, entirely
+its own client policy -- a server author gains nothing by assuming any
+of Claude Code's, Copilot CLI's, or Hermes' own naming/filtering
+conventions transfer to either of the other two.
 
 **The protocol itself is the portable part.** `tools/list`,
 `tools/call`, `list_changed`, elicitation, and OAuth are confirmed on
-both. Design against the MCP spec, expose good `description` and
-`instructions` text, keep names in `[a-z0-9_-]`, keep result payloads
-small (Claude Code will truncate and disk-spill above documented
-thresholds; Copilot CLI's thresholds are unknown, so small is the safe
-default), validate every argument server-side rather than trusting the
-client to enforce your JSON Schema, and avoid root-level `anyOf`/
-`oneOf`/`allOf` in input schemas since Claude Code has to flatten them.
+Claude Code and Copilot CLI; Hermes' own docs confirm `tools/list`/`tools/call`
+discovery and registration directly (§3.1) and `list_changed`-driven
+re-discovery specifically (§3.2), though this session did not
+independently confirm elicitation or OAuth support for Hermes beyond
+the general credential-handling detail named in §3.1. Design against
+the MCP spec, expose good `description` and `instructions` text, keep
+names in `[a-z0-9_-]`, keep result payloads small (Claude Code will
+truncate and disk-spill above documented thresholds; Copilot CLI's and
+Hermes' own thresholds are unknown, so small is the safe default),
+validate every argument server-side rather than trusting the client to
+enforce your JSON Schema, and avoid root-level `anyOf`/`oneOf`/`allOf`
+in input schemas since Claude Code has to flatten them.
 
 **Related page in a sibling project, different scope**:
 the AgentXRay repo's `references/mcp-server-setup.md` documents how
@@ -488,10 +573,14 @@ worth reconciling if picked up again.
 | `docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers` | 2026-07-30 | Copilot CLI's documented MCP config paths, format, server types, `/mcp` and `copilot mcp` commands, `tools` field, precedence |
 | `docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/configure-copilot-cli` | 2026-07-30 | `COPILOT_HOME`, `~/.copilot/config.json`, `trustedFolders`, `--allow-tool`/`--deny-tool` syntax |
 | `github/copilot-cli` `changelog.md` (via `gh api`, at 1.0.75 / 2026-07-24) | 2026-07-30 | its own behaviour-change history: `env` semantics change, `deferTools`, tool search, sandboxed servers, OAuth, elicitation, `--additional-mcp-config`, config-source removals/additions |
+| `hermes-agent.nousresearch.com/docs/user-guide/features/mcp` (WebFetch) | 2026-08-24 | Hermes' own MCP server discovery at startup, the stdio/HTTP config schema examples, the `mcp_<server>_<tool>` naming convention, per-server include/exclude tool filtering, dynamic runtime tool-list re-discovery, and tool-result Unicode-sanitisation |
 
 Not consulted this session, and therefore not cited above:
 `modelcontextprotocol.io` (the spec itself), Copilot CLI's issue
-tracker, and the Copilot "About MCP" concepts page. Any of the three is
-the natural next stop -- the spec especially, if you want the
-capability-negotiation and lifecycle details that sit underneath both
-clients.
+tracker, the Copilot "About MCP" concepts page, and any dedicated
+Hermes config-reference page beyond the one Features page fetched (its
+project-file/env-substitution/OAuth support could not be independently
+confirmed as a result, see the §4 table's own "not found" cells). Any of
+these is the natural next stop -- the spec especially, if you want the
+capability-negotiation and lifecycle details that sit underneath all
+three clients.

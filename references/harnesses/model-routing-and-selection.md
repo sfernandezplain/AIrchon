@@ -16,15 +16,19 @@ model call reviews actions at all) -- this page adds only the classifier's own
 model-selection fact, not repeated there, and cross-references back for the rest.
 
 Every factual claim below is tagged VERIFIED (fetched this session from a named
-authoritative source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. All four harnesses
+authoritative source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. All five harnesses
 covered here make a live model-routing decision on every request, but
 the shape of that decision differs sharply: Claude Code's is a rich, deeply configurable
 precedence stack around a single frontier-model family; Copilot CLI's is a genuine
 per-request cost/capability router (Auto model selection) across models from several
 providers; OpenCode's is a per-agent configuration surface plus a narrowly scoped
 small-model carve-out for one auxiliary task (title generation); pi's (§4, added
-2026-08-20) is the leanest of the four -- an explicit, flat, entirely user-driven choice
-with no automatic routing, fallback, or carve-out of any kind.
+2026-08-20) is the leanest of the first four -- an explicit, flat, entirely user-driven
+choice with no automatic routing, fallback, or carve-out of any kind; Hermes Agent's
+(§5, added 24 August 2026) sits closest to Copilot CLI's own shape among the five --
+an explicit, user-configurable per-task model-slot surface with independent fallback
+chains and credential-pool rotation, but exposed as flat configuration rather than a
+health/complexity-scored router.
 
 ## 1. Claude Code
 
@@ -558,7 +562,76 @@ directly.
 
 ---
 
-## 5. Synthesis
+## 5. Hermes Agent (Nous Research)
+
+Sources for this section: VERIFIED, fetched 24 August 2026 directly from
+`hermes-agent.nousresearch.com/docs/user-guide/configuration` (WebFetch).
+Hermes Agent is a fifth, independent, self-hosted product -- see
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§6 for this book's fuller architectural introduction to the harness
+itself, not repeated here.
+
+### 5.1 Per-task model slots: a flat, explicit list rather than a router
+
+Hermes separates a primary chat model (`hermes model`, overridable
+per-invocation via `hermes chat --model anthropic/claude-sonnet-4`,
+taking precedence over `config.yaml` and built-in defaults) from a set
+of named **auxiliary model slots** -- vision, web-extraction,
+compression, and others -- each independently configurable across "the
+same three knobs: provider, model, base_url," and defaulting to
+`"auto"` (route to the main chat model) unless explicitly overridden;
+the docs flag this default's real cost implication directly ("expensive
+reasoning models incur additional costs for side operations"). This is
+the same per-task-model-slot concept §1.3 above documents for Claude
+Code's built-in-subagent fixed cheap-model assignments and §3 documents
+for OpenCode's `getSmallModel()` family-priority resolution, here
+exposed as an explicit, user-configurable slot list rather than an
+internal default a user cannot see or override per task.
+
+### 5.2 Fallback chains and credential-pool rotation
+
+**Fallback chains** operate per-model-slot independently -- a failing
+primary provider (rate limits, connectivity, payment restrictions)
+triggers a sequential fallback attempt, with each auxiliary task able to
+define "its own fallback chain independently" -- the same
+layered-fallback concept [retries.md](retries.md) and this page
+document for Claude Code's `fallbackModel` and Copilot CLI's Auto-model
+routing (§1, §2), here generalized across every model slot rather than
+just the primary one, and a real point of contrast against §4.5 above:
+unlike pi, which documents no automatic model-fallback mechanism at all,
+Hermes' fallback surface is per-slot and independently configurable.
+**Credential pools** add a rotation axis on top of fallback for callers
+with multiple API keys against the same provider -- `fill_first`
+(default), `round_robin`, `least_used`, or `random` -- a mechanism this
+page has not previously sourced for any of Claude Code, Copilot CLI,
+OpenCode, or pi.
+
+### 5.3 Always-on prompt caching, and inherited-by-default subagent routing
+
+**Prompt caching** is documented as always-on wherever the underlying
+provider supports it (native Anthropic, OpenRouter, Nous Portal), with
+`cache_control` breakpoints and a configurable TTL tier (`"5m"` or
+`"1h"`, Anthropic-tier-gated), Qwen Cloud's automatic 5-minute cap, and
+xAI Grok's session-pinned-conversation-ID alternative all named directly
+-- "Caching is always-on and cannot be disabled." This is the same
+server-side-prefix-reuse mechanism this book's [caching.md](caching.md)
+documents in depth for Claude Code, Copilot CLI, and OpenCode, here
+confirmed a fourth time with the added detail that Hermes treats it as
+a mandatory, non-optional cost optimization rather than a togglable
+feature. Delegation to subagents (this page's own [fan-out.md](fan-out.md)
+§5.1 documents Hermes' `delegate_task` tool) inherits the parent's
+provider/model/credentials automatically "when set to `\"auto\"`" --
+tying this section directly back into that page's own isolation model:
+context and terminal session are isolated per subagent, but
+model/provider routing defaults to inherited rather than independently
+resolved, a materially different default from Claude Code's own
+subagent model-resolution precedence (`env > invocation > frontmatter >
+inherit`, §1.3 above), where inheritance is the fallback of a longer
+explicit chain rather than the stated default itself.
+
+---
+
+## 6. Synthesis
 
 ```mermaid
 flowchart LR
@@ -591,16 +664,23 @@ flowchart LR
         PI3["models.json: flat, explicit third-party/local\nmodel catalog -- never auto-selected"]
         PI4["No documented failure fallback --\nsame retry-with-backoff path as any request"]
     end
+    subgraph HM["Hermes Agent"]
+        direction TB
+        HM1["Main model: hermes chat --model >\nconfig.yaml > built-in default"]
+        HM2["Auxiliary model slots (vision, web-extraction,\ncompression, ...): 3-knob config, default 'auto'"]
+        HM3["Per-slot fallback chains +\ncredential-pool rotation (fill_first/round_robin/\nleast_used/random)"]
+        HM4["Subagent delegation inherits parent\nmodel/provider/credentials by default when 'auto'"]
+    end
 ```
 
-| Routing dimension | Claude Code | Copilot CLI | OpenCode | pi |
-|---|---|---|---|---|
-| Main-loop model selection | `/model` > `--model`/`ANTHROPIC_MODEL` > settings `model`, plus org default and `availableModels` allowlist layers | Custom agent definition > `--model` > `COPILOT_MODEL` > settings.json `model` > built-in default | `model` config key > last-used (`model.json`) > first provider's first model by family priority | `/model` (mid-session) > `--model`/`--provider` (launch) > `settings.json`'s `defaultModel`/`defaultProvider` |
-| Auto/classification-based routing for the main loop itself | `opusplan` phase-keyed switch (plan vs. execute); no per-message task-complexity router for the main loop | Auto model selection: real-time health + task-complexity routing across four named models, GA on CLI | None found for the main loop; `small_model` scoped only to the auxiliary title agent | None documented -- model selection is always an explicit user/flag choice, never content- or health-routed |
-| Per-subtask/subagent override | `model` frontmatter, resolved `env > invocation > frontmatter > inherit`; built-in subagents carry fixed model assignments | `model` frontmatter field (string only; array support requested in open issues #2133/#3070) | `model` config per agent; subagent inherits invoking primary agent's model unless overridden | Not applicable -- pi ships no built-in subagent concept (see [orchestration.md](orchestration.md)'s own pi section) |
-| Second-model consultation mid-task | Advisor tool: capability-ranked pairing table, server-side, Claude decides timing | None found | None found | None found -- `session_before_compact`'s documented custom-model-for-summarization pattern ([context-compression.md](context-compression.md) §4.4) is the closest analog, and is extension-authored, not a built-in feature |
-| Availability/content-triggered fallback to a different model | `fallbackModel` (up to 3, availability-triggered, retried once per turn) + automatic safety-classifier fallback (content-triggered) | `continueOnAutoMode` reroutes to Auto on rate limit (see retries.md) | None found (see retries.md's same-model retry architecture instead) | None found -- an unavailable model surfaces as an ordinary stream error, left to retry-with-backoff or a manual `/model` switch |
-| Quick-swap/cycling mechanism | Not found as a distinct feature from `/model` itself | Not found | Not found | `--models "pattern,pattern"` / `/scoped-models` narrows a `Ctrl+P`/`Shift+Ctrl+P` interactive cycling list -- no equivalent named for the other three harnesses |
+| Routing dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
+|---|---|---|---|---|---|
+| Main-loop model selection | `/model` > `--model`/`ANTHROPIC_MODEL` > settings `model`, plus org default and `availableModels` allowlist layers | Custom agent definition > `--model` > `COPILOT_MODEL` > settings.json `model` > built-in default | `model` config key > last-used (`model.json`) > first provider's first model by family priority | `/model` (mid-session) > `--model`/`--provider` (launch) > `settings.json`'s `defaultModel`/`defaultProvider` | `hermes chat --model` > `config.yaml` > built-in default |
+| Auto/classification-based routing for the main loop itself | `opusplan` phase-keyed switch (plan vs. execute); no per-message task-complexity router for the main loop | Auto model selection: real-time health + task-complexity routing across four named models, GA on CLI | None found for the main loop; `small_model` scoped only to the auxiliary title agent | None documented -- model selection is always an explicit user/flag choice, never content- or health-routed | None documented for the main loop -- auxiliary slots default to `"auto"` (route to the main model), not a health/complexity router |
+| Per-subtask/subagent override | `model` frontmatter, resolved `env > invocation > frontmatter > inherit`; built-in subagents carry fixed model assignments | `model` frontmatter field (string only; array support requested in open issues #2133/#3070) | `model` config per agent; subagent inherits invoking primary agent's model unless overridden | Not applicable -- pi ships no built-in subagent concept (see [orchestration.md](orchestration.md)'s own pi section) | Named auxiliary model slots (vision, web-extraction, compression, ...), each independently configurable; `delegate_task` subagents inherit parent model/provider/credentials by default |
+| Second-model consultation mid-task | Advisor tool: capability-ranked pairing table, server-side, Claude decides timing | None found | None found | None found -- `session_before_compact`'s documented custom-model-for-summarization pattern ([context-compression.md](context-compression.md) §4.4) is the closest analog, and is extension-authored, not a built-in feature | None found as a distinct "second opinion" feature -- auxiliary slots serve fixed side-tasks (vision, extraction), not ad hoc consultation |
+| Availability/content-triggered fallback to a different model | `fallbackModel` (up to 3, availability-triggered, retried once per turn) + automatic safety-classifier fallback (content-triggered) | `continueOnAutoMode` reroutes to Auto on rate limit (see retries.md) | None found (see retries.md's same-model retry architecture instead) | None found -- an unavailable model surfaces as an ordinary stream error, left to retry-with-backoff or a manual `/model` switch | Per-model-slot fallback chains, each independently configurable, plus credential-pool rotation across multiple keys for the same provider |
+| Quick-swap/cycling mechanism | Not found as a distinct feature from `/model` itself | Not found | Not found | `--models "pattern,pattern"` / `/scoped-models` narrows a `Ctrl+P`/`Shift+Ctrl+P` interactive cycling list -- no equivalent named for the other three harnesses | Not found on the one docs page fetched |
 
 The throughline: Claude Code's design spends the most configuration surface on
 *precedence and overrides within one model family*, plus two narrow, purpose-built
@@ -619,12 +699,21 @@ per-request routing as a headline feature, pi treats model selection as somethin
 operator alone decides, once, with no hidden substitution at any layer -- consistent
 with the same minimal-core, full-visibility philosophy this book has already documented
 for pi's permission model ([permissions-and-sandboxing.md](permissions-and-sandboxing.md)
-§5) and its tool surface. A harness comparing "how much should the system decide about
-which model answers a given request, versus leaving that entirely to the operator" now
-has four genuinely different real-world answers to look at, not three: Copilot CLI's
-full automatic router, Claude Code's rich-but-still-manual precedence stack with narrow
-automatic carve-outs, OpenCode's per-agent config with one auxiliary carve-out, and pi's
-fully manual, no-carve-outs-at-all baseline.
+§5) and its tool surface. Hermes Agent (§5) adds a fifth, distinct answer this page had
+not previously sourced: an explicit, per-task-slot configuration surface -- closer in
+spirit to OpenCode's per-agent `model` config than to Copilot CLI's health-scored router
+-- but layering **credential-pool rotation** (§5.2) on top, a mechanism unique to Hermes
+among these five harnesses, and treating fallback as a per-slot, independently
+configurable property rather than a single fixed chain (Claude Code's `fallbackModel`)
+or an absent feature (pi, OpenCode). A harness comparing "how much should the system
+decide about which model answers a given request, versus leaving that entirely to the
+operator" now has five genuinely different real-world answers to look at, not four:
+Copilot CLI's full automatic router, Claude Code's rich-but-still-manual precedence
+stack with narrow automatic carve-outs, OpenCode's per-agent config with one auxiliary
+carve-out, pi's fully manual, no-carve-outs-at-all baseline, and Hermes' explicit,
+per-slot configuration surface with fallback and credential rotation as user-visible,
+independently-tunable knobs rather than either an automatic router or their complete
+absence.
 
 ## Sources
 
@@ -717,6 +806,15 @@ throughout this section, since it is not a stable release tag):**
 - `packages/ai/README.md` (cross-referenced, already fully cited in
   [The LLM API contract](llm-api-contract.md) §3.5's own Sources) -- §4.5's
   stream-error-not-automatic-fallback behavior, not re-derived here.
+
+**Hermes Agent (authoritative for its own documented behavior; fetched 24 August
+2026 from `hermes-agent.nousresearch.com/docs/`):**
+- `hermes-agent.nousresearch.com/docs/user-guide/configuration` (WebFetch) -- §5's
+  full model-routing treatment: the primary/auxiliary model-slot architecture, the
+  three-knob (provider/model/base_url) configuration shape, fallback-chain semantics,
+  credential-pool rotation strategies, always-on prompt-caching behavior and TTL
+  tiers, configuration precedence order, and the auto-inherit-from-parent subagent
+  delegation note.
 
 **Cross-referenced, not re-derived, pages in this book:** [fan-out.md](fan-out.md) and
 [orchestration.md](orchestration.md) (where a subagent's `model` field is mentioned only

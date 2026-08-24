@@ -1,4 +1,4 @@
-# Memory management -- Claude Code vs. GitHub Copilot CLI
+# Memory management -- Claude Code, GitHub Copilot CLI, and Hermes Agent
 
 How each harness persists information across sessions, how that
 information gets back into context, and what happens to it when a long
@@ -6,9 +6,9 @@ session compacts.
 
 Every claim below is tagged VERIFIED (fetched this session from the
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Sources and
-fetch dates at the bottom. Claude Code and Copilot CLI are separate
-products from separate companies -- nothing confirmed for one is
-assumed for the other.
+fetch dates at the bottom. Claude Code, Copilot CLI, and Hermes Agent
+are separate products from separate organizations -- nothing confirmed
+for one is assumed for another.
 
 **The one-line answer to "is it a memory tool or file convention?":**
 Claude Code is entirely file-based and machine-local -- plain markdown
@@ -27,6 +27,11 @@ flowchart LR
     subgraph GH["Copilot CLI"]
         IF["Instruction files: copilot-instructions.md, AGENTS.md, CLAUDE.md (on disk)"] --> Ctx2[Context window]
         SM["Copilot Memory (server-side service)"] -->|"store_memory / vote_memory tool calls"| Ctx2
+    end
+    subgraph HM["Hermes Agent"]
+        SOUL["SOUL.md (identity, prompt slot #1) +\ncontext-file discovery (.hermes.md, AGENTS.md,\nCLAUDE.md, .cursorrules)"] --> Ctx3[Context window]
+        HMEM["MEMORY.md + USER.md\n(agent-authored, hard character caps)"] --> Ctx3
+        HMEM -->|"post-turn closed learning loop"| HMEM
     end
 ```
 
@@ -580,37 +585,175 @@ with Claude Code here.
 
 ---
 
-## 3. Synthesis
+## 3. Hermes Agent (Nous Research)
 
-| Dimension | Claude Code | Copilot CLI |
-|---|---|---|
-| Human-authored persistent instructions | `CLAUDE.md` hierarchy (managed → user → project → local), `.claude/rules/` | `.github/copilot-instructions.md`, `.github/instructions/**/*.instructions.md`, `AGENTS.md`, `~/.copilot/instructions/**/*.instructions.md` |
-| Reads the *other* harness's file? | No -- `AGENTS.md` not read at runtime; `/init` only mines it at authoring time | Yes -- `CLAUDE.md` is read and `@`-import-expanded (changelog) |
-| Path-scoped instruction tier | `.claude/rules/` with `paths:` frontmatter | `.github/instructions/**/*.instructions.md` (bodies no longer always in system prompt) |
-| `@`-import expansion | Yes, 4-hop cap, launch-time | Yes (changelog: AGENTS.md, CLAUDE.md, Copilot instruction files) |
-| Agent-authored memory | Auto memory: local markdown at `~/.claude/projects/<project>/memory/`, `MEMORY.md` index (200 lines / 25KB) + on-demand topic files | Copilot Memory: **server-side**, repo-level facts + user-level preferences, citation-validated, 28-day unused-expiry |
-| Written how | Ordinary file tools; no dedicated memory tool | Dedicated model-facing tools `store_memory` / `vote_memory`, permission-prompted per write, scope shown |
-| Memory sharing | Machine-local; shared across worktrees of one repo; never across machines | Repo facts shared with repo collaborators; user prefs private to the user/billing entity; server-side so cross-machine by construction |
-| Enable/disable | `autoMemoryEnabled`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `/memory` toggle | `/memory on\|off\|show`, GitHub Copilot settings (per user; admin gate on Enterprise) |
-| Injection timing | Session start (system prompt then a *user message* carrying CLAUDE.md; `MEMORY.md` early in startup) | Session start prompt injection, **plus refresh after 30 minutes** in long-lived sessions |
-| Mid-session re-read of an *edited* instruction file | No documented watcher/hot-reload; launch-loaded tier is a session-start read. Off-disk re-reads happen only at compaction (root CLAUDE.md, unscoped rules, auto memory) and on trigger-file reads (nested CLAUDE.md, `paths:` rules). Restart or `--continue` is the sure path | Undocumented either way; reload primitives exist for MCP/LSP/plugins but not instruction files. `/instructions` can toggle which files are active in-session |
-| Auto-compaction trigger | Documented behaviorally (evict tool outputs, then summarize); no % on fetched pages | **95% of token limit**, background, non-blocking |
-| Focused manual compaction | `/compact focus on ...`, plus "Compact Instructions" section in CLAUDE.md | `/compact [FOCUS-INSTRUCTIONS]` |
-| Post-compaction re-injection | Documented per-mechanism table (root CLAUDE.md + auto memory re-injected; path-scoped rules and nested CLAUDE.md lost until retriggered; skill bodies capped 5K/25K) | Skills survive; instruction-file re-injection **undocumented** |
-| Pre-compaction hook | `PreCompact`, can block (exit 2 / `{"decision":"block"}`) | `preCompact` exists; blocking capability unconfirmed |
-| Session transcripts | Plaintext JSONL under `~/.claude/projects/` | Session databases under `~/.copilot/` (`COPILOT_HOME`); "session SQL" |
-| Resume / continue | `claude --continue`, `--resume`, `--fork-session` / `/branch` | `--continue`, `--resume` / `/resume` (mutually exclusive), `--session-id` |
+Sources for this section: VERIFIED, fetched 24 August 2026 directly
+from `hermes-agent.nousresearch.com/docs/user-guide/features/memory`,
+`.../user-guide/features/personality`, and `.../user-guide/features/overview`
+(all WebFetch). Hermes Agent is a third, independent, self-hosted
+product -- see [Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§6 for this book's fuller architectural introduction to the harness
+itself, not repeated here.
 
-**The design lesson.** Both harnesses converge on the same *two-tier*
-shape -- a small always-loaded index plus a larger lazily-read body --
-but diverge completely on where the agent-authored tier lives. Claude
-Code keeps it as plain files you own, on your machine, auditable with a
-text editor and invisible to your teammates; Copilot puts it in a
+### 3.1 `MEMORY.md`/`USER.md`: two bounded files, hard caps, no silent truncation
+
+Hermes' own built-in memory is two bounded files under
+`~/.hermes/memories/` -- **`MEMORY.md`** (capped at 2,200 characters:
+"Agent's environmental observations, project conventions, and learned
+techniques") and **`USER.md`** (capped at 1,375 characters: "User
+identity, communication preferences, and workflow habits") -- both
+injected "as frozen snapshots into the system prompt at session start,
+preserving the LLM's prefix cache for performance efficiency." This is
+the same cache-preserving, load-once-per-session discipline this book's
+[caching.md](caching.md) documents Claude Code, Copilot CLI, and
+OpenCode converging on for their own instruction files, and it splits
+the agent-authored tier along an identity/environment axis neither
+Claude Code's single `MEMORY.md` index (§1.5) nor Copilot Memory's own
+repo-facts/user-preferences split (§2.2) draws in quite the same shape:
+Hermes' two files are a fixed, always-both-loaded pair rather than an
+index-plus-on-demand-topic-files structure (Claude Code) or a
+server-side fact store queried by scope (Copilot CLI).
+
+Capacity is a **hard limit, not an auto-compacting buffer**: "Memory
+does **not** auto-compact: when a write would exceed the limit, the
+`memory` tool returns an error instead of silently dropping entries" --
+the opposite design choice from the evict-or-summarize mechanisms
+[context-compression.md](context-compression.md) documents for
+mid-run message-history growth in Claude Code/Copilot CLI/OpenCode,
+here applied to a persistent memory *file* rather than the live
+conversation, and resolved by forcing the agent to consolidate rather
+than by silently discarding anything -- a materially different failure
+mode from Claude Code's own auto-memory index, which (per §1.5 above)
+also errors rather than silently truncates on overflow, but only as of
+v2.1.210; Hermes' docs state the no-silent-truncation guarantee as the
+mechanism's baseline design, not a later hardening.
+
+### 3.2 A closed, post-turn learning loop feeding both memory and skills
+
+The **closed learning loop** named in Hermes' own marketing copy
+resolves, on direct inspection, into a specific mechanism: "a
+background self-improvement review that runs after each turn,
+automatically capturing repeated corrections and durable workflow
+lessons as compact entries or procedural skills" -- meaning the same
+post-turn review can write either to `MEMORY.md`/`USER.md` (facts) or
+hand off to the `skill_manage` tool this book's
+[built-in-skills.md](built-in-skills.md) §5.3 documents (procedures), a
+single closed-loop mechanism feeding both stores. Neither Claude Code's
+documented auto-memory (a model-driven write during the ordinary
+tool-calling loop, not a dedicated post-turn review pass) nor Copilot
+Memory's own write path (also ordinary in-loop `store_memory` tool
+calls, §2.2) is documented as running a separate, dedicated
+background-review step the way Hermes' own closed learning loop is.
+
+### 3.3 FTS5 cross-session search: a second, independent memory channel
+
+**Session search** is a second, independent memory channel from the
+two bounded files above: "agents access unlimited historical
+conversations through full-text search (FTS5) across SQLite's
+conversation database," letting a model discover weeks-old discussions
+"without consuming tokens in the current session." This is
+structurally close to Copilot CLI's own "cross-session memory: ask
+about past work, files, and PRs across sessions (experimental)" feature
+and its `/chronicle search` command (§2.2 above) -- two independently
+documented instances of a searchable, token-cheap channel held apart
+from the always-loaded memory tier -- though Hermes' docs describe FTS5
+full-text search specifically, where Copilot CLI's own docs do not name
+the underlying search technology.
+
+### 3.4 `SOUL.md`: a persona file pinned to a stated prompt position
+
+`SOUL.md` is Hermes' persona/identity file, and its position in the
+prompt is stated with unusual precision -- "SOUL.md content goes
+directly into slot #1 of the system prompt -- the agent identity
+position. No wrapper language is added around it" -- user-editable,
+stored at `~/.hermes/SOUL.md`, and explicitly preserved across updates:
+"Existing user SOUL.md files are never overwritten." Content passes
+through prompt-injection scanning and truncation before inclusion, and
+an empty or unreadable file falls back to a built-in default identity.
+Neither Claude Code's `CLAUDE.md` (delivered as a user message *after*
+the system prompt, per §1.6 above) nor Copilot CLI's own instruction
+files are documented as occupying a named, fixed slot inside the system
+prompt itself the way `SOUL.md` is -- a materially different injection
+point from either harness's own documented mechanism.
+
+### 3.5 Context-file discovery: naming other harnesses' own conventions directly
+
+Separately, and independently verified from the Features Overview page,
+Hermes "automatically discovers **Context Files** (`.hermes.md`,
+`AGENTS.md`, `CLAUDE.md`, `SOUL.md`, `.cursorrules`)" and supports
+**Context References** using an `@` syntax "to inject content directly
+into messages." The dedicated context-files documentation page returned
+an HTTP 503 during this session and could not be independently read
+beyond that one Features Overview line, so the exact discovery
+order and merge/precedence behavior across that five-file list is held
+to **BEST CURRENT UNDERSTANDING, UNCONFIRMED** rather than asserted --
+but the bare fact of the list itself is a directly quoted, VERIFIED
+finding, and it is a genuinely notable one: Hermes explicitly recognizes
+and loads **this page's own two other harnesses' instruction-file
+conventions** -- Claude Code's `CLAUDE.md` and Copilot CLI's own
+`AGENTS.md` convention (§2.1 above) -- directly, by name, alongside its
+own native `.hermes.md`/`SOUL.md` files. Copilot CLI's own §2.1 already
+documents the mirror-image finding (Copilot CLI reads `CLAUDE.md` too),
+so this page now has two independently-sourced instances of one
+harness's own docs naming a rival's instruction-file convention by name
+-- direct evidence that `CLAUDE.md`/`AGENTS.md` function as de facto
+cross-harness interoperability surfaces, not merely convergent naming.
+Session-level continuity is additionally supported by **Checkpoints**,
+named in the Features Overview as providing "automatic snapshots for
+rollback protection" -- a plausible analogue, per this book's own
+[session-persistence.md](session-persistence.md) documentation of
+Claude Code's `/rewind` file-snapshot mechanism, held to **BEST CURRENT
+UNDERSTANDING, UNCONFIRMED** since no dedicated Hermes checkpoints page
+was independently fetched this session to confirm the underlying
+storage mechanism.
+
+---
+
+## 4. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | Hermes Agent |
+|---|---|---|---|
+| Human-authored persistent instructions | `CLAUDE.md` hierarchy (managed → user → project → local), `.claude/rules/` | `.github/copilot-instructions.md`, `.github/instructions/**/*.instructions.md`, `AGENTS.md`, `~/.copilot/instructions/**/*.instructions.md` | `SOUL.md` (identity, prompt slot #1) plus auto-discovered Context Files (`.hermes.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`) |
+| Reads the *other* harness's file? | No -- `AGENTS.md` not read at runtime; `/init` only mines it at authoring time | Yes -- `CLAUDE.md` is read and `@`-import-expanded (changelog) | Yes -- both `CLAUDE.md` and `AGENTS.md` named directly in its own Context Files discovery list |
+| Path-scoped instruction tier | `.claude/rules/` with `paths:` frontmatter | `.github/instructions/**/*.instructions.md` (bodies no longer always in system prompt) | Not found in the one docs page fetched this session |
+| `@`-import expansion | Yes, 4-hop cap, launch-time | Yes (changelog: AGENTS.md, CLAUDE.md, Copilot instruction files) | A distinct `@`-syntax exists, but for **Context References** (inline message injection), not documented as an import mechanism inside `SOUL.md`/Context Files themselves |
+| Agent-authored memory | Auto memory: local markdown at `~/.claude/projects/<project>/memory/`, `MEMORY.md` index (200 lines / 25KB) + on-demand topic files | Copilot Memory: **server-side**, repo-level facts + user-level preferences, citation-validated, 28-day unused-expiry | `MEMORY.md` (2,200-char cap) + `USER.md` (1,375-char cap), both always loaded whole, no on-demand topic-file tier |
+| Written how | Ordinary file tools; no dedicated memory tool | Dedicated model-facing tools `store_memory` / `vote_memory`, permission-prompted per write, scope shown | A `memory` tool plus a dedicated **post-turn closed learning loop** review pass, distinct from ordinary in-loop tool calls |
+| Overflow behavior | Error + reminder to shorten near/at the limit (v2.1.210+), no silent truncation | Not documented on pages fetched | Hard error on overflow, no auto-compaction, by original design (not a later hardening) |
+| Memory sharing | Machine-local; shared across worktrees of one repo; never across machines | Repo facts shared with repo collaborators; user prefs private to the user/billing entity; server-side so cross-machine by construction | Machine-local (`~/.hermes/memories/`), profile-isolated under `HERMES_HOME` |
+| Enable/disable | `autoMemoryEnabled`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `/memory` toggle | `/memory on\|off\|show`, GitHub Copilot settings (per user; admin gate on Enterprise) | Not documented on pages fetched; `skills.write_approval`-style gating exists for skills, and a comparable `write_approval` flag is named for memory writes generally |
+| Injection timing | Session start (system prompt then a *user message* carrying CLAUDE.md; `MEMORY.md` early in startup) | Session start prompt injection, **plus refresh after 30 minutes** in long-lived sessions | Session start, as a **frozen snapshot** explicitly to preserve prefix-cache reuse |
+| Cross-session recall beyond the loaded tier | Not found as a distinct feature (session resume is the mechanism, §1.9) | Experimental cross-session memory + `/chronicle search` | FTS5 full-text search across the SQLite conversation database, "without consuming tokens in the current session" |
+| Mid-session re-read of an *edited* instruction file | No documented watcher/hot-reload; launch-loaded tier is a session-start read. Off-disk re-reads happen only at compaction (root CLAUDE.md, unscoped rules, auto memory) and on trigger-file reads (nested CLAUDE.md, `paths:` rules). Restart or `--continue` is the sure path | Undocumented either way; reload primitives exist for MCP/LSP/plugins but not instruction files. `/instructions` can toggle which files are active in-session | Not documented on pages fetched -- `SOUL.md`/Context Files are described as loaded, not as watched |
+| Auto-compaction trigger | Documented behaviorally (evict tool outputs, then summarize); no % on fetched pages | **95% of token limit**, background, non-blocking | Not documented on pages fetched; **Checkpoints** ("automatic snapshots for rollback protection") are named but not confirmed as the same mechanism |
+| Focused manual compaction | `/compact focus on ...`, plus "Compact Instructions" section in CLAUDE.md | `/compact [FOCUS-INSTRUCTIONS]` | Not documented on pages fetched |
+| Post-compaction re-injection | Documented per-mechanism table (root CLAUDE.md + auto memory re-injected; path-scoped rules and nested CLAUDE.md lost until retriggered; skill bodies capped 5K/25K) | Skills survive; instruction-file re-injection **undocumented** | Not documented on pages fetched |
+| Pre-compaction hook | `PreCompact`, can block (exit 2 / `{"decision":"block"}`) | `preCompact` exists; blocking capability unconfirmed | Not documented on pages fetched (contrast its own shell-hook `pre_tool_call` blocking, [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §6) |
+| Session transcripts | Plaintext JSONL under `~/.claude/projects/` | Session databases under `~/.copilot/` (`COPILOT_HOME`); "session SQL" | SQLite with FTS5 full-text indexing |
+| Resume / continue | `claude --continue`, `--resume`, `--fork-session` / `/branch` | `--continue`, `--resume` / `/resume` (mutually exclusive), `--session-id` | Not independently researched on this page; see [session-persistence.md](session-persistence.md) for this book's general resume/fork coverage |
+
+**The design lesson.** All three harnesses converge on the same
+*two-tier* shape -- a small always-loaded index plus a larger lazily-read
+or separately-searchable body -- but diverge completely on where the
+agent-authored tier lives and how strictly it is bounded. Claude Code
+keeps it as plain files you own, on your machine, auditable with a text
+editor and invisible to your teammates; Copilot puts it in a
 GitHub-hosted store with repository scoping, write-access gating,
-citation validation against the current branch, and automatic expiry.
-That is a governance/reviewability tradeoff, not a feature-count one:
-Claude Code's model can be inspected and diffed but never shared;
-Copilot's is shared and centrally deletable but not a file you can grep.
+citation validation against the current branch, and automatic expiry;
+Hermes keeps it machine-local like Claude Code but enforces a **hard,
+error-on-overflow character cap** from the outset rather than a
+soft/reminder-based budget, and adds a dedicated **post-turn review
+pass** as the writing mechanism rather than routing memory writes
+through the same ordinary tool-calling loop the other two harnesses use.
+That is a governance/reviewability tradeoff for Claude Code vs. Copilot
+specifically: Claude Code's model can be inspected and diffed but never
+shared; Copilot's is shared and centrally deletable but not a file you
+can grep. Hermes adds a third axis to that comparison -- *how memory
+writes get proposed in the first place* -- that neither of the other two
+harnesses' documented mechanisms varies on: both Claude Code's auto
+memory and Copilot Memory write during the ordinary agentic loop, where
+Hermes' closed learning loop is a separate, dedicated background pass
+explicitly decoupled from in-turn tool calling.
 
 **Consequences for anything that must work on both** (directly
 relevant to this project's cross-harness requirement):
@@ -636,12 +779,21 @@ relevant to this project's cross-harness requirement):
    the `InstructionsLoaded` hook for load-time visibility. If you need
    a deterministic "did this run compact?" signal, the two harnesses
    need different probes.
+4. Hermes is not a deploy target of this project (see this book's
+   [index.md](index.md) framing), so nothing above changes this
+   project's own cross-harness requirement -- but its design is worth
+   citing as a reasoning aid: a **hard, error-on-overflow character
+   cap** (§3.1) is a stricter, more predictable failure mode than either
+   Claude Code's warn-then-error-near-the-limit auto memory or Copilot
+   Memory's undocumented overflow behavior, at the cost of occasionally
+   forcing an explicit consolidation step rather than growing silently.
 
 ---
 
 ## Sources
 
-All fetched 2026-07-30.
+Claude Code and Copilot CLI sections fetched 2026-07-30; the Hermes
+Agent section fetched 24 August 2026 (see below).
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `https://code.claude.com/docs/en/memory` -- CLAUDE.md hierarchy, load order, imports, AGENTS.md non-support, `.claude/rules/`, auto memory storage/limits/settings, `/memory`, compaction troubleshooting.
@@ -656,3 +808,8 @@ All fetched 2026-07-30.
 - `https://docs.github.com/en/copilot/how-tos/use-copilot-agents/copilot-memory/manage-for-yourself` -- enable/disable path in Copilot settings, viewing/deleting repo facts and user preferences.
 - `https://docs.github.com/en/copilot/concepts/response-customization` -- instruction-file precedence, explicitly for the GitHub website and IDE surfaces it enumerates; **does not cover Copilot CLI**.
 - `https://github.com/github/copilot-cli` `changelog.md` and `README.md` (via `gh api repos/github/copilot-cli/contents/...`) -- `/memory on|off|show`, `store_memory`/`vote_memory`, permission-prompt scoping, timeline citations, memory-backend failure modes, 30-minute memory refresh, cross-session memory (experimental), `CLAUDE.md` reading and `@`-import expansion, `~/.copilot/instructions/`, compaction checkpoints, `preCompact` hook, OTel compaction attributes, session databases. Authoritative for its own behavior-change history; this repo ships no implementation source.
+
+**Hermes Agent (authoritative for its own documented behavior only; fetched 24 August 2026 from `hermes-agent.nousresearch.com/docs/`):**
+- `https://hermes-agent.nousresearch.com/docs/user-guide/features/memory` (WebFetch) -- the `MEMORY.md`/`USER.md` two-file architecture and character caps, the frozen-snapshot/prefix-cache injection detail, the closed-learning-loop post-turn review mechanism, the does-not-auto-compact error-on-overflow behavior, FTS5 cross-session search, and write-approval gating (§3.1-3.3).
+- `https://hermes-agent.nousresearch.com/docs/user-guide/features/personality` (WebFetch) -- the `SOUL.md` prompt-slot-#1 statement, its user-editability and update-preservation guarantee, and its prompt-injection-scanning and fallback-identity behavior (§3.4).
+- `https://hermes-agent.nousresearch.com/docs/user-guide/features/overview` (WebFetch) -- the Context Files discovery list (`.hermes.md`/`AGENTS.md`/`CLAUDE.md`/`SOUL.md`/`.cursorrules`), the `@`-context-reference syntax, and the Checkpoints feature name (§3.5). A dedicated context-files documentation page returned HTTP 503 both times fetched this session and could not be independently read beyond what this Overview page states.
