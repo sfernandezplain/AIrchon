@@ -8,39 +8,52 @@ loading, on-demand skills, exclusion, and the surfaces that let you
 
 Every claim below is tagged VERIFIED (fetched this session from the
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Sources and
-fetch dates at the bottom. Claude Code and Copilot CLI are separate
-products from separate companies -- nothing confirmed for one is assumed
-for the other.
+fetch dates at the bottom. Claude Code, Copilot CLI, and OpenCode are
+separate products from separate organizations -- nothing confirmed for
+one is assumed for another. Section 3 (OpenCode) was added 2026-08-24,
+closing a real gap: this page originally covered only two of the
+book's three target harnesses.
 
 **Companion page:** [memory-management.md](memory-management.md) covers
 the same file hierarchies from the *persistence* angle (load order,
 agent-authored memory, what survives compaction). This page is about
 token cost. The one overlap worth restating up front: on Claude Code the
 lazily-loaded tier is exactly the tier that does **not** come back after
-compaction.
+compaction; OpenCode's own re-read behavior (§3.1) is a genuinely
+different shape from either closed-source harness's, source-verified
+this session.
 
-**The one-line answer.** Both harnesses have a genuine three-tier shape
--- (1) always loaded at session start, (2) loaded when a matching file is
-touched, (3) loaded only when invoked -- and on both, `@`-style imports
-belong to tier 1, so splitting a big file into imports buys you
-*organization and nothing else*. The real levers are path-scoped
-instruction files (`.claude/rules/` with `paths:` on Claude Code,
-`.github/instructions/*.instructions.md` with `applyTo:` on Copilot CLI)
-and skills.
+**The one-line answer.** All three harnesses have a genuine multi-tier
+shape -- (1) always loaded at session start, (2) loaded when a matching
+file is touched, (3) loaded only when invoked -- though OpenCode's own
+tier 1 is architecturally different from the other two in one important
+way (§3.1): it is re-read from disk on every turn, not frozen at session
+start. On Claude Code and Copilot CLI, `@`-style imports belong to tier
+1, so splitting a big file into imports buys you *organization and
+nothing else*; OpenCode has no import-expansion mechanism of its own to
+make the same mistake with (§3.2). The real levers on Claude Code and
+Copilot CLI are path-scoped instruction files (`.claude/rules/` with
+`paths:` on Claude Code, `.github/instructions/*.instructions.md` with
+`applyTo:` on Copilot CLI) and skills; OpenCode has no documented
+path-scoped instruction tier at all (§3.2), leaving skills as its only
+lazy-loading lever.
 
 ```mermaid
 flowchart TD
-    subgraph Tier1["Tier 1 -- always loaded at session start"]
+    subgraph Tier1["Tier 1 -- always loaded (session start, or every turn on OpenCode)"]
         CC1["Claude Code: CLAUDE.md hierarchy +<br/>unscoped .claude/rules/*.md"]
         GH1["Copilot CLI: copilot-instructions.md,<br/>AGENTS.md, CLAUDE.md"]
+        OC1["OpenCode: AGENTS.md hierarchy +<br/>config instructions[] (local + remote)<br/>re-read from disk every turn"]
     end
     subgraph Tier2["Tier 2 -- loaded when a matching file is touched"]
         CC2["Claude Code: .claude/rules/*.md<br/>with paths: glob"]
         GH2["Copilot CLI: .github/instructions/*.instructions.md<br/>with applyTo: glob"]
+        OC2["OpenCode: no path-scoped tier found;<br/>nearby-file auto-attach on Read only (§3.3)"]
     end
     subgraph Tier3["Tier 3 -- loaded only when invoked"]
         CC3["Claude Code skills: body loads on use"]
         GH3["Copilot CLI skills: SKILL.md injected on use"]
+        OC3["OpenCode skills: skill tool call loads body;<br/>name+description always listed"]
     end
     Tier1 --> Tier2 --> Tier3
 ```
@@ -382,70 +395,229 @@ glob-triggered loading.
 
 ---
 
-## 3. Synthesis
+## 3. OpenCode
 
-| Concern | Claude Code | Copilot CLI |
-|---|---|---|
-| Tier-1 file(s) | `CLAUDE.md` hierarchy (managed → user → project → local), plus `.claude/rules/*.md` **without** `paths:` | `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md`, `~/.copilot/instructions/**` |
-| Stated size guidance | "target under 200 lines per CLAUDE.md file"; loaded in full regardless of length | None found on the pages fetched |
-| Do `@` imports save context? | **No** -- stated twice in the docs | UNCONFIRMED; imports exist (v1.0.66), token effect not documented |
-| Path-scoped tier | `.claude/rules/` + `paths:` glob list; triggers on reading a matching file, "not on every tool use" | `.github/instructions/*.instructions.md` + `applyTo:`; body no longer in system prompt every session (v1.0.35), consolidated to a table row (v1.0.26) |
-| Lazy-by-location tier | Nested `CLAUDE.md` and nested `.claude/skills/` below cwd load on first read/edit in that subdirectory | Discovery walks working dir → git root (v1.0.11); no documented "load on read of subdirectory file" behavior found |
-| Invoke-only tier | Skills: body loads on use; description always in context (1,536-char cap) unless `disable-model-invocation: true`; supports its own `paths:` | Skills: `SKILL.md` "injected in the agent's context" when used; always-on listing cost UNKNOWN |
-| Exclusion | `claudeMdExcludes` globs, any settings layer, arrays merge | `/instructions` toggle picker |
-| Free maintainer notes | Block-level HTML comments stripped before injection | Not documented on pages fetched |
-| Automated trim advice | `/doctor` trim proposal (v2.1.206+) | Not documented on pages fetched |
-| Retrieval-based loading | Not documented | Experimental embedding-based per-turn retrieval of skill/MCP instructions; `dynamicRetrieval` setting |
-| Verify what loaded | `/context` → **Memory files**; `InstructionsLoaded` hook | `/context` (Custom Instructions itemized separately), `/env`, `/instructions` |
-| Survives compaction? | Tier 1 re-injected; path-scoped and nested lost until retriggered; skills capped 5K/25K | Skills survive; instruction-file re-injection **undocumented** |
+Sources for this section: `opencode.ai/docs/rules/` (the rendered docs
+page) cross-checked against its own Markdown source,
+`packages/web/src/content/docs/rules.mdx`, and its skills-tier
+counterpart `packages/web/src/content/docs/skills.mdx`, both fetched via
+`gh api` from `github.com/anomalyco/opencode`, `dev` branch, 2026-08-24;
+deepened with the actual loader source,
+`packages/opencode/src/session/instruction.ts` and the calling site in
+`packages/opencode/src/session/prompt.ts`, same repo/branch/date. VERIFIED
+unless tagged otherwise, with the standing `dev`-branch caveat this book
+applies everywhere it cites OpenCode source directly.
 
-**The design lesson.** Both harnesses independently converged on the
-same three-tier answer, and both make the *same* thing tier 1 that
-authors intuitively expect to be cheap: the imported/split-out file. The
-distinction that matters is not "one file vs. many files," it is
-**"does this text have a trigger?"** A file with no trigger (`@`
-import, unscoped rule, plain `copilot-instructions.md`) costs you tokens
-in every session no matter how many files you split it across. A file
-with a trigger (`paths:`, `applyTo:`, a skill name) costs you only its
-index entry until the trigger fires.
+### 3.1 The trap does not apply the same way: tier 1 is re-read every turn, not frozen at session start
+
+OpenCode's own instruction-loading module, `Instruction.system()`,
+is called once per iteration of the main session loop in
+`prompt.ts` -- a `while (true)` turn loop (`let step = 0` before it,
+incrementing per iteration) that also drives tool dispatch and the
+per-turn system-prompt assembly `[env, instructions, mcpInstructions,
+skills]`. `Instruction.system()` itself does a fresh
+`fs.readFileString()` of every discovered instruction-file path on each
+call, with no caching layer visible in the source read this session.
+**This is a materially different architecture from both other harnesses
+documented above:** Claude Code's tier 1 is a session-start read with no
+documented hot-reload (§1.8, cross-referenced, not repeated), and
+Copilot CLI's reload behavior is explicitly undocumented (§2.4). On
+OpenCode, editing `AGENTS.md` mid-session takes effect on the *very next
+turn* -- a real, source-verified, positive answer to a question the
+other two harnesses' own docs leave open. This is a genuinely new
+finding for this book, not previously documented in
+[memory-management.md](memory-management.md) either.
+
+### 3.2 What tier 1 actually contains, and the absence of a path-scoped tier
+
+Per `rules.mdx` (VERIFIED): OpenCode's tier-1 instruction surface is an
+`AGENTS.md` file, initialized via the `/init` slash command (which scans
+the repo and writes build/lint/test commands, architecture notes, and
+project conventions) or authored by hand. It is discovered from
+**multiple locations that serve different purposes**, not merged
+arbitrarily:
+
+- **Project**: `AGENTS.md` in the project root, applying only to that
+  directory and its subdirectories.
+- **Global**: `~/.config/opencode/AGENTS.md`, applied across every
+  OpenCode session on the machine, explicitly recommended for personal
+  (not team-shared) rules since it is not committed to Git.
+- **Claude Code compatibility, as a fallback only**: project-level
+  `CLAUDE.md` (used only if no `AGENTS.md` exists) and global
+  `~/.claude/CLAUDE.md` (used only if no `~/.config/opencode/AGENTS.md`
+  exists), disableable via `OPENCODE_DISABLE_CLAUDE_CODE`,
+  `OPENCODE_DISABLE_CLAUDE_CODE_PROMPT`, or
+  `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS`.
+
+VERIFIED, docs-stated precedence: "the first matching file wins in each
+category" -- if both `AGENTS.md` and `CLAUDE.md` exist at the same
+level, only `AGENTS.md` loads; the global `~/.config/opencode/AGENTS.md`
+takes precedence over the Claude-compat global fallback. Source-verified
+addition not stated on the docs page fetched: the loader
+(`instruction.ts`) also recognizes a third, explicitly **deprecated**
+filename, `CONTEXT.md`, in the same precedence slot as `AGENTS.md`/
+`CLAUDE.md` -- a docs/source gap worth flagging rather than silently
+reconciling.
+
+A **separate, additive** mechanism -- not a replacement for the file
+hierarchy above -- is the `instructions` array in `opencode.json`
+(project) or the global config file, letting a team point at existing
+rule files instead of duplicating them into `AGENTS.md`: local paths
+(supporting glob patterns, e.g. `"packages/*/AGENTS.md"`) and remote
+`https://`/`http://` URLs, source-verified as fetched with a hard
+**5-second timeout** (`Effect.timeout(5000)`) and silently degrading to
+empty content on failure rather than blocking the turn. VERIFIED (docs):
+"All instruction files are combined with your `AGENTS.md` files" -- i.e.
+this is an additive tier-1 mechanism, not a per-path-scoped one.
+
+**No path-scoped (tier-2) instruction tier was found.** Neither
+`rules.mdx` nor a `search/code` sweep of the docs tree for `applyTo`- or
+`paths:`-style scoping syntax this session turned up anything resembling
+Claude Code's `.claude/rules/` + `paths:` or Copilot CLI's
+`.github/instructions/*.instructions.md` + `applyTo:`. This is UNCONFIRMED-as-absent
+(not found in the sources fetched this session), not proven impossible,
+but it means OpenCode's own documented answer to "how do I scope
+instructions to a subset of files without paying for them everywhere"
+is currently just the invoke-only skills tier below, not a middle tier.
+
+### 3.3 A nearby-instruction-file auto-attach mechanism, source-verified, distinct from tier 1 and tier 3
+
+`instruction.ts` exposes a second function, `resolve()`, called when the
+model reads a file via the `read` tool: it walks upward from that file's
+directory (bounded at the project root) looking for the nearest
+`AGENTS.md`/`CLAUDE.md`/`CONTEXT.md` not already surfaced as part of
+tier 1 or already attached to that same assistant message (tracked via a
+per-message `claims` set, keyed off a helper, `extract()`, that scans
+prior completed `read`-tool message parts for a `metadata.loaded` path
+list). Any such file found is attached to that turn's context as
+`Instructions from: <path>\n<content>`. This is architecturally the
+closest OpenCode comes to Claude Code's own **nested-CLAUDE.md-loads-on-
+first-read-of-that-subdirectory** behavior (cross-referenced, not
+repeated, from Claude Code's own tier documented above) -- a real,
+source-verified, per-message-deduplicated auto-attach mechanism, not a
+docs-stated feature. BEST CURRENT UNDERSTANDING, UNCONFIRMED: whether
+this mechanism is described anywhere in OpenCode's own public docs (it
+was not found on `rules.mdx`) -- it currently exists only as a
+source-verified implementation detail.
+
+### 3.4 Tier 3 -- skills
+
+VERIFIED (`skills.mdx`): OpenCode's invoke-only tier is the native
+`skill` tool. Every discovered `SKILL.md`'s `name` and `description`
+(1-1024 characters, frontmatter-only) is always listed in the tool's own
+description as an `<available_skills>` block -- structurally the same
+"index entry always resident, body loads on demand" shape both Claude
+Code's and Copilot CLI's own skills tiers use above -- and the full body
+loads only when the model calls `skill({ name: "..." })`. Discovery
+walks the same project-root-to-worktree path as `AGENTS.md` (§3.2) for
+`.opencode/skills/`, plus Claude-compatible (`.claude/skills/`) and a
+third, `agents`-branded (`.agents/skills/`) convention at both project
+and global scope, and per-skill/per-agent-pattern `allow`/`ask`/`deny`
+permission gating (a `deny`d skill is omitted from `<available_skills>`
+entirely, so a denied skill costs nothing, not even its index-entry
+tokens -- a stricter budget guarantee than either closed-source
+harness's own visibility controls document).
+
+### 3.5 Measuring and toggling
+
+No dedicated context-inspection command (an OpenCode analogue to Claude
+Code's `/context` or Copilot CLI's `/context`/`/env`/`/instructions`)
+was found in the docs pages fetched this session. This is
+UNCONFIRMED-as-absent, not proven absent -- OpenCode's TUI is known
+(per [tui-cli-application-architecture.md](tui-cli-application-architecture.md))
+to expose a live token/cost footer, but this page found no dedicated
+instruction-budget breakdown surface to cite alongside it.
+
+---
+
+## 4. Synthesis
+
+| Concern | Claude Code | Copilot CLI | OpenCode |
+|---|---|---|---|
+| Tier-1 file(s) | `CLAUDE.md` hierarchy (managed → user → project → local), plus `.claude/rules/*.md` **without** `paths:` | `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md`, `~/.copilot/instructions/**` | `AGENTS.md` (project + global), `CLAUDE.md`/deprecated `CONTEXT.md` as Claude-compat fallbacks, plus config `instructions[]` (local globs + remote URLs) |
+| Tier-1 freshness | Session-start read; no documented hot-reload | Undocumented either way | **Re-read from disk every turn** -- source-verified, no caching in `Instruction.system()` |
+| Stated size guidance | "target under 200 lines per CLAUDE.md file"; loaded in full regardless of length | None found on the pages fetched | None found on the pages fetched |
+| Do `@` imports save context? | **No** -- stated twice in the docs | UNCONFIRMED; imports exist (v1.0.66), token effect not documented | Not applicable -- no `@`-import-expansion mechanism found in `AGENTS.md`/`instructions[]` loading (the docs instead show a manual, agent-authored "read this file on demand" convention, not a harness-parsed import syntax) |
+| Path-scoped tier | `.claude/rules/` + `paths:` glob list; triggers on reading a matching file, "not on every tool use" | `.github/instructions/*.instructions.md` + `applyTo:`; body no longer in system prompt every session (v1.0.35), consolidated to a table row (v1.0.26) | **None found** -- UNCONFIRMED-as-absent |
+| Lazy-by-location tier | Nested `CLAUDE.md` and nested `.claude/skills/` below cwd load on first read/edit in that subdirectory | Discovery walks working dir → git root (v1.0.11); no documented "load on read of subdirectory file" behavior found | Source-verified nearby-file auto-attach: walking up from a `read`-tool target's directory for the nearest un-surfaced `AGENTS.md`/`CLAUDE.md`/`CONTEXT.md`, deduplicated per assistant message |
+| Invoke-only tier | Skills: body loads on use; description always in context (1,536-char cap) unless `disable-model-invocation: true`; supports its own `paths:` | Skills: `SKILL.md` "injected in the agent's context" when used; always-on listing cost UNKNOWN | Skills: `name`+`description` (≤1,024 chars) always listed in `<available_skills>`; body loads via `skill({name})` call; a `deny`d skill is omitted from the listing entirely (zero index-entry cost) |
+| Exclusion | `claudeMdExcludes` globs, any settings layer, arrays merge | `/instructions` toggle picker | Per-skill/per-agent-pattern `allow`/`ask`/`deny` permissions; no equivalent exclusion lever found for `AGENTS.md`/`instructions[]` itself |
+| Free maintainer notes | Block-level HTML comments stripped before injection | Not documented on pages fetched | Not documented on pages fetched |
+| Automated trim advice | `/doctor` trim proposal (v2.1.206+) | Not documented on pages fetched | Not documented on pages fetched |
+| Retrieval-based loading | Not documented | Experimental embedding-based per-turn retrieval of skill/MCP instructions; `dynamicRetrieval` setting | Not documented; remote `instructions[]` URLs are always fully fetched (5s timeout), not retrieved by relevance |
+| Verify what loaded | `/context` → **Memory files**; `InstructionsLoaded` hook | `/context` (Custom Instructions itemized separately), `/env`, `/instructions` | No dedicated command found in the docs fetched this session |
+| Survives compaction? | Tier 1 re-injected; path-scoped and nested lost until retriggered; skills capped 5K/25K | Skills survive; instruction-file re-injection **undocumented** | Not directly investigated here (see [context-compression.md](context-compression.md) §3 for OpenCode's own compaction mechanics); moot in one sense, since tier 1 is rebuilt fresh every turn regardless of compaction state |
+
+**The design lesson.** All three harnesses independently converged on
+some version of the same multi-tier answer, and all three make the
+*same* thing tier 1 that authors intuitively expect to be cheap: the
+imported/split-out file (on the two harnesses that have an import
+mechanism at all). The distinction that matters is not "one file vs.
+many files," it is **"does this text have a trigger?"** A file with no
+trigger (`@` import, unscoped rule, plain `copilot-instructions.md`,
+OpenCode's own `AGENTS.md`/`instructions[]`) costs you tokens on every
+turn no matter how many files you split it across. A file with a
+trigger (`paths:`, `applyTo:`, a skill name) costs you only its index
+entry until the trigger fires -- and on OpenCode specifically, "every
+turn" is not a figure of speech: §3.1's re-read finding means the tier-1
+cost is paid, and the tier-1 *content* can change, on every single
+model call, not just once at launch.
 
 **A cross-harness recipe** (relevant to this project's requirement that
-everything work on both targets):
+everything work across targets):
 
 1. **Tier 1, one small file.** Keep a root `CLAUDE.md` under ~200 lines
-   holding only always-true facts. This is the only instruction file
-   both harnesses verifiably read at runtime -- Copilot CLI reads
-   `CLAUDE.md` (its changelog), Claude Code does not read `AGENTS.md` or
-   `copilot-instructions.md` (its docs). That asymmetry is per-harness
-   verified, not assumed.
-2. **Tier 2 has no shared file.** You need two parallel sets:
+   holding only always-true facts. This is close to the one instruction
+   file all three harnesses verifiably read at runtime -- Copilot CLI
+   reads `CLAUDE.md` directly (its changelog); OpenCode reads it too,
+   but only as a fallback when no `AGENTS.md` exists at the same scope
+   (§3.2); Claude Code does not read `AGENTS.md` or
+   `copilot-instructions.md` (its docs). Practically: an `AGENTS.md`
+   with the same content, plus a `CLAUDE.md` for Claude Code, covers all
+   three without relying on OpenCode's fallback-only behavior.
+2. **Tier 2 has no shared file, and OpenCode has no tier 2 at all.**
+   For Claude Code and Copilot CLI you still need two parallel sets:
    `.claude/rules/*.md` with `paths:` for Claude Code and
    `.github/instructions/*.instructions.md` with `applyTo:` for Copilot
    CLI. The glob dialects are similar but not identical (Claude Code
    documents brace expansion with an explicit 1,000-pattern budget;
    Copilot documents comma-separated patterns and a string-or-array
    `applyTo`). Do not generate one from the other without checking the
-   pattern semantics.
-3. **Tier 3 can be shared.** Skills are the one on-demand tier where a
-   single directory serves both: Copilot CLI's own docs list
-   `.claude/skills` among its project skill locations. Put procedures
-   and long reference material here, keep `SKILL.md` bodies short, and
-   push detail into supporting files the agent reads only when needed.
-4. **Verify per harness, every time.** `/context` on both,
-   `InstructionsLoaded` on Claude Code, `/env` and `/instructions` on
-   Copilot CLI. The cost of a scoped rule is empirically checkable in
-   under a minute; guessing is not necessary.
-5. **Remember the compaction asymmetry.** On Claude Code, moving text
-   out of tier 1 means it can stop applying after a compaction. On
-   Copilot CLI, whether instruction files are re-injected post-compaction
-   is undocumented. So invariants that must never lapse belong in tier 1
-   on both, even at token cost.
+   pattern semantics, and do not expect OpenCode to honor either --
+   its own docs show no scoped-loading equivalent (§3.2), so
+   path-conditional guidance either goes in `AGENTS.md` unconditionally
+   (paying the token cost everywhere) or is left out for that harness.
+3. **Tier 3 can be shared, three ways.** Skills are the one on-demand
+   tier where a single directory can serve all three: Copilot CLI's own
+   docs list `.claude/skills` among its project skill locations, and
+   OpenCode's own skills docs list `.claude/skills/` as a recognized
+   discovery path too. Put procedures and long reference material here,
+   keep `SKILL.md` bodies short, and push detail into supporting files
+   the agent reads only when needed.
+4. **Verify per harness, every time.** `/context` on Claude Code and
+   Copilot CLI, `InstructionsLoaded` on Claude Code, `/env` and
+   `/instructions` on Copilot CLI. OpenCode has no equivalent inspector
+   documented -- the practical substitute is reasoning from the source
+   behavior in §3.1-§3.3 directly, or watching the TUI's own token
+   footer. The cost of a scoped rule on the two closed-source harnesses
+   is empirically checkable in under a minute; guessing is not
+   necessary there.
+5. **Remember the compaction/reload asymmetry, now three-way.** On
+   Claude Code, moving text out of tier 1 means it can stop applying
+   after a compaction. On Copilot CLI, whether instruction files are
+   re-injected post-compaction is undocumented. On OpenCode, the
+   question is closer to moot: tier 1 is rebuilt from disk every turn
+   regardless of compaction, so an edited `AGENTS.md` is visible on the
+   very next turn on OpenCode in a way neither other harness documents
+   for itself. Invariants that must never lapse still belong in tier 1
+   on all three, even at token cost -- OpenCode just pays that cost with
+   a freshness guarantee the other two do not offer.
 
 ---
 
 ## Sources
 
-All fetched 2026-07-30.
+All fetched 2026-07-30 unless marked otherwise.
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `https://code.claude.com/docs/en/memory` -- 200-line size target, "loaded in full regardless of length," imports-don't-save-context (stated twice), when-to-use-CLAUDE.md vs. skill vs. path-scoped rule, `.claude/rules/` setup and recursion, `paths:` frontmatter and glob table, brace-expansion budget (1,000 patterns / 4 MiB), bracket-expression gotcha, rule symlinks, `~/.claude/rules/` ordering, `--setting-sources` interaction, nested-subdirectory lazy loading, `claudeMdExcludes`, HTML-comment stripping, `/doctor` trim proposal, `/context` **Memory files** check, `InstructionsLoaded` hook, `CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD`, CLAUDE.md delivered as a user message after the system prompt.
@@ -458,3 +630,9 @@ All fetched 2026-07-30.
 - `https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills` -- skill directory locations for the CLI (`.github/skills`, `.claude/skills`, `.agents/skills`, `~/.copilot/skills`, `~/.agents/skills`), `/skill-name` invocation, "When Copilot chooses to use a skill, the `SKILL.md` file will be injected in the agent's context," `/skills list|info|reload`.
 - `https://docs.github.com/en/copilot/concepts/agents/about-agent-skills` -- skills definition, supported surfaces including the GitHub Copilot CLI.
 - `https://github.com/github/copilot-cli` `changelog.md` (via `gh api repos/github/copilot-cli/contents/changelog.md`) -- v1.0.35 pattern-specific bodies out of the system prompt, v1.0.26 consolidation into a table + duplicate-instruction-file avoidance, v1.0.6 `applyTo` string-or-array, v1.0.48 unquoted-glob fix and skill-frontmatter stripping, v1.0.36 gitignored-directory loading, v1.0.11 monorepo discovery to git root, v0.0.385 combine-all-instruction-files, v0.0.394 identical-file dedup, v1.0.60 `/context` Custom Instructions separation and non-duplicated agent instructions, v1.0.25 `/env`, v1.0.4 `/instructions` picker labels, v1.0.61 `~/.copilot/instructions/**`, v1.0.66 `@`-import expansion and `dynamicRetrieval`, v1.0.5 experimental embedding-based retrieval, v1.0.6-era `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`. Authoritative for its own behavior-change history; this repo ships no implementation source.
+
+**OpenCode (fetched 2026-08-24; authoritative for OpenCode's documented and real-source behavior, with the standing `dev`-branch caveat):**
+- `opencode.ai/docs/rules/`, source-checked against `github.com/anomalyco/opencode`'s own `packages/web/src/content/docs/rules.mdx` (`dev` branch, via `gh api`) -- `AGENTS.md` initialization via `/init`, project/global/Claude-compat discovery locations and precedence ("first matching file wins in each category"), the three `OPENCODE_DISABLE_CLAUDE_CODE*` env vars, the `instructions` config array (local globs and remote URLs, "combined with your AGENTS.md files"), the manual `@`-reference convention documented as an *agent*-followed instruction rather than a harness-parsed import.
+- `packages/web/src/content/docs/skills.mdx`, same repo/branch/method -- `SKILL.md` frontmatter fields and validation rules, `.opencode/skills/`+Claude-compat+`.agents/skills/` discovery paths at project and global scope, the `<available_skills>` always-listed index block, `skill({name})` invocation, and the `allow`/`ask`/`deny` permission schema including the omitted-from-listing-entirely behavior on `deny`.
+- `packages/opencode/src/session/instruction.ts` and `packages/opencode/src/session/prompt.ts`, same repo/branch, fetched via `gh api` -- the `Instruction.system()`/`Instruction.resolve()` implementation: per-turn fresh-disk-read of tier-1 instruction files (no caching), the deprecated `CONTEXT.md` filename not named in the docs page fetched, the `instructions[]` remote-URL fetch's 5-second timeout, and the nearby-instruction-file auto-attach mechanism triggered off `read`-tool calls with a per-assistant-message dedup set. Authoritative for OpenCode's real implementation as of this session's fetch; per this book's standing caveat, `dev` is not a stable release tag and may not match the current stable release.
+- A `search/code` sweep of `packages/web/src/content/docs` for `applyTo`/`paths:`-style scoping syntax, same session -- zero hits, grounding the UNCONFIRMED-as-absent finding on a path-scoped instruction tier (§3.2).

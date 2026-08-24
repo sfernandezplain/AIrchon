@@ -145,6 +145,7 @@ apm.lock.yaml                              Resolved/locked dependency versions (
 .apm/agents/airchon-teacher.agent.md       Canonical, authored source for the teacher agent -- read-only proficiency-exam administrator; since 2026-08-19 a lean ROUTER body only (routing logic + the one hot-path cached-lookup step) -- see resources/airchon-teacher/ below for where its actual procedures now live
 .apm/skills/airchon/SKILL.md               Canonical, authored source for the thin router skill
 references/harnesses/                      The wiki-book -- mentor reads it, author writes it -- project root, NOT under .apm/
+references/sdlc/                           A separate, lightweight notes area (added 2026-08-24) for organisational-methodology/SDLC-process content that references/harnesses/ correctly excludes as out of scope (e.g. the Agentic SDLC Handbook's PROSE authoring-discipline framework, governance, team structures) -- see its own index.md for why. No dedicated writer agent owns it; none of the three agents read or write it. Maintained directly, like CHANGELOG.md.
 <deploy-root>/agents/airchon-mentor.*      Deployed copy of the mentor agent -- gitignored, regenerated, NEVER hand-edited
 <deploy-root>/agents/airchon-author.*      Deployed copy of the author agent -- gitignored, regenerated, NEVER hand-edited
 <deploy-root>/agents/airchon-teacher.*     Deployed copy of the teacher agent -- gitignored, regenerated, NEVER hand-edited

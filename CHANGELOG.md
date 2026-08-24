@@ -1,3 +1,40 @@
+## 2026-08-24 -- Added `references/sdlc/` for content the wiki-book correctly excludes
+
+The operator pointed `airchon-mentor` at the Agentic SDLC Handbook
+(https://danielmeppiel.github.io/agentic-sdlc-handbook/) after an
+earlier research pass (recorded in
+`references/harnesses/deterministic-orchestration.md`'s Sources
+section) had fetched it end-to-end and ruled it out of the wiki-book:
+"overwhelmingly an organisational methodology/process guide," not a
+documented account of any harness's internals. `airchon-mentor`
+initially defended that exclusion on the wrong grounds ("it isn't
+harness-specific"), which the operator correctly pushed back on --
+this book already carries harness-agnostic GENERAL-CONCEPTS pages
+(`agent-loop.md`, `agent-topology.md`,
+`multi-agent-coordination-design-space.md`). On reflection the real
+distinction isn't harness-specificity, it's mechanics-vs-methodology:
+the wiki-book covers technical, mechanistic accounts of how agentic AI
+systems are built and operate; the handbook's own "PROSE"
+authoring-discipline framework and its governance/team-structure
+material are process guidance for how *people* run an SDLC around
+agents, a different domain regardless of harness-tie.
+
+`airchon-author` confirmed it has no writable location for that kind
+of content -- its mandate is fixed to `references/harnesses/`, and
+inventing a new resource path is a structural project decision outside
+any authoring pass's own initiative (the same class of decision that
+produced the mentor/author split and `resources/airchon-teacher/`).
+Given the choice between designing a full new primitive via `/genesis`
+(a dedicated writer agent, wired into `apm.yml`) and a lightweight,
+directly-maintained notes folder, the operator chose lightweight.
+Added `references/sdlc/index.md` (scope note, source, Ch. 5 governance
+summary, Ch. 6 team-structures summary) and
+`references/sdlc/prose-framework.md` (the five PROSE constraints in
+full, from Ch. 13), both researched live against the handbook's actual
+chapter content rather than reusing the earlier pass's summary
+verdict. No dedicated agent owns this folder; it is maintained the
+same way `CHANGELOG.md` is.
+
 ## 2026-08-19 -- Made the `airchon` router fall back to `TaskCreate` when `Agent(...)` is unavailable
 
 The router skill was still hard-stopping on runtimes that did not

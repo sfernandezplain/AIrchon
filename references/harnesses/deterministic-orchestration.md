@@ -9,10 +9,10 @@ each step what happens next. This page instead documents a different
 *category* of thing: a **deterministic orchestrator** -- software whose
 job is to run a multi-agent pipeline along a control-flow graph an author
 fixes in advance, rather than a single LLM deciding turn by turn what
-happens next. Two independently-built, independently-sourced instances of
+happens next. Three independently-built, independently-sourced instances of
 that category are documented here side by side, specifically so their
 points of genuine agreement and genuine divergence are visible in one
-place rather than scattered across two separate pages:
+place rather than scattered across three separate pages:
 
 - **LangGraph** (`github.com/langchain-ai/langgraph`) -- a **library**,
   Python and JavaScript/TypeScript, for *building* stateful, long-running
@@ -49,35 +49,77 @@ place rather than scattered across two separate pages:
   docs/CLI-reference/design-doc sources, fetched fresh this session
   (24 August 2026), the same way sections 1-7 already document
   LangGraph's.
+- **GitHub Agentic Workflows** (`github.com/github/gh-aw`, official docs
+  at `docs.github.com/en/copilot/concepts/agents/about-github-agentic-workflows`
+  and the dedicated reference site `github.github.com/gh-aw`) -- a
+  GitHub-first-party product, in Technical Preview at the time of this
+  writing, for authoring a workflow as a single Markdown file (YAML
+  frontmatter plus a natural-language instruction body) that a build step
+  compiles into "a hardened `.lock.yml` GitHub Actions workflow file,"
+  which then runs as an ordinary GitHub Actions job -- **GitHub Actions
+  itself is the execution runtime**, not a separate CLI process or hosted
+  server the way Conductor and LangGraph's own deployment story are.
+  VERIFIED (all three sources above, fetched this session, 24 August
+  2026): a workflow's `engine:` frontmatter property selects which
+  vendor's own real coding-agent CLI actually runs as that job's inference
+  step -- the gh-aw project's own reference page for engines names five
+  built-in values, and for each one states plainly that the *actual
+  vendor CLI binary* is installed and executed, not a bare model API call:
+  `copilot` (the GitHub Copilot CLI), `claude` (Claude Code), `codex`
+  (OpenAI Codex CLI), `gemini` (Google Gemini CLI), and `pi` (the
+  `@earendil-works/pi-coding-agent` npm package -- this book's own
+  already-documented **pi** harness, named here as a sixth engine choice
+  independently of Conductor's own, differently-scoped provider list).
+  Sections 14-16 below document this third instance's own architecture,
+  fetched fresh this session the same way sections 1-13 already document
+  LangGraph's and Conductor's -- pursued specifically because it turned
+  out to hold one genuinely new mechanism (its **safe-outputs** job/credential-boundary
+  separation, section 15) this page's existing LangGraph and Conductor
+  material had not yet named, not merely a third re-implementation of
+  sections 1-13's already-catalogued shapes.
 
-Because both are *substrates* other people's agent pipelines get built on
-top of -- rather than a finished, opinionated terminal product with its
-own permission model, TUI, or MCP client the way Claude Code, Copilot
-CLI, and OpenCode are -- most of this book's per-harness topic pages
-(permissions-and-sandboxing.md, tui-cli-application-architecture.md,
+Because all three are *substrates* other people's agent pipelines get
+built on top of -- rather than a finished, opinionated terminal product
+with its own permission model, TUI, or MCP client the way Claude Code,
+Copilot CLI, and OpenCode are -- most of this book's per-harness topic
+pages (permissions-and-sandboxing.md, tui-cli-application-architecture.md,
 packaging-distribution-and-self-update.md) simply do not have a
-LangGraph- or Conductor-shaped answer: those are decisions a pipeline
-*built on* either substrate would make, not decisions the substrate
-itself makes. (Conductor is a partial exception worth flagging up front:
-because it ships as a standalone installable CLI with its own Fleet
-Manager TUI, update mechanism, and multi-run process model -- section 11
-below -- some of packaging-distribution-and-self-update.md's and
+LangGraph-, Conductor-, or GitHub-Agentic-Workflows-shaped answer: those
+are decisions a pipeline *built on* any of the three substrates would
+make, not decisions the substrate itself makes. (Conductor is a partial
+exception worth flagging up front: because it ships as a standalone
+installable CLI with its own Fleet Manager TUI, update mechanism, and
+multi-run process model -- section 11 below -- some of
+packaging-distribution-and-self-update.md's and
 tui-cli-application-architecture.md's questions *do* have a real,
-sourced Conductor answer where they have none for LangGraph, a genuine
-structural difference between the two instances noted throughout rather
-than smoothed over.) This page is scoped to the topics where at least one
-of the two genuinely does supply a directly comparable, sourced mechanism
+sourced Conductor answer where they have none for LangGraph or GitHub
+Agentic Workflows, a genuine structural difference among the three
+instances noted throughout rather than smoothed over. GitHub Agentic
+Workflows is a second, differently-shaped partial exception in the other
+direction: it has no CLI/TUI of its own at all -- a workflow's entire
+operational surface is whatever GitHub Actions' own run logs, checks UI,
+and `gh` CLI already provide -- so this page makes no claim about a
+GitHub-Agentic-Workflows-specific persistence/checkpoint or fleet-supervision
+mechanism the way sections 3 and 11 do for LangGraph and Conductor
+respectively; that gap is left as an honest scope limitation, not a
+verified negative finding, since it was not specifically investigated
+this session.) This page is scoped to the topics where at least one of
+the three genuinely does supply a directly comparable, sourced mechanism
 -- orchestration/control-flow, persistence, human-in-the-loop, fault
 tolerance, and multi-agent coordination -- and to naming the general
 concepts this book had not yet covered anywhere before this page existed:
 **deterministic, graph-or-workflow-encoded orchestration as an
 alternative execution paradigm to the single LLM-driven while-loop**
-(section 1), and, new as of this revision, **the deterministic
-orchestrator as a product that can sit one layer above other harnesses
-this book documents rather than only above raw model APIs** (section
-8.1) and **fleet-level supervision of many concurrently running pipeline
-instances as a distinct operational concern from any single run's own
-persistence** (section 11). Both sit in the same conceptual family as
+(section 1), **the deterministic orchestrator as a product that can sit
+one layer above other harnesses this book documents rather than only
+above raw model APIs** (section 8.1, now doubly-sourced by section 14.1's
+GitHub Agentic Workflows finding), **fleet-level supervision of many
+concurrently running pipeline instances as a distinct operational concern
+from any single run's own persistence** (section 11), and, new as of
+this revision, **job/credential-boundary capability separation as a
+structurally stronger alternative to an in-process permission gate for
+enforcing the deterministic/probabilistic boundary** (section 15). All
+three sit in the same conceptual family as
 [agent-loop.md](agent-loop.md) and
 [multi-agent-coordination-design-space.md](multi-agent-coordination-design-space.md)
 (both GENERAL-CONCEPTS pages), but were not previously named as their own
@@ -1184,6 +1226,258 @@ each contributing a shape this book had not previously sourced anywhere.
 
 ---
 
+## 14. GitHub Agentic Workflows' authoring surface: Markdown compiled to a hardened GitHub Actions workflow
+
+```mermaid
+flowchart LR
+    subgraph SRC["workflow.md (source)"]
+        FM["YAML frontmatter:\non:, permissions, engine,\nsafe-outputs:, mcp-servers:, tools:"]
+        BODY["Markdown body:\nnatural-language agent instructions"]
+    end
+    COMPILE["compile step\n(gh aw / CI)"] -->|"reads source, never\nexecutes it directly"| SRC
+    COMPILE -->|writes| LOCK["workflow.lock.yml\n(hardened GitHub Actions workflow)"]
+    LOCK -->|runs inside| GHA["GitHub Actions job runner"]
+    GHA -->|"engine: selects and installs"| ENGINE["real vendor CLI binary:\ncopilot / claude / codex / gemini / pi"]
+    ENGINE -->|"tools:/mcp-servers:"| MCP["MCP Gateway\n(allowed: tool allowlist)"]
+```
+
+VERIFIED (`docs.github.com/en/copilot/concepts/agents/about-github-agentic-workflows`
+and `github.com/github/gh-aw`, both fetched this session, 24 August
+2026): a GitHub Agentic Workflow is authored as a single Markdown file
+with two parts -- a YAML frontmatter block that "configures when the
+workflow runs, what permissions it has, and what write operations are
+allowed," and a Markdown body containing the natural-language
+instructions that steer the agent's behaviour. Authoring finishes with a
+compile step that turns this source file into a **hardened `.lock.yml`
+GitHub Actions workflow file**; both the source Markdown and the compiled
+lock file are committed to the repository's default branch, and it is the
+compiled lock file -- not the authored Markdown -- that GitHub Actions
+actually executes. This is a fourth, previously undistinguished position
+on section 1.1's own code-vs-declarative authoring-surface axis: LangGraph
+sits on the code side (`StateGraph` built by running Python/JS), Conductor
+sits on the declarative side with its YAML **interpreted directly** at
+run time (`conductor validate`/`run` parse the same file that executes,
+with no separate build artifact), and GitHub Agentic Workflows sits on
+the declarative side too but adds a **compile step that produces a
+different, executable declarative artifact** from the authored one -- the
+Markdown-plus-frontmatter source is never itself the thing GitHub Actions
+runs, closer to a source-language/compiled-artifact split than either of
+this page's other two instances draws. Triggering reuses GitHub Actions'
+own native `on:` vocabulary unchanged (issue/PR events, `schedule:`,
+`workflow_dispatch`, etc.), so -- unlike Conductor's CLI-invoked
+foreground/web/background run modes (section 11) or a LangGraph
+application's own caller-decided invocation -- a GitHub Agentic Workflow
+is, by default, **event-driven repository automation with no separate
+process or dashboard of its own**: its entire operational surface is
+whatever GitHub Actions' own run logs, job summaries, and checks UI
+already provide.
+
+### 14.1 The `engine:` property: dispatching a step through another complete harness's own real CLI, extended to a fifth and sixth instance
+
+Section 8.1 above named, as a new general concept for this page, that "a
+deterministic orchestrator can sit one layer above a complete
+interactive-CLI harness this book documents in its own right... rather
+than only sitting above a bare model-provider API" -- sourced there only
+for Conductor's `claude-agent-sdk`/`copilot` providers. VERIFIED
+(`github.github.com/gh-aw/reference/engines/`, fetched this session): a
+GitHub Agentic Workflow's `engine:` frontmatter property is the same
+concept, independently reinvented and, on the evidence fetched this
+session, even more literally so -- the reference page's own five built-in
+values each name the real vendor CLI installed and run as that job's
+inference step, not an API wrapper around it: `copilot` (the GitHub
+Copilot CLI), `claude` (Claude Code), `codex` (OpenAI Codex CLI),
+`gemini` (Google Gemini CLI), and `pi` (the `@earendil-works/pi-coding-agent`
+npm package -- this book's own already-documented **pi** harness, its
+first appearance as a component *wrapped by* a deterministic orchestrator
+rather than examined on its own terms). A sixth, non-flat form -- a
+nested `engine: {id: ...}` referencing an imported Markdown engine
+definition -- is the project's own extension point for a vendor CLI it
+does not ship built-in support for. Read together with section 8.1,
+GitHub Agentic Workflows is now this book's **second** independently-sourced
+confirmation that "orchestrator wraps a complete other harness's own CLI
+as one workflow step" is a real, recurring architectural choice rather
+than one project's idiosyncratic design -- and the first sourced instance
+of **pi** specifically being wrapped this way by anything else this book
+documents. MCP tool access is declared in a workflow's own `mcp-servers:`
+block (a per-server `container:`/`allowed:` shape, cross-reference
+[mcp-integration.md](mcp-integration.md)), gated by "the MCP gateway's
+`allowed:` filter" as, per the reference page's own framing, "the sole
+effective tool boundary" -- i.e. tool-level enforcement here is a single
+allowlist evaluated by a gateway process sitting in front of whichever
+engine is running, rather than each of the five-plus vendor CLIs'
+own native permission systems (`permissions-and-sandboxing.md`'s own
+per-harness enforcement architectures) being separately configured
+per workflow.
+
+---
+
+## 15. Safe outputs: a job/credential-boundary capability separation, not an in-process permission gate
+
+```mermaid
+sequenceDiagram
+    participant Trigger as GitHub event (on:)
+    participant AgentJob as Agent job (read-only token)
+    participant PreCheck as Pre-check validation\n(at each safe-output tool call)
+    participant WriteJob as Safe-outputs job\n(separate, write-scoped token)
+    participant GH as GitHub API
+
+    Trigger->>AgentJob: workflow run starts
+    AgentJob->>PreCheck: calls e.g. create_issue(...)\nvia MCP-style tool
+    PreCheck-->>AgentJob: accept (schema/max/dedup OK)\nor reject with reason
+    AgentJob->>AgentJob: writes $GH_AW_AGENT_OUTPUT\n(structured JSON, no API call made)
+    AgentJob->>WriteJob: agent job completes, hands off output
+    WriteJob->>WriteJob: apply-time validation\n(live dedup, field schema,\nprotected-files, mention sanitization)
+    WriteJob->>GH: executes only validated,\nallowlisted operations
+```
+
+Chapter 16 of the externally-reviewed handbook that prompted this
+research pass (`danielmeppiel.github.io/agentic-sdlc-handbook`, "The
+Deterministic/Probabilistic Boundary") names a general governance
+principle -- "the model proposes; the gate disposes" -- and cites GitHub
+Agentic Workflows' `safe-outputs:` block as one worked example of it.
+That handbook is itself out of scope for this wiki-book (it is a
+methodology/process guide for running an organisation's software delivery
+lifecycle around AI agents -- team structure, governance, business case
+-- not a documented account of any specific harness's internals; see this
+page's own Sources section for the note on why it is cited only as a
+pointer, never as the grounding for a mechanism claim). The mechanism
+itself, independently verified this session directly against GitHub's own
+primary documentation
+(`docs.github.com/en/copilot/concepts/agents/about-github-agentic-workflows`
+and, in full schema-level detail, `github.github.com/gh-aw/reference/safe-outputs/`),
+turns out to be a genuinely new general concept for this page -- not
+covered by anything in LangGraph's or Conductor's own sections above, nor
+by [permissions-and-sandboxing.md](permissions-and-sandboxing.md)'s
+per-harness enforcement architectures anywhere else in this book.
+
+VERIFIED (`github.github.com/gh-aw/reference/safe-outputs/`, fetched this
+session): the agent's own job runs under a GitHub Actions token scoped to
+**read-only permissions** (`contents: read`, `issues: read`,
+`pull-requests: read`, and so on -- "no write permissions" at all), and
+the agent never calls a write-capable GitHub API directly. Instead, a
+`safe-outputs:` frontmatter block declares which structured actions the
+workflow may request -- 30-plus built-in handler types are named in the
+reference docs, grouped into Issues & Discussions (`create-issue`,
+`update-issue`, `close-issue`, `link-sub-issue`, `create-discussion`,
+etc.), Pull Requests (`create-pull-request`, `add-reviewer`,
+`submit-pull-request-review`, `resolve-pull-request-review-thread`,
+etc.), Labels/Assignments/Metadata (`add-comment`, `add-labels`,
+`assign-to-agent` -- itself notably able to hand a task to the Copilot
+coding agent as a distinct write action -- `set-issue-field`, etc.),
+Projects/Releases/Assets, Security/Workflows (`dispatch-workflow`,
+`create-code-scanning-alert`), and three System types (`noop`,
+`missing-tool`, `missing-data`) that are auto-enabled specifically so an
+agent has a way to say "I found nothing to do" or "I need a capability I
+was not given" as a first-class structured output rather than silence or
+free text. When a workflow declares no `safe-outputs:` section at all (or
+only system types), `create-issue` is auto-injected with conservative
+defaults (`max: 1`, a workflow-ID label and title prefix) -- the same
+"if you didn't opt out, you get the smallest useful default" posture this
+book has already seen in other harnesses' own safety-default choices
+([permissions-and-sandboxing.md](permissions-and-sandboxing.md)'s
+approval-mode defaults), reapplied here at the level of *which structured
+outputs exist at all* rather than *whether a given tool call needs
+approval*.
+
+Validation happens at two structurally separate points, which is the
+crux of why this is a different enforcement shape from anything else on
+this page. **Pre-check validation** happens synchronously, inside the
+still-running (read-only) agent job, the moment the agent calls a
+safe-output tool: per-handler `max` counts are enforced immediately,
+required fields are checked, a `deduplicate-by-title` option can drop an
+obviously-repeated request on the spot (returning the agent a
+`duplicate_dropped` response so it can move on rather than stalling), and
+label operations run `blocked` glob patterns before `allowed` ones so a
+denial always wins a conflict. **Apply-time validation** then happens in
+a wholly **separate GitHub Actions job**, holding a separately-scoped,
+write-capable token (`issues: write`, `pull-requests: write`,
+`contents: write`, etc., only for the specific handlers a workflow
+actually declared), which receives the agent's accumulated structured
+output via the `$GH_AW_AGENT_OUTPUT` environment variable and re-validates
+against the live repository state before calling any GitHub API at all --
+re-checking deduplication against real open/recently-closed issues,
+validating custom project-field names/values against the repository's
+actual schema, checking whether a proposed pull request touched anything
+in a `protected-files` list, sanitising `@mentions` against an
+allowed-mentions list with a `max-bot-mentions` spam ceiling, and
+resolving `allowed-domains`/`allowed-github-references` allowlists that
+strip non-matching URLs or repository references from the agent's own
+free-text output before it is ever posted anywhere. A `staged: true` flag
+on an individual handler (documented for `create-check-run`) instead
+routes that handler's output to the workflow's own step summary as a
+human-reviewable preview, making zero live API calls at all -- a
+dry-run affordance with no clean equivalent named for LangGraph's
+`interrupt()` or Conductor's `human_gate`/`validator` (section 9), both
+of which pause a live run for a decision rather than simply refusing to
+act while still completing the run). Finally, `jobs:`/`actions:` keys let
+an author register arbitrary post-processing jobs, or mount SHA-pinned
+third-party GitHub Actions, as additional MCP-style tools -- extending
+the same read/validate/write-separately discipline to write operations
+against services outside GitHub entirely (Slack, Discord, Notion, Jira,
+arbitrary APIs), rather than confining the safe-outputs pattern to
+GitHub's own object model.
+
+**Why this is a new concept and not a renaming of anything already on
+this page.** Every enforcement mechanism this page and
+[permissions-and-sandboxing.md](permissions-and-sandboxing.md) have
+previously documented -- Claude Code's auto-mode classifier, OpenCode's
+`Permission.Service`, Copilot CLI's approval prompts, Conductor's
+`human_gate`/`validator` (section 9), even LangGraph's `interrupt()`
+(section 4) -- gates a decision *inside one running, credential-holding
+process*: the process that can see the proposed action is the same
+process that, once approved, is trusted to execute it. Safe outputs
+instead removes the write credential from the inference-holding process
+**entirely, at the job-boundary level** -- the agent job's own token is
+incapable of a write API call regardless of what the model outputs or
+what prompt injection it may have been steered by, because the
+capability simply is not present in that job's scope, only in a
+downstream job's. This is the *strong-form* end of the "supervised
+execution"/"capability-based enforcement via substrate design, not
+contractual discipline" idea the (out-of-scope-as-a-primary-source, but
+directly quoted here since the phrase is precise) handbook chapter itself
+names -- and it is stronger than anything in this book's own
+advanced-planning-and-execution-architectures.md synthesis sketch, which
+reused "`PostToolUse`/`tool.execute.after` hooks" (an in-process,
+post-hoc veto) rather than a two-job, two-credential-scope pipeline
+separation. It is also a different concern from Conductor's `validator`
+block (section 9): `validator` re-grades a completed *response's
+quality* within the same run and is explicitly fail-open on a grading
+error; safe outputs instead gates *authorization and shape*, is
+enforced independently of the agent's own request, and a validation
+failure there simply means the proposed action is never applied at all --
+the two mechanisms are complementary answers to different questions
+("was this good?" versus "was this ever allowed to happen?"), not two
+implementations of the same idea.
+
+---
+
+## 16. Third-instance synthesis: what GitHub Agentic Workflows adds beyond LangGraph and Conductor
+
+| Concept | LangGraph | Conductor | GitHub Agentic Workflows | Verdict |
+|---|---|---|---|---|
+| Authoring surface | `StateGraph` built in code | Plain YAML, interpreted directly at run time | Markdown + YAML frontmatter, **compiled** into a separate executed `.lock.yml` | **New position on section 1.1's axis** -- source and executed artifact are not the same file |
+| Execution substrate | Caller-embedded library, any host process | Standalone CLI process, own run-record store | **GitHub Actions itself is the runtime** -- no separate CLI/server at all | **New concept** -- no dedicated process or dashboard exists because none is needed |
+| Wrapping another documented harness as one step | Not found (LangChain model wrappers are bare-API only) | `claude-agent-sdk`/`copilot` providers (section 8.1) | `engine:` installs and runs the real Claude Code/Copilot/Codex/Gemini/**pi** CLI directly (section 14.1) | **Same concept as Conductor's, independently reinvented, extended to a sixth wrapped harness (pi)** |
+| Deterministic/probabilistic boundary enforcement | Not documented as a first-class primitive | `validator` (Reflexion-style grade + single fail-open retry, same run) | **`safe-outputs:`** -- read-only agent job, separate write-scoped job, two-stage pre-check/apply-time validation | **New concept** -- a job/credential-boundary separation, not an in-process gate; complementary to, not a renaming of, `validator` |
+| Human review without pausing the run | Not found | `conductor guide` (async steering into a live run) | `staged: true` (dry-run preview into a step summary, no live run to steer) | **Related but distinct** -- Conductor's mechanism steers a run still in flight; GitHub Agentic Workflows' mechanism completes the run while withholding only the side effect |
+| Multi-run/fleet supervision | Not documented (LangSmith Deployment, out of scope) | Run records, stop ladder, Fleet Manager TUI (section 11) | Not investigated this session -- GitHub Actions' own run history is the only surface found | **Scope gap, not a verified negative finding** |
+| Workflow/graph distribution | Ordinary source-code packaging | Dedicated registry, `@registry#ref` (section 12) | Ordinary Git/GitHub repository distribution of the `.md` source and `.lock.yml` artifact | **Same concept as LangGraph's, not Conductor's** -- no dedicated registry layer found |
+
+**The plain verdict.** GitHub Agentic Workflows sits closest to Conductor
+of this page's three instances -- both wrap a complete other harness's
+own CLI as a dispatchable step (section 14.1 now doubly-sourcing section
+8.1's finding), and both are declarative-YAML-authored rather than
+code-built. Its one genuinely new contribution to this page, worth the
+research pass on its own, is **safe outputs**: a structural, job-boundary
+capability-separation pattern for the deterministic/probabilistic
+boundary that is strictly stronger than any in-process permission gate
+this book has sourced anywhere -- Claude Code's, Copilot CLI's, and
+OpenCode's own permission architectures included -- because the
+write-capable credential is simply never present in the process that
+holds the model's own output.
+
+---
+
 ## Sources
 
 All fetched this session (24 August 2026) unless noted otherwise.
@@ -1308,3 +1602,83 @@ All fetched this session (24 August 2026) unless noted otherwise.
   own Parallel Groups section; no additional claims in this page rest on
   content found only in these two files rather than corroborated in
   `workflow-syntax.md` itself).
+
+### GitHub Agentic Workflows sources (sections 14-16, all fetched this
+session, 24 August 2026)
+
+- `danielmeppiel.github.io/agentic-sdlc-handbook` -- the handbook that
+  prompted this research pass. Its table of contents/landing page, and
+  chapters 4, 11, 12, 14, 15, 16, 17, and 19 (`ch04-the-reference-architecture.html`,
+  `ch11-the-runtime-machine.html`, `ch12-the-instrumented-codebase.html`,
+  `ch14-the-load-lifecycle.html`, `ch15-attention-and-context-economy.html`,
+  `ch16-deterministic-probabilistic-boundary.html`,
+  `ch17-multi-agent-orchestration.html`,
+  `ch19-architectural-patterns-rosetta-stone.html`), plus
+  `appendix-a-cross-harness-reference.html`, were all fetched and read
+  this session to judge the handbook's own scope. Verdict, recorded here
+  rather than as a page of its own per this book's own precedent for
+  ruled-out sources: the handbook is overwhelmingly an **organisational
+  methodology/process guide** (governance, business case, team
+  structures, an original "PROSE" authoring-discipline framework, and
+  narrative case studies) for running a software delivery lifecycle
+  around AI agents -- not a documented account of any specific harness's
+  internals -- and is therefore out of scope as a *primary* source
+  anywhere in this wiki-book. Its Part III "Practitioner" chapters do
+  name real cross-harness observations (config-file conventions across
+  Copilot/Claude Code/Cursor/Codex-CLI/OpenCode in chapters 11 and
+  Appendix A; an eager/lazy/dispatcher-mediated "Load Lifecycle" framing
+  in chapter 14; a context-window-vs-attention distinction citing
+  "Lost in the Middle" and Anthropic's needle-in-a-haystack evals in
+  chapter 15; an original Gang-of-Four/distributed-systems pattern-naming
+  vocabulary in chapter 19), but every one of those observations either
+  restates, in the handbook's own single-author vocabulary, a mechanism
+  this book already documents more precisely from primary vendor
+  sources (memory-management.md/instruction-context-budget.md/configuration.md's
+  own directly-sourced config-file-hierarchy coverage; caching.md/fan-out.md/
+  packaging-distribution-and-self-update.md/observability-and-self-diagnostics.md's
+  own coverage of the mechanisms chapter 19's Rosetta Stone renames), or
+  names a harness this book does not yet track (Cursor, OpenAI Codex CLI)
+  only in passing, with no primary-source verification of its own claims
+  about either -- flagged here as real, narrower follow-up work, not
+  pursued in this pass, the same way this book has previously flagged
+  "Deep Agents Code" as out-of-scope-but-real follow-up on
+  middleware-composed-agent-harnesses.md. The one exception -- the sole
+  claim that led to genuinely new, book-worthy content -- was chapter 16's
+  citation of GitHub Agentic Workflows' `safe-outputs:` mechanism as a
+  worked example of its own "model proposes, gate disposes" governance
+  principle; that mechanism was independently re-verified in full against
+  GitHub's own primary documentation (the three sources immediately below)
+  before anything about it was written into sections 14-16 above -- the
+  handbook itself is cited in section 15 only for its own precise phrase
+  ("the model proposes; the gate disposes"), never as the grounding for
+  any mechanism claim about GitHub Agentic Workflows itself.
+- `docs.github.com/en/copilot/concepts/agents/about-github-agentic-workflows`
+  -- fetched via WebFetch. Source for the Markdown-plus-frontmatter
+  authoring format, the compile-to-`.lock.yml` step, the multi-engine
+  (`copilot`/`claude`/`codex`/`gemini`) execution model, and native
+  GitHub Actions `on:` triggering, cited in section 14.
+- `github.com/github/gh-aw` -- the project's own README, fetched via
+  WebFetch. Corroborating source for the built-in-engines list ("GitHub
+  Copilot, Claude Code, OpenAI Codex, Google Gemini, and Pi") and the
+  existence of a companion MCP Gateway product, cited in sections 14 and
+  14.1.
+- `github.github.com/gh-aw/reference/engines/` -- fetched via WebFetch.
+  Primary source for exactly what each `engine:` value runs (confirming
+  each installs and executes the real vendor CLI binary, not a bare API
+  call), the nested `engine: {id: ...}` custom-engine form, and the
+  `mcp-servers:`/`allowed:` gateway-level tool-boundary framing, cited in
+  section 14.1.
+- `github.github.com/gh-aw/reference/safe-outputs/` -- fetched via
+  WebFetch. The primary, most detailed source for section 15: the full
+  `safe-outputs:` YAML schema, the 30-plus built-in handler-type catalogue
+  across six categories, the auto-injected `create-issue` default, the
+  two-stage pre-check-vs-apply-time validation architecture, the
+  read-only-agent-job/write-scoped-separate-job permission split and the
+  `$GH_AW_AGENT_OUTPUT` handoff, `staged: true` preview mode, and the
+  allowlist/blocklist/deduplication/mention-sanitization mechanics.
+- A supplementary WebSearch this session (query: `GitHub Agentic
+  Workflows "safe-outputs" documentation`) was used only to locate the
+  primary docs above and confirm the feature is real and officially
+  documented at both `docs.github.com` and `github.github.com/gh-aw`
+  before any of those pages were fetched in full -- not itself cited for
+  any specific mechanism claim.
