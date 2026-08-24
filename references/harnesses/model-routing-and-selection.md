@@ -16,13 +16,15 @@ model call reviews actions at all) -- this page adds only the classifier's own
 model-selection fact, not repeated there, and cross-references back for the rest.
 
 Every factual claim below is tagged VERIFIED (fetched this session from a named
-authoritative source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. All three harnesses
-are covered, since all three make a live model-routing decision on every request, but
+authoritative source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. All four harnesses
+covered here make a live model-routing decision on every request, but
 the shape of that decision differs sharply: Claude Code's is a rich, deeply configurable
 precedence stack around a single frontier-model family; Copilot CLI's is a genuine
 per-request cost/capability router (Auto model selection) across models from several
 providers; OpenCode's is a per-agent configuration surface plus a narrowly scoped
-small-model carve-out for one auxiliary task (title generation).
+small-model carve-out for one auxiliary task (title generation); pi's (§4, added
+2026-08-20) is the leanest of the four -- an explicit, flat, entirely user-driven choice
+with no automatic routing, fallback, or carve-out of any kind.
 
 ## 1. Claude Code
 
@@ -460,7 +462,103 @@ the *same* model/provider rather than routing to a different one. The absence of
 model-switching fallback is therefore an absence relative to what retries.md documents
 OpenCode doing on failure, not an unexamined gap.
 
-## 4. Synthesis
+## 4. pi
+
+Sources for this section: VERIFIED, fetched 20 August 2026 directly from
+`github.com/earendil-works/pi`'s `packages/coding-agent/docs/` tree (`models.md`,
+`settings.md`, `usage.md`, `environment-variables.md`) and `packages/ai/README.md`.
+
+### 4.1 A flat, explicit model catalog rather than a routing algorithm
+
+Where Claude Code's model resolution is a multi-tier precedence stack around one
+frontier-model family (§1) and Copilot CLI's Auto model selection performs genuine
+per-request task-complexity routing across providers (§2), pi's own documented model
+surface is closer to OpenCode's shape (§3) but simpler still: there is no per-request
+router, no health/complexity-scored auto-selection, and no capability-ranked
+second-opinion mechanism comparable to Claude Code's advisor tool -- model selection is
+a session-level choice the user or a launch flag makes explicitly, once, with no
+documented mechanism that silently re-routes a given prompt to a different model based
+on its content or the provider's current health. `settings.json`'s `defaultProvider`/
+`defaultModel`/`defaultThinkingLevel` keys set the session's starting point; `--provider`/
+`--model`/`--api-key`/`--thinking` override them per launch; `/model` (or `Ctrl+L`)
+switches mid-session, firing the `model_select` extension event documented in
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §5 (not repeated
+here) with the previous model, the new model, and a `source` field distinguishing
+`"set"`/`"cycle"`/`"restore"` as the reason the switch happened. `--models
+"claude-*,gpt-4o"` (or the `/scoped-models` command) additionally narrows which models
+`Ctrl+P`/`Shift+Ctrl+P` cycles through interactively, a lightweight quick-swap mechanism
+with no equivalent named on the pages fetched for the other harnesses in this book.
+
+### 4.2 Model addressing and thinking-level shorthand
+
+`--model <pattern>` accepts either a bare pattern/ID or a `provider/id` pair (e.g.
+`openai/gpt-4o`), and additionally accepts a colon-suffixed thinking-level shorthand --
+`--model sonnet:high` sets both the model and its reasoning effort in one flag, one
+token cheaper than Claude Code's separate model-and-effort-level configuration surface
+(cross-referenced, not repeated, against [caching.md](caching.md)/
+[llm-api-contract.md](llm-api-contract.md) for the thinking/reasoning content type
+itself). Thinking levels are a seven-value scale -- `off`, `minimal`, `low`, `medium`,
+`high`, `xhigh`, `max` -- configurable per-level via a `thinkingBudgets` settings object
+for providers that accept a numeric token budget (Anthropic, Google, and Bedrock
+natively; OpenAI-compatible models only when `compat.thinkingTokenBudgetField`/
+`supportsThinkingTokenBudget` is set on that provider's `models.json` entry, per
+[llm-api-contract.md](llm-api-contract.md)'s own pi section on the `compat` override
+surface). `Shift+Tab` cycles the thinking level interactively, independent of the model
+switch itself.
+
+### 4.3 Custom models and providers as flat configuration, not a routing seam
+
+`models.json` (`~/.pi/agent/models.json`) is pi's documented mechanism for adding
+Ollama/vLLM/LM Studio/any OpenAI-, Anthropic-, or Google-shaped endpoint as a fully
+first-class, `/model`-selectable entry -- reloaded live on every `/model` open, no
+restart required. Each entry declares its own `api` (one of the four wire families
+[llm-api-contract.md](llm-api-contract.md) §3.5 catalogues), `baseUrl`, `apiKey`
+resolution, and optional `cost`/`contextWindow`/`maxTokens` metadata used for the
+footer's live cost/context display. This is architecturally a **flat namespace of
+independently addressable models**, not a routing table that picks among them
+automatically -- there is no equivalent of Claude Code's `fallbackModel` chain or
+Copilot CLI's Auto-model health router that would pick a `models.json` entry on the
+user's behalf; every model in the catalog, built-in or custom, is reached only by an
+explicit `/model` selection or a matching `--models` cycle pattern.
+
+### 4.4 Bash-visible model identity, and a documented naming caveat
+
+`PI_PROVIDER` and `PI_MODEL` (`environment-variables.md`) are injected into every
+LLM-callable `bash` tool invocation, resolved fresh at the start of each command --
+switching models or thinking level mid-session therefore affects the *next* bash
+command without a restart. The docs carry a precise, worth-quoting caveat against a
+subtle failure mode: "`PI_PROVIDER` and `PI_MODEL` identify the selected Pi model, not a
+different upstream model that a router may choose internally" -- i.e. even in a
+deployment where the *provider itself* runs its own internal routing (an OpenRouter or
+Cloudflare AI Gateway endpoint that silently serves a different underlying model than
+requested), these two variables report what pi asked for, not necessarily what actually
+answered. `PI_REASONING_LEVEL` reports the current effective thinking level the same
+way. The docs recommend inspecting these variables directly, rather than asking the
+model to introspect its own identity from the system prompt, when a script or a user
+genuinely needs to know which model is live.
+
+### 4.5 No documented model-selection failure fallback
+
+No page fetched this session for pi describes an availability-triggered fallback chain
+comparable to Claude Code's `fallbackModel` (§1) or a content-triggered safety-classifier
+reroute -- a model that becomes unavailable (retired, rate-limited, misconfigured)
+surfaces as an ordinary stream `error` event and a `stopReason: "error"` terminal message
+(per [llm-api-contract.md](llm-api-contract.md) §3.5), left to pi's separate
+retry-with-backoff mechanism (see [retries.md](retries.md)'s own pi section) or to the
+user re-issuing `/model` by hand, not to an automatic model-level substitution. This
+places pi alongside OpenCode in this page's own Synthesis table below -- both harnesses
+document no automatic model-fallback mechanism -- though for a different reason than
+OpenCode's own gap: OpenCode's model-routing surface is otherwise the most elaborate of
+the three original harnesses examined (a `defaultModel()` resolution algorithm, a
+dedicated small-model carve-out), while pi's own surface is deliberately flat and
+explicit end to end, consistent with the minimal-core design philosophy
+[permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5.1 and
+[built-in-tools.md](built-in-tools.md)'s own pi section document from pi's creator
+directly.
+
+---
+
+## 5. Synthesis
 
 ```mermaid
 flowchart LR
@@ -486,15 +584,23 @@ flowchart LR
         OC3["small_model + hidden title agent:\ngetSmallModel() family-priority search,\nprovider-specific overrides"]
         OC4["No documented model-switching\nfailure fallback (see retries.md)"]
     end
+    subgraph PI["pi"]
+        direction TB
+        PI1["Main model: /model > --model/--provider\n> settings.json defaultModel/defaultProvider"]
+        PI2["No per-request auto-router, no subagent\nmodel-override field (pi has no subagents)"]
+        PI3["models.json: flat, explicit third-party/local\nmodel catalog -- never auto-selected"]
+        PI4["No documented failure fallback --\nsame retry-with-backoff path as any request"]
+    end
 ```
 
-| Routing dimension | Claude Code | Copilot CLI | OpenCode |
-|---|---|---|---|
-| Main-loop model selection | `/model` > `--model`/`ANTHROPIC_MODEL` > settings `model`, plus org default and `availableModels` allowlist layers | Custom agent definition > `--model` > `COPILOT_MODEL` > settings.json `model` > built-in default | `model` config key > last-used (`model.json`) > first provider's first model by family priority |
-| Auto/classification-based routing for the main loop itself | `opusplan` phase-keyed switch (plan vs. execute); no per-message task-complexity router for the main loop | Auto model selection: real-time health + task-complexity routing across four named models, GA on CLI | None found for the main loop; `small_model` scoped only to the auxiliary title agent |
-| Per-subtask/subagent override | `model` frontmatter, resolved `env > invocation > frontmatter > inherit`; built-in subagents carry fixed model assignments | `model` frontmatter field (string only; array support requested in open issues #2133/#3070) | `model` config per agent; subagent inherits invoking primary agent's model unless overridden |
-| Second-model consultation mid-task | Advisor tool: capability-ranked pairing table, server-side, Claude decides timing | None found | None found |
-| Availability/content-triggered fallback to a different model | `fallbackModel` (up to 3, availability-triggered, retried once per turn) + automatic safety-classifier fallback (content-triggered) | `continueOnAutoMode` reroutes to Auto on rate limit (see retries.md) | None found (see retries.md's same-model retry architecture instead) |
+| Routing dimension | Claude Code | Copilot CLI | OpenCode | pi |
+|---|---|---|---|---|
+| Main-loop model selection | `/model` > `--model`/`ANTHROPIC_MODEL` > settings `model`, plus org default and `availableModels` allowlist layers | Custom agent definition > `--model` > `COPILOT_MODEL` > settings.json `model` > built-in default | `model` config key > last-used (`model.json`) > first provider's first model by family priority | `/model` (mid-session) > `--model`/`--provider` (launch) > `settings.json`'s `defaultModel`/`defaultProvider` |
+| Auto/classification-based routing for the main loop itself | `opusplan` phase-keyed switch (plan vs. execute); no per-message task-complexity router for the main loop | Auto model selection: real-time health + task-complexity routing across four named models, GA on CLI | None found for the main loop; `small_model` scoped only to the auxiliary title agent | None documented -- model selection is always an explicit user/flag choice, never content- or health-routed |
+| Per-subtask/subagent override | `model` frontmatter, resolved `env > invocation > frontmatter > inherit`; built-in subagents carry fixed model assignments | `model` frontmatter field (string only; array support requested in open issues #2133/#3070) | `model` config per agent; subagent inherits invoking primary agent's model unless overridden | Not applicable -- pi ships no built-in subagent concept (see [orchestration.md](orchestration.md)'s own pi section) |
+| Second-model consultation mid-task | Advisor tool: capability-ranked pairing table, server-side, Claude decides timing | None found | None found | None found -- `session_before_compact`'s documented custom-model-for-summarization pattern ([context-compression.md](context-compression.md) §4.4) is the closest analog, and is extension-authored, not a built-in feature |
+| Availability/content-triggered fallback to a different model | `fallbackModel` (up to 3, availability-triggered, retried once per turn) + automatic safety-classifier fallback (content-triggered) | `continueOnAutoMode` reroutes to Auto on rate limit (see retries.md) | None found (see retries.md's same-model retry architecture instead) | None found -- an unavailable model surfaces as an ordinary stream error, left to retry-with-backoff or a manual `/model` switch |
+| Quick-swap/cycling mechanism | Not found as a distinct feature from `/model` itself | Not found | Not found | `--models "pattern,pattern"` / `/scoped-models` narrows a `Ctrl+P`/`Shift+Ctrl+P` interactive cycling list -- no equivalent named for the other three harnesses |
 
 The throughline: Claude Code's design spends the most configuration surface on
 *precedence and overrides within one model family*, plus two narrow, purpose-built
@@ -507,7 +613,18 @@ explicit per-agent `model` config plus one auxiliary-task cheap-model carve-out)
 with a materially different default-resolution algorithm (recency-based fallback) and,
 uniquely among the three, a fully source-readable history of a real routing bug -- an
 unconditional fallback to the vendor's own hosted model -- that the `dev`-branch source
-now appears to no longer exhibit.
+now appears to no longer exhibit. pi is the clearest data point in this book for the
+opposite design pole from Copilot CLI's Auto model selection: where Copilot CLI treats
+per-request routing as a headline feature, pi treats model selection as something the
+operator alone decides, once, with no hidden substitution at any layer -- consistent
+with the same minimal-core, full-visibility philosophy this book has already documented
+for pi's permission model ([permissions-and-sandboxing.md](permissions-and-sandboxing.md)
+§5) and its tool surface. A harness comparing "how much should the system decide about
+which model answers a given request, versus leaving that entirely to the operator" now
+has four genuinely different real-world answers to look at, not three: Copilot CLI's
+full automatic router, Claude Code's rich-but-still-manual precedence stack with narrow
+automatic carve-outs, OpenCode's per-agent config with one auxiliary carve-out, and pi's
+fully manual, no-carve-outs-at-all baseline.
 
 ## Sources
 
@@ -579,6 +696,27 @@ throughout this section, since it is not a stable release tag):**
   the reported unconditional-opencode-provider-fallback bug at that commit, compared
   directly against the current `dev`-branch HEAD read in §3.3, where that code path is
   no longer present.
+
+**pi (authoritative for its own documented behavior; fetched 20 August 2026 from
+`github.com/earendil-works/pi`, `main` branch):**
+- `packages/coding-agent/docs/models.md` (via `gh api
+  repos/earendil-works/pi/contents/packages/coding-agent/docs/models.md`) -- §4.3's
+  `models.json` custom-model/provider config surface, the four `api` discriminators, and
+  the live-reload-on-`/model`-open behavior.
+- `packages/coding-agent/docs/settings.md` (fetched the same way) -- §4.1's
+  `defaultProvider`/`defaultModel`/`defaultThinkingLevel` settings keys and §4.2's
+  `thinkingBudgets` object and its per-provider applicability.
+- `packages/coding-agent/docs/usage.md` (fetched the same way) -- §4.1's `--provider`/
+  `--model`/`--models`/`--list-models` CLI flags and `/model`/`/scoped-models` commands,
+  and §4.2's `--model sonnet:high`-style thinking-level shorthand and the seven-value
+  thinking-level scale.
+- `packages/coding-agent/docs/environment-variables.md` (fetched the same way) -- §4.4's
+  `PI_PROVIDER`/`PI_MODEL`/`PI_REASONING_LEVEL` bash-tool session variables and the
+  "identifies the selected Pi model, not a different upstream model a router may choose
+  internally" caveat, quoted in full.
+- `packages/ai/README.md` (cross-referenced, already fully cited in
+  [The LLM API contract](llm-api-contract.md) §3.5's own Sources) -- §4.5's
+  stream-error-not-automatic-fallback behavior, not re-derived here.
 
 **Cross-referenced, not re-derived, pages in this book:** [fan-out.md](fan-out.md) and
 [orchestration.md](orchestration.md) (where a subagent's `model` field is mentioned only

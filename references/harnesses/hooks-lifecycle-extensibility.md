@@ -17,23 +17,24 @@ where the configuration lives, and a changelog-traced history of how
 each system got to its current shape. Hooks (Claude Code's own term),
 hooks (Copilot CLI's own term, deliberately compatible with Claude
 Code's), plugins (OpenCode's umbrella term, of which lifecycle hooks
-are one part), and plugins again (DeepSeek Harness's own term, mounted
+are one part), plugins again (DeepSeek Harness's own term, mounted
 into a shared Cordis context rather than loaded as an OpenCode-style
-module -- §4 below) are, across all four products, **the mechanism a
-harness exposes for user-side code to sit directly inside the control
-flow of the agent loop** -- not alongside it the way an MCP tool adds a
-capability the model chooses to invoke, and not as inert content the
-way a skill or a memory file is. A hook runs whether or not the model
-"wants" it to, at a point the harness itself defines, and it can, in
-every harness covered here, change what happens next: deny a tool
-call, rewrite its arguments, inject text into the conversation, or
+module -- §4 below), and extensions (pi's own term, in-process
+TypeScript modules -- §5 below) are, across all five products, **the
+mechanism a harness exposes for user-side code to sit directly inside
+the control flow of the agent loop** -- not alongside it the way an MCP
+tool adds a capability the model chooses to invoke, and not as inert
+content the way a skill or a memory file is. A hook runs whether or not
+the model "wants" it to, at a point the harness itself defines, and it
+can, in every harness covered here, change what happens next: deny a
+tool call, rewrite its arguments, inject text into the conversation, or
 force another turn.
 
 Every claim below is tagged VERIFIED (fetched this session, source
 named) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot
-CLI, OpenCode, and DeepSeek Harness are four separate products; a hook
-event, exit-code convention, or configuration key confirmed for one is
-never assumed to hold for another without its own citation -- this
+CLI, OpenCode, DeepSeek Harness, and pi are five separate products; a
+hook event, exit-code convention, or configuration key confirmed for one
+is never assumed to hold for another without its own citation -- this
 matters more than usual on this topic because Copilot CLI's own hooks
 reference *explicitly* documents partial format-compatibility with
 Claude Code's hooks (shared PascalCase event names, a Claude-tool-name
@@ -958,6 +959,207 @@ blended into the VERIFIED material in §1 or §2.
 
 ---
 
+## 5. pi
+
+Primary sources, all VERIFIED, fetched 20 August 2026 directly from
+`github.com/earendil-works/pi`'s `packages/coding-agent/docs/extensions.md`, in full
+(the single largest doc page in pi's own docs tree by a wide margin), cross-referenced
+against `README.md`'s framing of extensions as pi's primary customization surface and
+`security.md`'s statement that "extensions run with your full system permissions and can
+execute arbitrary code" (already covered from the enforcement-architecture angle in
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md) §5.1, not repeated
+here). pi calls its mechanism **extensions**, its own fourth name for the same underlying
+concept this page tracks across four other products.
+
+### 5.1 In-process TypeScript modules, not a subprocess contract -- architecturally closer to OpenCode's and DeepSeek's plugins than to Claude Code's or Copilot CLI's hooks
+
+An extension is a TypeScript file (loaded via [jiti](https://github.com/unjs/jiti), so no
+separate compilation step is required) exporting a default factory function that receives
+an `ExtensionAPI` handle and calls `pi.on(eventName, handler)` to subscribe, alongside
+`pi.registerTool()`, `pi.registerCommand()`, `pi.registerShortcut()`, and
+`pi.registerFlag()` to add new capabilities. This puts pi squarely in the **in-process**
+half of this page's own §Synthesis split rather than the process-boundary half: like
+OpenCode's plugin functions and DeepSeek's Cordis registrations, a pi extension runs
+inside the same runtime as the harness itself, communicates a blocking decision by
+returning a plain object (`{ block: true, reason?, terminate? }`) rather than via an exit
+code, and can mutate event payloads in place rather than writing JSON to a pipe. There is
+no equivalent anywhere in pi's docs of Claude Code's five handler types (command/http/
+mcp_tool/prompt/agent, §1) or Copilot CLI's three (command/http/prompt, §2) -- pi has
+exactly one handler shape, a same-process TypeScript function, for every event.
+Extensions are auto-discovered from `~/.pi/agent/extensions/` (global) and
+`.pi/extensions/` (project-local, loaded only after project trust resolves, per
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md) §5.2), plus
+additional paths named in `settings.json`'s `extensions` array or passed via repeatable
+`-e`/`--extension` CLI flags; auto-discovered extensions (not ones loaded only via `-e`)
+can be hot-reloaded with `/reload` without restarting the process -- a live-reload
+capability this page's own §4.4 speculates the two closed harnesses might need some
+internal equivalent of, offered here as a fifth concrete illustration alongside
+DeepSeek's disposer pattern, still held to the same BEST-CURRENT-UNDERSTANDING standard
+for what Claude Code/Copilot CLI do internally.
+
+### 5.2 The fullest documented lifecycle-event diagram of any harness in this book
+
+`extensions.md` ships its own ASCII lifecycle diagram covering startup, every prompt
+cycle, and every session-management command -- reproduced here as a Mermaid flowchart
+because it is unusually complete relative to what this book has found documented
+elsewhere (Claude Code's and Copilot CLI's own event catalogues are each stated as flat
+lists with cadence notes, per §1.2/§2.2 above, not as a single connected control-flow
+diagram the way pi's docs present it):
+
+```mermaid
+flowchart TD
+    Start["pi starts"] --> PT["project_trust\n(user/global + CLI extensions only)"]
+    PT --> SS1["session_start {reason: startup}"]
+    SS1 --> RD1["resources_discover {reason: startup}"]
+    RD1 --> Prompt["user sends prompt"]
+    Prompt --> Input["input event\n(can intercept/transform/handle)"]
+    Input --> Skill["skill/template expansion,\nif input didn't handle it"]
+    Skill --> BAS["before_agent_start\n(inject message, modify system prompt)"]
+    BAS --> AS["agent_start"]
+    AS --> MSE["message_start / message_update / message_end"]
+    MSE --> TS["turn_start"]
+    TS --> Ctx["context event (modify messages)"]
+    Ctx --> BPH["before_provider_headers"]
+    BPH --> BPR["before_provider_request"]
+    BPR --> APR["after_provider_response"]
+    APR --> TEStart["tool_execution_start"]
+    TEStart --> TC["tool_call (CAN BLOCK, can mutate input)"]
+    TC --> TEUpdate["tool_execution_update"]
+    TEUpdate --> TR["tool_result (can modify)"]
+    TR --> TEEnd["tool_execution_end"]
+    TEEnd --> TE["turn_end"]
+    TE -->|"more tool calls"| TS
+    TE -->|"no more tool calls"| AE["agent_end"]
+    AE --> Settled["agent_settled\n(no retry/compaction/follow-up left)"]
+    Settled -->|"next prompt"| Prompt
+```
+
+Session-management commands each fire their own named sub-sequence, cross-referenced
+rather than re-diagrammed here since they are already covered from the angle each
+belongs to: `/new`/`/resume` fire `session_before_switch` (can cancel) then
+`session_shutdown` then a fresh `session_start`/`resources_discover` pair;
+`/fork`/`/clone` fire the analogous `session_before_fork`/`session_shutdown`/
+`session_start {reason: "fork"}` sequence (see
+[session-persistence.md](session-persistence.md) §5.3 for what `/fork` and `/clone`
+themselves do to the underlying files); `/compact` and `/tree` fire
+`session_before_compact`/`session_compact`/`session_compact_failed` and
+`session_before_tree`/`session_tree` respectively (see
+[context-compression.md](context-compression.md) §4.4 for the full compaction-hook
+contract, not repeated here); `/model`/thinking-level changes fire `model_select`/
+`thinking_level_select`; and process exit (`Ctrl+C`/`Ctrl+D`/`SIGHUP`/`SIGTERM`) fires a
+final `session_shutdown`.
+
+### 5.3 The `tool_call` event: mutate-in-place semantics with an explicit no-revalidation guarantee
+
+`tool_call` is pi's direct analog of Claude Code's `PreToolUse`, Copilot CLI's
+`preToolUse`, and OpenCode's `tool.execute.before` -- fired after `tool_execution_start`,
+before the tool actually runs, and documented as the one event in pi's whole catalogue
+that **can block**. Its `event.input` field is explicitly mutable: "Mutate it in place to
+patch tool arguments before execution," with four stated behavior guarantees worth
+naming precisely because together they describe a specific, deliberate design choice
+rather than an incidental implementation detail -- mutations to `event.input` affect the
+actual tool execution; later `tool_call` handlers (extensions load in a fixed order, and
+each sees the cumulative effect of every earlier handler) see mutations made by earlier
+ones; **no re-validation is performed after your mutation** (an extension can widen or
+narrow a tool call's arguments past what the tool's own schema would have accepted on
+the model's original call, and pi trusts that mutation without re-checking it against
+the schema); and the return value controls blocking via
+`{ block: true, reason?: string, terminate?: boolean }`, where `terminate` only takes
+effect for the whole batch if *every* finalized result in a parallel-tool-call batch is
+itself terminating -- a mixed batch (one tool blocked-and-terminating, siblings
+succeeding normally) continues rather than aborting the turn. A companion
+`isToolCallEventType()` type guard lets an extension narrow `event.input` to a specific
+tool's real parameter shape (built-in tools need no type parameters; custom tools pass
+their own exported input type), the practical mechanism by which an extension author gets
+compile-time-checked access to, say, a `bash` call's `command`/`timeout` fields rather
+than an untyped `Record<string, any>`.
+
+`tool_result`, fired after execution and before `tool_execution_end`, is the
+mirror-image event and **can modify the result**; its handlers explicitly "chain like
+middleware" -- run in extension load order, each seeing the latest result after every
+earlier handler's changes, the same layered-mutation discipline `tool_call` uses on the
+way in. In pi's default **parallel** tool-execution mode, the docs are precise about
+event-ordering guarantees that matter for anyone writing an extension expecting a
+specific sequence: `tool_execution_start` fires in assistant source order during a
+sequential preflight phase (even though execution itself then proceeds concurrently),
+`tool_execution_update` events may interleave arbitrarily across concurrently-running
+tools, `tool_execution_end` fires in *completion* order rather than source order, and the
+final `toolResult` message events that actually land in the session transcript are
+nonetheless still emitted in assistant source order regardless of which tool finished
+first -- so an extension watching `tool_execution_end` sees a different ordering than one
+reading the persisted session transcript afterward, a subtlety with no stated equivalent
+in Claude Code's, Copilot CLI's, or OpenCode's own documented event catalogues.
+
+### 5.4 `before_agent_start`: the deepest documented system-prompt introspection hook in this book
+
+`before_agent_start` fires once per user prompt, before the agent loop starts, and can
+both inject a persistent message into the session and modify the system prompt for that
+turn. What makes it worth calling out specifically against this page's other three
+harnesses is the depth of structured introspection it hands the extension: alongside the
+raw prompt text and any attached images, the event carries `systemPromptOptions` -- "the
+same structured data Pi uses to build the system prompt," including the currently
+selected tools, one-line tool-description snippets, custom guideline bullets, any
+`--append-system-prompt` text, the working directory, every loaded `AGENTS.md`/context
+file, and every loaded skill -- explicitly so an extension can make "deep, informed
+changes to the system prompt while respecting user-provided configuration" rather than
+having to re-discover or re-parse any of that state itself. Multiple `before_agent_start`
+handlers chain: each sees the system prompt as modified by every handler that ran before
+it (`event.systemPrompt` and `ctx.getSystemPrompt()` both reflect the chained value at
+that point in the sequence), and a later handler's own returned `systemPrompt` further
+extends the chain rather than replacing it outright. No other harness's documented hook
+catalogue in this page exposes this much structured, pre-parsed insight into its own
+prompt-construction pipeline to an extension point -- Claude Code's and Copilot CLI's
+hooks operate on already-serialized transcript/tool-call data via JSON on stdin, and
+OpenCode's plugin hooks (§3.2) do not name an equivalent system-prompt-introspection
+object in this book's own prior source read of its `Hooks` interface.
+
+### 5.5 Provider-request-layer events: a fourth vantage point on the wire
+
+`before_provider_headers`, `before_provider_request`, and `after_provider_response` sit
+at a lower layer than any other harness's hook catalogue in this book reaches
+explicitly: they fire around the actual outbound HTTP call to the model provider, after
+pi's own request-building logic has already run. `before_provider_headers` lets an
+extension add, override, or delete (`null` value) individual request headers -- the
+documented use case is attaching a gateway-tracing session ID or stripping a
+tracking header pi itself adds -- and fires once per provider request, with retries
+reusing the same headers rather than re-firing the hook (a detail worth cross-referencing
+against [retries.md](retries.md)'s own pi section, which this page does not repeat).
+`before_provider_request` exposes the fully-serialized provider payload immediately
+before it is sent and lets a handler replace it outright (documented primarily as a
+debugging aid for inspecting provider serialization and cache behavior, explicitly noted
+as *not* reflected back through `ctx.getSystemPrompt()`, which reports pi's own system
+prompt string rather than the final wire-level payload). `after_provider_response` fires
+after the HTTP response arrives and before its stream body is consumed, exposing the raw
+status code and normalized headers -- the documented example is detecting a 429 and its
+`retry-after` header directly, one layer below where any tool- or message-level event in
+pi's own catalogue could observe the same signal. None of Claude Code's, Copilot CLI's,
+or OpenCode's own hook catalogues, as documented on the pages this book has fetched for
+each, name an equivalent request/response-header-level interception point; this is a
+genuinely distinctive layer pi's extension system reaches that this page has not found
+elsewhere.
+
+### 5.6 Everything else this page's other sections would ask about, briefly
+
+For completeness against this page's own recurring structure -- what other harnesses'
+sections name as "config location," "decision channel," and "handler types" -- pi's
+answers are: **config location** is the extension-file location itself (§5.1), not a
+separate hook-registration config key the way Claude Code's `hooks` settings key or
+OpenCode's `plugin` array name a location distinct from the handler code; **decision
+channel** is a returned plain object or an in-place mutation, never an exit code or HTTP
+response, consistent with §5.1's in-process framing; and **handler types** collapses to
+one (a same-process TypeScript function) rather than the multi-type menus Claude Code
+and Copilot CLI each expose. `project_trust` (§Startup Events in pi's own docs) is the
+one event with a narrower participant list than the rest -- only user/global and CLI `-e`
+extensions run before trust is resolved, project-local extensions are excluded by
+construction from ever influencing the trust decision that would load them (cross-
+referenced against [Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§5.2's fuller treatment of project trust itself, not repeated here). `resources_discover`
+lets an extension contribute additional skill/prompt/theme search paths at startup or on
+`/reload`, the mechanism by which an extension can, for instance, point pi at a shared
+skills directory without the user hand-editing `settings.json`.
+
+---
+
 ## Synthesis
 
 ```mermaid
@@ -986,9 +1188,15 @@ flowchart TB
         DS3["Confirmed: cordis/dynamic-package,\ncordis/dynamic-retract, cordis/request-run\n(plugin hot-load/unload layer)"]
         DS4["NOT confirmed: a dedicated tool-execution\nhook catalogue -- left UNCONFIRMED, not absent"]
     end
+    subgraph PI["pi -- 'extensions'"]
+        PI1["Handler = one shape only:\na same-process TypeScript function via pi.on()"]
+        PI2["Decision channel: return {block, reason?, terminate?}\nor mutate event.input/result in place -- no exit code"]
+        PI3["~25 named events across startup/session/agent/model/tool\ncadences, incl. before_provider_headers/request/response --\na wire-level vantage no other harness's catalogue reaches"]
+        PI4["Config: extension FILE location itself\n(~/.pi/agent/extensions/, .pi/extensions/, settings.json,\n-e flag) -- no separate hook-registration key"]
+    end
 ```
 
-All four products converge on the same underlying need -- a way for
+All five products converge on the same underlying need -- a way for
 user-authored code to sit inside the control flow of the loop, not just
 add a capability the model can choose to call -- but diverge sharply on
 *how* a decision gets communicated back to the harness. Claude Code and
@@ -998,31 +1206,50 @@ optional JSON on stdout, with Copilot's own documentation making the
 Claude-format compatibility deliberate rather than incidental (shared
 PascalCase event names, a literal tool-name mapping table, reading
 `.claude/settings.json` hook entries directly, an identical
-8-consecutive-block runaway-loop cap). OpenCode and DeepSeek Harness
-instead keep the contract entirely **in-process**: a plugin is
-JavaScript/TypeScript loaded directly into the same runtime, and a
-decision is communicated either by mutating a plain object passed by
-reference or by throwing a language-level exception (OpenCode) or by
-registering/unregistering an effect against a shared context object
-(DeepSeek's Cordis) -- there is no subprocess boundary, no exit code,
-and therefore no equivalent of Claude Code's or Copilot's
-fail-open-on-timeout safeguard, because there is no separate process to
-time out in the first place (this last point is this page's own
-reasoned inference from the mechanism's shape, not a fact stated by
-any of the four sources directly -- **BEST CURRENT UNDERSTANDING,
-UNCONFIRMED**). The two process-boundary harnesses also converge, more
-specifically than the general framing suggests, on treating **tool-call
-denial as the one decision worth a fail-closed default**: Claude
-Code's docs stress that only exit code 2 blocks anything and that a
-rules-level deny always outranks a hook's own softer verdict, while
-Copilot's reference states the fail-closed/fail-open asymmetry
-explicitly by event, singling out `preToolUse` as the one place where
-even a hook *crashing* still denies the call. OpenCode's in-process
-model sidesteps the question of a crashing hook denying by default
-entirely, since a plugin function throwing an uncaught error is, in a
-single Node/Bun process, closer to a hard failure of the whole session
-than a contained, recoverable subprocess exit -- again, reasoned rather
-than directly sourced.
+8-consecutive-block runaway-loop cap). OpenCode, DeepSeek Harness, and
+pi instead keep the contract entirely **in-process**: a plugin or
+extension is JavaScript/TypeScript loaded directly into the same
+runtime, and a decision is communicated either by mutating a plain
+object passed by reference or by throwing a language-level exception
+(OpenCode), by registering/unregistering an effect against a shared
+context object (DeepSeek's Cordis), or by returning a small decision
+object alongside direct in-place mutation of the event's own payload
+(pi's `{ block, reason?, terminate? }` on `tool_call`, §5.3) -- there is
+no subprocess boundary, no exit code, and therefore no equivalent of
+Claude Code's or Copilot's fail-open-on-timeout safeguard, because there
+is no separate process to time out in the first place (this last point
+is this page's own reasoned inference from the mechanism's shape, not a
+fact stated by any of the five sources directly -- **BEST CURRENT
+UNDERSTANDING, UNCONFIRMED**, and pi's own docs corroborate the shape of
+that inference indirectly: nothing in `extensions.md` describes a
+timeout or a fail-open path for a hung extension handler, consistent
+with there being no subprocess to time out). The two process-boundary
+harnesses also converge, more specifically than the general framing
+suggests, on treating **tool-call denial as the one decision worth a
+fail-closed default**: Claude Code's docs stress that only exit code 2
+blocks anything and that a rules-level deny always outranks a hook's
+own softer verdict, while Copilot's reference states the fail-closed/
+fail-open asymmetry explicitly by event, singling out `preToolUse` as
+the one place where even a hook *crashing* still denies the call.
+OpenCode's, DeepSeek's, and pi's in-process models each sidestep the
+question of a crashing hook denying by default entirely, since a plugin
+or extension function throwing an uncaught error is, in a single
+Node/Bun process, closer to a hard failure of the whole session than a
+contained, recoverable subprocess exit -- again, reasoned rather than
+directly sourced for all three in-process harnesses alike.
+
+**pi's own contribution to this convergence is a genuinely deeper wire-level vantage
+point than any of the other four harnesses' documented catalogues reach.** Claude Code's,
+Copilot CLI's, and OpenCode's own event catalogues (§1-§3) all operate at or above the
+level of an already-assembled tool call, message, or session-lifecycle transition; none
+of their documented hook points, as fetched this session, exposes the outbound HTTP
+request/response to the model provider itself as a distinct interception layer. pi's
+`before_provider_headers`/`before_provider_request`/`after_provider_response` triad
+(§5.5) reaches one layer further down the stack than any of them -- closer in spirit to
+[The LLM API contract](llm-api-contract.md)'s own subject matter than to a conversational
+lifecycle event, and a genuinely novel data point for where a harness might choose to
+expose a control-flow seam: not just "before/after this tool call" or "before/after this
+turn," but "before/after this literal HTTP exchange with the model provider."
 
 **A third convergence, DeepSeek Harness's own contribution, on
 reversible registration as an explicit design principle rather than an
@@ -1051,7 +1278,8 @@ place).
 
 ## Sources
 
-All fetched fresh this session (2026-08-01) unless noted otherwise.
+All fetched fresh this session (2026-08-01) unless noted otherwise (§4's DeepSeek
+Harness section and §5's pi section were both added 20 August 2026).
 
 **Claude Code (authoritative for its own documented behavior only; this
 repo ships no implementation source):**
@@ -1144,3 +1372,24 @@ own text):**
   (`cordis/dynamic-package`/`cordis/dynamic-retract`/`cordis/request-run`)
   were confirmed, with a dedicated tool-execution hook surface left
   UNCONFIRMED rather than assumed absent.
+
+**pi (authoritative for its own documented behavior; fetched 20 August 2026 from
+`github.com/earendil-works/pi`, `main` branch):**
+- `packages/coding-agent/docs/extensions.md` (via `gh api
+  repos/earendil-works/pi/contents/packages/coding-agent/docs/extensions.md`, in full --
+  the single largest page fetched from pi's docs this session) -- the primary source for
+  all of §5: the extension factory/`ExtensionAPI` shape and jiti-based loading (§5.1),
+  the full lifecycle-overview diagram covering startup/prompt/session-command sequences
+  (§5.2), the `tool_call`/`tool_result` mutate-in-place and blocking contract including
+  the parallel-tool-execution event-ordering guarantees (§5.3), `before_agent_start`'s
+  `systemPromptOptions` introspection object and its handler-chaining semantics (§5.4),
+  the `before_provider_headers`/`before_provider_request`/`after_provider_response`
+  provider-request-layer events (§5.5), and the `project_trust`/`resources_discover`
+  startup-event participant-list and search-path-contribution mechanics (§5.6).
+- `README.md` -- extensions named as pi's primary customization surface, cross-referenced
+  against the extension-locations security warning ("Extensions run with your full
+  system permissions and can execute arbitrary code").
+- `packages/coding-agent/docs/security.md` (cross-referenced, already fully cited in
+  [Permissions & sandboxing architecture](permissions-and-sandboxing.md) §5's own
+  Sources) -- the extension-permissions statement quoted in §5's own opening paragraph,
+  not re-derived here.

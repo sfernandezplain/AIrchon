@@ -1,4 +1,4 @@
-# Permissions & sandboxing architecture -- Claude Code, GitHub Copilot CLI, OpenCode, and DeepSeek Harness
+# Permissions & sandboxing architecture -- Claude Code, GitHub Copilot CLI, OpenCode, DeepSeek Harness, and pi
 
 **Scope note.** [Configuration](configuration.md) already covers the permission-rule
 *schema* -- where `permissions.allow`/`permissions.deny` live, how they merge across
@@ -15,9 +15,10 @@ sandboxing vs. no OS enforcement at all), and where each harness's own documenta
 source name a real, acknowledged escape hatch or residual risk in that architecture.
 
 Every claim is tagged VERIFIED (fetched this session from a named source) or BEST
-CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, and DeepSeek
-Harness are four separate products from four separate organizations -- a mechanism
-confirmed for one is never assumed to hold for another without its own citation.
+CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, DeepSeek
+Harness, and pi (Earendil Works) are five separate products from five separate
+organizations/authors -- a mechanism confirmed for one is never assumed to hold for
+another without its own citation.
 
 ---
 
@@ -735,7 +736,164 @@ illustration of one way such a factoring could work.
 
 ---
 
-## 5. Synthesis
+## 5. pi
+
+Sources for this section: VERIFIED, fetched 20 August 2026 directly from
+`github.com/earendil-works/pi` (`main` branch, README) and its `packages/coding-agent/docs/`
+tree -- `security.md` and `containerization.md` in full -- plus the project's own
+first-party design-rationale blog post, Mario Zechner's
+`mariozechner.at/posts/2025-11-30-pi-coding-agent/`, fetched this session and treated as
+an authoritative statement of intent from pi's own creator, not a third-party account.
+
+### 5.1 No permission system and no sandbox, by explicit design
+
+Where Claude Code, Copilot CLI, and DeepSeek Harness each layer a rule engine
+underneath an OS-level sandbox (§1-§2, §4), and OpenCode ships the rule engine without
+the sandbox (§3), pi occupies a fifth, more extreme point on the same spectrum: it ships
+**neither** a permission-rule engine **nor** an OS-level sandbox, and says so in its own
+docs without qualification. `security.md` states the operating premise directly: "Pi is
+a local coding agent. It runs with the permissions of the user account that starts it,
+and it treats files writable by that user as inside the same local trust boundary."
+There is no allow/ask/deny schema anywhere in pi's own configuration surface comparable
+to Claude Code's `permissions.allow`/`deny`, Copilot CLI's `--allow-tool`/`--deny-tool`,
+OpenCode's `permission` object, or DeepSeek's `approval/policy` knob (cross-referenced
+against [Configuration](configuration.md) and [Built-in tools](built-in-tools.md), which
+this page's own opening scope note already distinguishes from the enforcement question
+this page covers) -- there is simply no per-call approval step for pi's built-in tools to
+gate in the first place. `security.md`'s own heading states the absence as a design
+choice rather than an oversight: "No Built-in Sandbox." Built-in tools "read files, write
+files, edit files, and run shell commands with the permissions of the pi process," and
+the docs give the reasoning directly: "A partial in-process sandbox would be easy to
+misunderstand as a security boundary while still depending on the host shell, filesystem,
+package managers, credentials, and extension code. Real isolation needs to come from the
+operating system or a virtualization/container boundary." Extensions -- pi's one
+customization surface with code-execution power ([Hooks and lifecycle
+extensibility](hooks-lifecycle-extensibility.md) §5) -- "run with the same permissions"
+as the built-in tools; there is no separate, more restrictive execution context for
+third-party extension code.
+
+The creator's own blog post frames this as a deliberate rejection of "security theatre,"
+not a resource-constrained gap: pi runs in what Zechner calls "full YOLO mode," on the
+argument that once an agent can read, write, and execute code, pre-checking a command
+string for malicious content provides false comfort rather than real containment --
+better, in his framing, to state the reality plainly than to ship a partial guard a user
+could mistake for a boundary. This is the same reasoning `security.md` gives independently
+in its own words ("easy to misunderstand as a security boundary"), so this book treats it
+as VERIFIED convergence between the product's own docs and its creator's separately
+published rationale, not merely one source repeating the other.
+
+### 5.2 Project trust is a config-loading gate, explicitly not a sandbox
+
+Pi does have one approval-shaped mechanism -- **project trust** -- and both `security.md`
+and `containerization.md`'s sibling doc are explicit that it answers a different question
+than the permission/sandbox layers documented in §1-§4. Project trust governs only
+whether pi loads project-local settings, extensions, skills, prompt templates, and system
+prompt files (`.pi/settings.json`, `.pi/extensions`, `.pi/skills`, `.pi/SYSTEM.md`, and
+project `.agents/skills`) when a directory contains any of them; `defaultProjectTrust`
+(`"ask"` by default, or `"always"`/`"never"`) controls the fallback when no saved
+decision in `~/.pi/agent/trust.json` applies, and non-interactive modes (`-p`, `--mode
+json`, `--mode rpc`) never show the prompt at all, following `defaultProjectTrust`
+silently instead. `security.md` states the boundary of what this buys a user in language
+that reads as a direct, pre-emptive correction of the natural assumption a reader might
+otherwise make: "Project trust is only an input-loading guard. It prevents a repository
+from silently changing pi's settings or extensions before you approve it. It does not
+make untrusted code, untrusted prompts, or untrusted model output safe. Prompt injection
+from repository files, comments, documentation, context files, or build output is
+expected local-agent risk and cannot be reliably prevented by pi." This is a materially
+narrower claim than Claude Code's classifier (§1.4) or even OpenCode's approval engine
+(§3.3) make for their own respective mechanisms -- neither project trust nor anything
+else in pi inspects, blocks, or asks about an individual tool call once a session is
+running against a trusted (or already-loaded) project.
+
+The one coarse, static lever pi does offer over which built-in tools are even available
+to the model is a session-start allowlist, not a runtime permission check:
+`--tools`/`-t` and `--exclude-tools`/`-xt` include or exclude named tools before the
+session starts (`--tools read,grep,find,ls` for a read-only session,
+`--no-builtin-tools`/`-nbt` to keep only extension/custom tools, `--no-tools`/`-nt` to
+disable every tool). This is the same *kind* of mechanism as Claude Code's bare-tool-name
+deny rule removing a tool from the model's context entirely (§1.3) -- a tool the model
+never sees cannot be misused -- but it is fixed for the whole session at launch, with no
+per-call prompt, no `ask` tier, and no distinction between a read and a write once a tool
+is in scope.
+
+```mermaid
+flowchart TD
+    Start["pi session starts"] --> Trust{"Project has .pi/settings,\nextensions, skills, or\nAGENTS.override.md?"}
+    Trust -->|"trusted (saved decision,\ndefaultProjectTrust, or /trust)"| Load["Load project settings,\nextensions, skills,\nprompt templates"]
+    Trust -->|"declined"| Skip["Skip those resources;\nAGENTS.md/CLAUDE.md still\nloads regardless"]
+    Load --> Tools["--tools / --exclude-tools\nsession-start allowlist\n(static for the whole session)"]
+    Skip --> Tools
+    Tools --> Run["Model calls read / write / edit /\nbash / grep / find / ls"]
+    Run --> Exec["Tool executes immediately with\nthe full permissions of the pi\nprocess -- NO per-call prompt,\nNO classifier, NO OS sandwich"]
+```
+
+### 5.3 Containerization as the recommended, externally-owned alternative
+
+Because pi itself enforces nothing at the process boundary, `containerization.md`
+documents three patterns as the *sanctioned* way to get real isolation -- explicitly
+framed as external to pi rather than a configuration of it, the same posture OpenCode's
+own community guidance converges on for the same underlying reason (§3.5's "real
+isolation comes from a container or VM the operator controls," there offered only as an
+inferred, UNCONFIRMED parallel; here it is pi's own first-party documentation stating the
+identical conclusion directly, so it is VERIFIED for pi specifically):
+
+- **Gondolin** ([`earendil-works/gondolin`](https://github.com/earendil-works/gondolin)),
+  a local Linux micro-VM. A published example extension mounts the host's current working
+  directory at `/workspace` inside the VM and overrides the `read`, `write`, `edit`,
+  `bash`, `grep`, `find`, and `ls` tools (plus user `!` shell commands) to route into the
+  VM instead of the host, while `pi` itself and provider authentication stay on the host.
+  This is the one pattern that isolates *tool execution specifically* rather than the
+  whole process, structurally analogous in intent to Copilot CLI's per-command sandbox
+  (§2.3) or Claude Code's Seatbelt/bubblewrap boundary (§1.5), but implemented as a
+  third-party extension pi's core does not ship, not as a built-in toggle.
+- **Plain Docker**: the entire `pi` process, including the model API key passed in as an
+  environment variable, runs inside a container. `containerization.md`'s own worked
+  `Dockerfile.pi` mounts the host project directory read-write at `/workspace` by
+  default, with the docs explicitly noting that "writes from inside the container ...
+  can still modify host files" unless the mount is made read-only or files are copied in
+  and out instead -- i.e. the container isolates the *process*, not the workspace's own
+  write exposure, absent an additional read-only mount decision the operator has to make
+  themselves.
+- **OpenShell** ([NVIDIA OpenShell](https://docs.nvidia.com/openshell/about/overview)), a
+  policy-controlled sandbox reached through a registered gateway (local, Docker/Podman/VM-
+  backed, or a remote Kubernetes gateway), with filesystem, process, network, credential,
+  and inference-routing controls documented as gateway-side policy rather than anything
+  pi itself configures. Notably, OpenShell's inference-routing mode lets raw provider API
+  keys stay outside the sandbox entirely -- sandboxed code calls a fixed
+  `https://inference.local` endpoint, and the gateway injects the real upstream provider
+  credential -- a credential-masking design point comparable in effect, though reached
+  through a completely different mechanism, to Claude Code's `sandbox.credentials` mask
+  mode (§1.5) that substitutes a sentinel value and lets a proxy inject the real
+  credential only on the way out.
+
+`security.md` is explicit that none of these external patterns is optional cover for a
+gap pi intends to close itself: "For untrusted repositories, generated code you do not
+intend to monitor closely, or unattended automation, run pi in a contained environment,"
+naming a container, VM, micro-VM, remote sandbox, or policy-controlled sandbox as the
+operator's own responsibility, alongside concrete practices (mount only the paths the
+agent needs, avoid mounting `~/.pi/agent` unless the container should see host sessions
+and credentials, pass minimum-scope or short-lived credentials, restrict network access
+when unneeded, review diffs before copying results back to a trusted system).
+
+### 5.4 Security-report scope: the same boundary stated as a triage policy
+
+`security.md`'s closing section states pi's own vulnerability-triage boundary in terms
+that read as a direct, practical consequence of §5.1's design position: "Expected
+local-agent behavior, lack of a built-in sandbox, prompt injection from untrusted
+content, and behavior of user-installed extensions or skills are generally outside the
+security boundary unless the report demonstrates a real privilege-boundary bypass or
+shows how pi grants access that the local user did not already have." This is the
+sharpest available statement, across every harness this book documents, of where a team
+draws the line between "a known, accepted design tradeoff" and "an actual bug" -- pi
+treats the absence of a sandbox and susceptibility to prompt injection as the former by
+definition, reserving its security-response process for cases where pi itself grants
+access beyond what the invoking user already had (e.g. a genuine sandbox-escape in a
+future built-in isolation feature, or a privilege-escalation bug in the CLI's own code),
+not for the baseline local-agent risk profile it has already publicly disclaimed.
+
+---
+
+## 6. Synthesis
 
 ```mermaid
 flowchart TD
@@ -756,22 +914,35 @@ flowchart TD
         DS1["Permission preset\n(sandbox/mode x approval/policy,\ntwo independent knobs)"] --> DS2["ctx.sandbox seam\n(Landlock+bwrap / Seatbelt / Windows ACL,\nfilesystem effects only)"]
         DS2 --> DSExec["Process executes, contained by the OS --\nUNLESS danger-full-access,\nwhich bypasses ctx.sandbox entirely"]
     end
+    subgraph PI["pi"]
+        PI1["NO rule engine at all --\n--tools/--exclude-tools is a static,\nsession-start-only allowlist"] --> PIExec["Process executes with FULL\nhost-process privileges --\nNO prompt, NO classifier,\nNO OS containment, by design"]
+    end
 ```
 
-**All four harnesses converge on the same two-part shape at the rule-evaluation
-layer**: an allow/ask/deny classification, plus a second-order mechanism to reduce
-per-action prompting once a session has established some trust (Claude Code's
-classifier and dropped-broad-rules-on-entry behavior; Copilot CLI's session-persisted
-approvals and `--yolo`; OpenCode's session-scoped `always`; DeepSeek's shipped
-`workspace-write`/`danger-full-access` presets pre-bundling both knobs at once). Where
-they diverge sharply is at exactly the layer this page exists to describe: **Claude
+**All four rule-bearing harnesses converge on the same two-part shape at the
+rule-evaluation layer**: an allow/ask/deny classification, plus a second-order
+mechanism to reduce per-action prompting once a session has established some trust
+(Claude Code's classifier and dropped-broad-rules-on-entry behavior; Copilot CLI's
+session-persisted approvals and `--yolo`; OpenCode's session-scoped `always`;
+DeepSeek's shipped `workspace-write`/`danger-full-access` presets pre-bundling both
+knobs at once). pi has no equivalent layer to converge on at all -- not a thinner
+version of the same rule engine, but its documented absence. Where the four rule-bearing
+harnesses diverge sharply is at exactly the layer this page exists to describe: **Claude
 Code, Copilot CLI, and DeepSeek Harness each back their rule layer with a second,
 OS-enforced containment boundary that holds even if the rule layer is fooled**
 (prompt injection, a classifier miss, a pattern-matching parsing gap like PromptArmor's
 `env curl | env sh` finding against Copilot CLI, §2.4). OpenCode's own source, read
 directly this session, shows no equivalent second layer at all -- its permission
 engine is architecturally complete in itself as an approval-UX mechanism, and
-explicitly not framed by its own docs as a security boundary. Two of the three
+explicitly not framed by its own docs as a security boundary. pi ships neither layer,
+and states the omission as intentional rather than incomplete (§5.1) -- the only harness
+in this book whose own docs argue *against* building the rule-engine layer at all, on the
+theory that a partial guard invites false confidence. This makes OpenCode and pi look
+superficially similar (both leave the OS-containment layer unbuilt) while actually
+occupying different points on the spectrum: OpenCode still gates every tool call behind
+an interactive ask/reply arbiter (§3.3) that a user can decline in the moment, where pi's
+only session-shaping lever (`--tools`/`-t`) is fixed before the model ever starts
+running and offers no per-call decision point whatsoever. Two of the three
 OS-sandboxing harnesses independently converge on the *specific* underlying platform
 primitives, not merely the idea of sandboxing: Claude Code and DeepSeek Harness both
 name Seatbelt on macOS and bubblewrap on Linux as their own sandbox backends (§4.3),
@@ -812,7 +983,13 @@ rule-and-classifier layer for throughput, and both harnesses' own docs name the 
 mitigating condition ("only in isolated environments") for the same reason: once
 permission-checking is off, the OS sandbox (where one exists) is the only remaining
 boundary, and neither harness enables its sandbox by default alongside its own bypass
-mode.
+mode. **pi's "full YOLO mode" (its creator's own phrase, §5.1) is this same
+bypass-everything state, except it requires no flag to enter -- it is simply pi's only
+mode.** Where Claude Code's and Copilot CLI's bypass modes are opt-in escape hatches a
+user reaches deliberately from a safer default, pi's default *is* the other three
+harnesses' bypass state, with containerization (§5.3) standing in as the externally-owned
+equivalent of "only in isolated environments" -- stated as a recommendation for
+untrusted work rather than encoded as a mode switch pi itself exposes.
 
 ---
 
@@ -911,3 +1088,26 @@ Sources for the full repository-metadata citation, not repeated here):**
 - `docs/subsystems/permission-presets.md` -- §4.2's two-independent-knob preset model
   (`sandbox/mode` x `approval/policy`), the two shipped default presets, and the
   `custom` reserved display-only preset name.
+
+**pi (authoritative for its own documented behavior; fetched 20 August 2026 from
+`github.com/earendil-works/pi`, `main` branch):**
+- `README.md` -- §5.1's project overview and the "Pi does not include a built-in
+  permission system... runs with the permissions of the user and process that launched
+  it" framing, and §5.3's top-level containerization pointer.
+- `packages/coding-agent/docs/security.md` (fetched via `gh api
+  repos/earendil-works/pi/contents/packages/coding-agent/docs/security.md`) -- §5.1's
+  full "No Built-in Sandbox" section and local-trust-boundary framing, §5.2's project-trust
+  scope statement and its explicit "not a sandbox" disclaimer, §5.3's "run pi in a
+  contained environment" recommendation and concrete containerization practices, and
+  §5.4's vulnerability-report triage boundary quoted in full.
+- `packages/coding-agent/docs/containerization.md` (fetched the same way) -- §5.3's three
+  containerization patterns (Gondolin, plain Docker, OpenShell) including the worked
+  `Dockerfile.pi` and its read-write-mount caveat, the Gondolin example extension's tool
+  override list, and OpenShell's gateway-mediated inference-routing credential model.
+- `packages/coding-agent/docs/usage.md` (fetched the same way) -- §5.2's `--tools`/
+  `--exclude-tools`/`--no-builtin-tools`/`--no-tools` session-start allowlist flags and
+  the seven-tool built-in list (`read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`).
+- Mario Zechner, `https://mariozechner.at/posts/2025-11-30-pi-coding-agent/` (pi's own
+  creator, fetched this session) -- §5.1's "full YOLO mode"/security-theatre design
+  rationale, cited as a first-party statement of intent, cross-checked against (not
+  substituted for) `security.md`'s own independently-worded reasoning.

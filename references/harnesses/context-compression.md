@@ -1,4 +1,4 @@
-# Context compression -- Claude Code, GitHub Copilot CLI, and OpenCode
+# Context compression -- Claude Code, GitHub Copilot CLI, OpenCode, and pi
 
 **Scope note.** [instruction-context-budget.md](instruction-context-budget.md)
 covers the *eagerly-loaded instruction* tier (CLAUDE.md/rules/skill
@@ -17,9 +17,9 @@ neither page went into.
 
 Every claim is tagged VERIFIED (fetched this session, or already
 verified and cited in a page linked above) or BEST CURRENT
-UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, and OpenCode are
-three separate products from three separate organizations -- nothing
-confirmed for one is assumed for another.
+UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, and pi
+(Earendil Works) are four separate products from four separate
+organizations/authors -- nothing confirmed for one is assumed for another.
 
 ---
 
@@ -541,49 +541,244 @@ config page's three keys are the complete tunable surface.
 
 ---
 
-## 4. Synthesis
+## 4. pi
 
-| Dimension | Claude Code | Copilot CLI | OpenCode |
-|---|---|---|---|
-| Verifiability | Docs-only; no public implementation | Docs + changelog only; no public implementation | Source-verified, `dev` branch (caveat applies) |
-| Documented shape | Two-phase: evict tool outputs, then summarize if still needed | Background, checkpointed; internal algorithm undocumented | Two *independently scheduled* mechanisms: background eviction-only `prune()` + on-demand summarizing `process()` |
-| Trigger | ~967K tokens default for Sonnet 5's 1M window (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`); 200K-class threshold not documented as a %; 80% warning UI | 95% of token limit (origin entry, still matches docs) | `usable(cfg, model)` = input limit minus a reserved buffer (default min(20K, max-output)); checked proactively per-turn and reactively on a provider overflow error |
-| Eviction-only pass | Implicit first phase of the same mechanism ("clears older tool outputs first") | "Evicting transient events after compaction" -- a later, separate pass per changelog | Explicit separate service method (`prune()`), forked fire-and-forget every turn, own thresholds (`PRUNE_PROTECT`=40K, `PRUNE_MINIMUM`=20K), exempts `skill` tool output |
-| Summarization content model | Fixed six-part list (intent, concepts, files+snippets, errors+fixes, pending tasks, current work) | Undocumented internally | Fixed six-section Markdown template (Objective, Important Details, Work State [Completed/Active/Blocked], Next Move, Relevant Files) with explicit terse-bullet/preserve-identifiers rules |
-| Incremental vs. from-scratch re-summarization | Not stated either way in docs fetched | Not stated | VERIFIED anchored/incremental: later compactions update the prior summary text rather than resummarizing full history |
-| Thrash/failure guard | 3-consecutive-refill circuit breaker -> actionable error | Newest entry (v1.0.76): "automatic compaction blocked" state + early warning when unreclaimable overhead nears the limit | Hard single-shot abort (`ContextOverflowError`) when the summarization prompt itself won't fit, no retry counter |
-| Pre-compaction hook | `PreCompact`, can block (exit 2 / `{"decision":"block"}`) | `preCompact` exists; blocking capability unconfirmed | Plugin hook `experimental.session.compacting` can inject context or replace the prompt entirely; `experimental.compaction.autocontinue` gates the post-compaction nudge |
-| Post-compaction continuation | No documented auto-nudge; user's next message resumes naturally | Not documented | Explicit synthetic "Continue if you have next steps..." message appended when the triggering compaction was automatic |
-| Observability marker | `compact_boundary` `ResultMessage` subtype (Agent SDK) | OTel `gen_ai.conversation.compacted=true` + `CompactionPart` | Typed events (`Compaction.Started`/`Compaction.Ended`/`Compacted`) via Effect-TS spans |
-| Model-fallback interaction | Won't fall back to a smaller-context model during compaction | Context-tier (200K/1M) selection "enforced end-to-end" across compaction/truncation/token display | Compaction reads the same `usable()` budget the overflow check uses; no documented model-fallback-during-compaction behavior found |
+Sources for this section: VERIFIED, fetched 20 August 2026 directly from
+`github.com/earendil-works/pi`'s `packages/coding-agent/docs/compaction.md`, in full,
+cross-referenced against `packages/coding-agent/docs/extensions.md`'s
+`session_before_compact`/`session_compact`/`session_compact_failed`/`session_before_tree`
+event definitions and `packages/coding-agent/docs/custom-provider.md`'s overflow-detection
+section.
 
-**The design lesson.** All three harnesses converge on the same
+### 4.1 Two named mechanisms sharing one summary format, not one mechanism with two names
+
+pi's docs draw the same eviction-vs-summarization distinction the other three harnesses
+draw, but shape it around two entirely separate *triggers* rather than two phases of one
+pipeline: **compaction** (fired by the context-token threshold, or manually via
+`/compact [instructions]`) and **branch summarization** (fired by `/tree` navigation,
+covered from the session-tree-navigation angle in
+[session-persistence.md](session-persistence.md) §5.3, not repeated here). `compaction.md`
+states directly that "both use the same structured summary format and track file
+operations cumulatively," and both use "fresh routing session IDs" for the summarization
+call itself and, "where supported by the provider, disable prompt-cache writes because
+these one-off prompts are unlikely to be reused" -- a cache-hygiene detail with its own
+cross-reference in [caching.md](caching.md)'s own pi section. Unlike Claude Code's single
+evict-then-summarize pipeline (§1.1) or OpenCode's `prune()`/`process()` pair triggered by
+one overflow check (§3.3), pi's two mechanisms are triggered by unrelated user actions
+(context pressure vs. tree navigation) that happen to converge on the same output shape.
+
+### 4.2 Trigger and cut-point selection: turn-boundary-first, with an explicit split-turn fallback
+
+Auto-compaction triggers when `contextTokens > contextWindow - reserveTokens`, with
+`reserveTokens` defaulting to **16,384** tokens (configurable in
+`~/.pi/agent/settings.json` or a project's own `.pi/settings.json`) -- the same
+"leave headroom for the response" shape as OpenCode's `reserved` config key (§3.2) and
+Claude Code's `967K`-of-`1M` auto-compact margin (§1.3), expressed here as a flat
+subtraction rather than a percentage. The cut-point search then walks backward from the
+newest message, accumulating token estimates until `keepRecentTokens` (default
+**20,000**, same two config locations) is reached -- a fixed-token retention budget
+directly comparable to OpenCode's `preserveRecentBudget` (§3.5), though pi's default is a
+flat constant rather than OpenCode's `25%-of-usable-context-clamped-to-[2000,8000]`
+formula.
+
+```mermaid
+flowchart LR
+    New["Newest message"] -->|"walk backward,\naccumulate tokens"| Cut{"keepRecentTokens\n(default 20,000) reached?"}
+    Cut -->|"at a valid cut point\n(user/assistant/bashExecution/\ncustom message)"| Split["Normal cut: whole turns kept verbatim"]
+    Cut -->|"reached mid-turn,\nno valid boundary yet"| SplitTurn["Split turn: cut lands at an\nassistant message inside one\noversized turn"]
+    Split --> Summarize["Summarize everything before\nthe cut point (LLM call)"]
+    SplitTurn --> TwoSummaries["Two summaries generated and merged:\nhistory summary + turn-prefix summary"]
+```
+
+**Valid cut points are user messages, assistant messages, `BashExecution` messages, and
+custom messages (`custom_message`/`branch_summary`) -- never a tool result**, because a
+tool result must stay paired with the tool call that produced it; this is the same
+structural constraint Copilot CLI's changelog names explicitly ("background compaction
+preserves tool call sequences correctly," §2.1) and OpenCode's `select()`/`splitTurn()`
+enforce in source (§3.5), independently arrived at by three unrelated teams. When a
+*single* turn (one user message plus everything the assistant does in response, up to
+the next user message) exceeds `keepRecentTokens` on its own, pi calls this a **split
+turn**: the cut lands mid-turn at an assistant message, `isSplitTurn` is set, and pi
+generates *two* summaries rather than one -- a history summary (of everything before the
+oversized turn, if any) and a turn-prefix summary (of the early part of the oversized
+turn itself) -- then merges them into the final `CompactionEntry`. Neither of the other
+three harnesses' documented or source-read compaction logic names an equivalent
+two-summary merge step for a single oversized turn specifically; OpenCode's `splitTurn()`
+(§3.5) instead finds a message index within the oldest-still-considered turn where the
+*remaining* slice fits the leftover budget, a conceptually adjacent but mechanically
+different answer to the same "one turn is too big to cut cleanly" problem.
+
+On repeated compactions, the newly summarized span starts at the *previous* compaction's
+own kept boundary (`firstKeptEntryId`), not at the compaction entry itself -- so messages
+that survived an earlier compaction get folded into the next summarization pass too,
+rather than being permanently exempt once kept once. pi also recalculates `tokensBefore`
+from the freshly rebuilt session context immediately before writing the new
+`CompactionEntry`, so the recorded pre-compaction token count reflects the actual context
+being replaced at that moment, not a stale earlier estimate.
+
+### 4.3 The summary itself: a fixed template, explicitly *not* stated to be anchored/incremental
+
+The structured summary format is a fixed Markdown skeleton with six required sections --
+**Goal**, **Constraints & Preferences**, **Progress** (with **Done**/**In Progress**/
+**Blocked** subsections), **Key Decisions**, **Next Steps**, and **Critical Context** --
+closed out by a `<read-files>`/`<modified-files>` pair of tagged blocks listing every file
+read or modified across the summarized span. This is the same *kind* of fixed,
+multi-section content model as Claude Code's six-part keeps/drops list (§1.2) and
+OpenCode's six-section anchored-summary template (§3.5) -- three independently-designed
+harnesses converging on "a summary is a structured document with named sections, not
+free prose" as the right shape for this kind of compression. Before summarization,
+messages are serialized to a fixed line-prefixed text format (`serializeConversation()`)
+that renders assistant tool calls as a single terse line (`read(path="foo.ts");
+edit(path="bar.ts", ...)`) rather than the full tool-call JSON, explicitly "to prevent the
+model from treating it as a conversation to continue" rather than a document to
+summarize; tool results are truncated to 2,000 characters during this serialization step
+specifically, since `read`/`bash` tool output is named as the typical largest contributor
+to a summarization request's own token budget.
+
+One structural difference from OpenCode is worth flagging precisely, because it inverts
+that harness's own finding: OpenCode's `process()` is VERIFIED anchored/incremental --
+each later compaction updates the *text* of the prior compaction's own summary rather
+than resummarizing from the full original history (§3.5). pi's compaction docs describe
+passing "the previous summary as iterative context when present" into the generation
+call, which reads as the same intent, but §4.2's own finding that "the summarized span
+starts at the previous compaction's kept boundary" describes *which messages get
+re-read*, not whether the summary *text itself* is edited-in-place versus regenerated
+from scratch with the old summary as a reference. No source fetched this session states
+which of those two the underlying LLM call actually produces -- **BEST CURRENT
+UNDERSTANDING, UNCONFIRMED**: treat pi's compaction as "incremental in spirit" (the
+previous summary is always supplied as context) without asserting it is mechanically
+anchored in OpenCode's specific verified sense (an in-place text update rather than a
+fresh generation that happens to be shown the old text).
+
+### 4.4 Extension hooks: cancel, replace, or fully author the summary yourself
+
+`session_before_compact` fires before either auto-compaction or `/compact` and can return
+`{ cancel: true }` to abort the compaction outright, or a full replacement
+`{ compaction: { summary, firstKeptEntryId, tokensBefore, usage?, details? } }` object
+that pi writes verbatim instead of running its own summarization call -- the extension
+receives the same `preparation` object pi's own logic would have used (`messagesToSummarize`,
+`turnPrefixMessages` for a split turn, `previousSummary`, extracted `fileOps`, and the
+event's own `reason` field distinguishing `"manual"` (`/compact`)/`"threshold"`/`"overflow"`
+triggers, plus a `willRetry` flag for the overflow-recovery case described in §4.5). A
+companion `serializeConversation`/`convertToLlm` export lets an extension reuse pi's own
+message-to-text conversion to build a custom summary with a *different* model entirely
+(the documented worked example runs the summarization call against a cheaper or
+differently-tuned model than the session's own). A sibling `session_before_tree` hook
+offers the identical cancel-or-replace contract for branch summarization specifically.
+`session_compact_failed` fires on any failed or aborted compaction (manual or automatic)
+and is framed explicitly as a telemetry pairing point -- matching failures back to the
+`session_before_compact` attempt that produced them -- the closest pi analog to Claude
+Code's `compact_boundary` `ResultMessage` subtype (§1.5) and OpenCode's typed
+`Compaction.Started`/`Ended`/`Compacted` events (§3.5), though expressed as a pair of
+ordinary extension events rather than a dedicated telemetry schema.
+
+### 4.5 Overflow recovery is a *separate* code path from ordinary threshold compaction, and interacts with retries specifically
+
+`custom-provider.md`'s own guidance for implementing a custom LLM provider names a
+recovery sequence distinct from §4.2's proactive threshold check: when a request fails
+because it exceeds the model's context window, pi detects the overflow from the finalized
+assistant message's `stopReason === "error"` plus an `errorMessage` matching one of pi's
+known overflow patterns (`packages/ai/src/utils/overflow.ts`), then (1) drops the failed
+assistant message from live context, (2) runs compaction, and (3) retries the request
+**once**. This is the same *kind* of reactive, error-triggered compaction path OpenCode's
+`ContextOverflowError` handling implements (§3.3's "reactive" branch), but pi's docs are
+explicit that this path must be kept structurally separate from ordinary transport-level
+retry-with-backoff: a custom-provider author normalizing their own overflow error message
+is warned specifically not to let that normalization also catch rate-limit or throttling
+errors, "Rewriting rate-limit or throttling errors (`rate limit`, `too many requests`)
+would falsely trigger compaction instead of pi's normal retry-with-backoff path" -- i.e.
+pi maintains (per this same-session finding) two genuinely distinct recovery mechanisms
+for two distinct failure classes, an architecture worth cross-referencing against
+[retries.md](retries.md)'s own pi section for the retry-with-backoff half of this split,
+which this page does not cover.
+
+### 4.6 Settings surface
+
+```json
+{
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 16384,
+    "keepRecentTokens": 20000
+  }
+}
+```
+
+All three keys are documented directly (no OpenCode-style docs/source gap found this
+session): `enabled` (default `true`, disables auto-compaction entirely when `false` --
+manual `/compact` still works) and the two threshold/budget values from §4.2. Unlike
+Copilot CLI's undocumented internal algorithm (§2.2) or OpenCode's two-implementation
+ambiguity (§3.1), pi's own compaction implementation is singular and its full tunable
+surface (per the docs fetched this session) matches what the source-level description in
+`compaction.md` actually consumes -- no undocumented-but-consumed config key comparable to
+OpenCode's `tail_turns`/`preserve_recent_tokens` gap (§3.6) was found in the pi docs
+fetched this session, though this book has not independently cross-checked pi's own
+source to rule one out the way it did for OpenCode.
+
+---
+
+## 5. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi |
+|---|---|---|---|---|
+| Verifiability | Docs-only; no public implementation | Docs + changelog only; no public implementation | Source-verified, `dev` branch (caveat applies) | Docs-only, but source-available (this session read the docs, not the TypeScript source itself, so treat as docs-verified rather than source-verified) |
+| Documented shape | Two-phase: evict tool outputs, then summarize if still needed | Background, checkpointed; internal algorithm undocumented | Two *independently scheduled* mechanisms: background eviction-only `prune()` + on-demand summarizing `process()` | Two *independently triggered* mechanisms sharing one summary format: threshold/manual compaction, and `/tree`-navigation branch summarization |
+| Trigger | ~967K tokens default for Sonnet 5's 1M window (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`); 200K-class threshold not documented as a %; 80% warning UI | 95% of token limit (origin entry, still matches docs) | `usable(cfg, model)` = input limit minus a reserved buffer (default min(20K, max-output)); checked proactively per-turn and reactively on a provider overflow error | `contextTokens > contextWindow - reserveTokens` (default `reserveTokens` 16,384); a separate reactive overflow-error path also exists (§4.5), structurally distinct from ordinary retry-with-backoff |
+| Eviction-only pass | Implicit first phase of the same mechanism ("clears older tool outputs first") | "Evicting transient events after compaction" -- a later, separate pass per changelog | Explicit separate service method (`prune()`), forked fire-and-forget every turn, own thresholds (`PRUNE_PROTECT`=40K, `PRUNE_MINIMUM`=20K), exempts `skill` tool output | None documented -- pi's only two mechanisms are the two summarization paths in the row above; no fire-and-forget eviction-only pass distinct from compaction itself was found in the docs fetched this session |
+| Summarization content model | Fixed six-part list (intent, concepts, files+snippets, errors+fixes, pending tasks, current work) | Undocumented internally | Fixed six-section Markdown template (Objective, Important Details, Work State [Completed/Active/Blocked], Next Move, Relevant Files) with explicit terse-bullet/preserve-identifiers rules | Fixed six-section Markdown template (Goal, Constraints & Preferences, Progress [Done/In Progress/Blocked], Key Decisions, Next Steps, Critical Context) plus tagged `<read-files>`/`<modified-files>` blocks; shared verbatim between compaction and branch summarization |
+| Incremental vs. from-scratch re-summarization | Not stated either way in docs fetched | Not stated | VERIFIED anchored/incremental: later compactions update the prior summary text rather than resummarizing full history | Docs state the previous summary is passed "as iterative context" into each new summarization call, but do not state whether the summary text itself is edited in place or freshly generated with the old text as a reference -- BEST CURRENT UNDERSTANDING, UNCONFIRMED as strictly anchored in OpenCode's specific verified sense |
+| Split-turn handling | Not named as a distinct case in docs fetched | Not named as a distinct case | `splitTurn()` finds a message index within the oldest-still-considered turn where the remaining slice fits the leftover budget | Named explicitly as `isSplitTurn`; generates and merges *two* summaries (a history summary and a turn-prefix summary) rather than finding one split index -- the only harness in this book's coverage that produces two summarization calls for one oversized turn |
+| Thrash/failure guard | 3-consecutive-refill circuit breaker -> actionable error | Newest entry (v1.0.76): "automatic compaction blocked" state + early warning when unreclaimable overhead nears the limit | Hard single-shot abort (`ContextOverflowError`) when the summarization prompt itself won't fit, no retry counter | Reactive overflow path retries the request exactly **once** after compacting (§4.5); no documented multi-attempt thrash counter comparable to Claude Code's three-strikes guard was found |
+| Pre-compaction hook | `PreCompact`, can block (exit 2 / `{"decision":"block"}`) | `preCompact` exists; blocking capability unconfirmed | Plugin hook `experimental.session.compacting` can inject context or replace the prompt entirely; `experimental.compaction.autocontinue` gates the post-compaction nudge | `session_before_compact` extension event can cancel (`{cancel: true}`) or fully replace the compaction with a custom `{summary, firstKeptEntryId, tokensBefore, usage?, details?}` object, including one authored by an entirely different model; a sibling `session_before_tree` hook offers the identical contract for branch summarization |
+| Post-compaction continuation | No documented auto-nudge; user's next message resumes naturally | Not documented | Explicit synthetic "Continue if you have next steps..." message appended when the triggering compaction was automatic | Not documented as an auto-nudge in the pages fetched this session |
+| Observability marker | `compact_boundary` `ResultMessage` subtype (Agent SDK) | OTel `gen_ai.conversation.compacted=true` + `CompactionPart` | Typed events (`Compaction.Started`/`Compaction.Ended`/`Compacted`) via Effect-TS spans | `session_compact`/`session_compact_failed` extension events, explicitly framed by the docs as a telemetry-pairing point (matching a failure back to its originating attempt) rather than a dedicated schema |
+| Model-fallback interaction | Won't fall back to a smaller-context model during compaction | Context-tier (200K/1M) selection "enforced end-to-end" across compaction/truncation/token display | Compaction reads the same `usable()` budget the overflow check uses; no documented model-fallback-during-compaction behavior found | Not documented; pi's overflow-recovery path (§4.5) retries on the *same* model rather than falling back to a different one, per the pages fetched this session |
+
+**The design lesson.** All four harnesses converge on the same
 two-part shape once you look past terminology -- cheap eviction of
 material the model no longer needs verbatim, escalating to an LLM
 re-summarization pass only when eviction alone can't free enough room
--- but they diverge on how much of that shape is actually inspectable.
-Claude Code and Copilot CLI describe the *outward contract* (what
-categories of content the summary keeps, what threshold fires it, what
-survives) without publishing the *mechanism* that produces it; OpenCode
-is the one harness where the eviction floor, the token-budget math, the
-literal summarization prompt, and the anchored-vs-from-scratch question
-are all directly readable in a source file rather than inferred from
-behavior. That asymmetry should shape how confidently anything gets
-asserted about *why* a given harness dropped a specific piece of
-context: for Claude Code and Copilot CLI, "the docs/changelog say this
-is what's preserved" is the ceiling of what can honestly be claimed;
-for OpenCode, the actual selection and prompt-construction logic can be
-cited by function name and line-level behavior -- with the standing
-caveat that it was read on the `dev` branch, not a tagged release.
+-- but they diverge on how much of that shape is actually inspectable,
+and pi complicates the "eviction-then-summarization" framing slightly by
+not documenting a separate eviction-only pass at all: everything this
+page found for pi routes through one of its two summarization mechanisms
+(compaction or branch summarization), with no OpenCode-style `prune()`
+equivalent quietly trimming old tool output in the background. Claude
+Code and Copilot CLI describe the *outward contract* (what categories of
+content the summary keeps, what threshold fires it, what survives)
+without publishing the *mechanism* that produces it; OpenCode is the one
+harness where the eviction floor, the token-budget math, the literal
+summarization prompt, and the anchored-vs-from-scratch question are all
+directly readable in a source file rather than inferred from behavior;
+pi sits between the two postures -- its own docs describe the mechanism
+in genuine algorithmic detail (cut-point rules, split-turn handling, the
+literal summary template, the extension-hook contract) without this
+session having cross-checked that description against pi's own
+TypeScript source the way it did for OpenCode, so treat pi's entries in
+this table as docs-verified rather than source-verified even though the
+documentation itself reads at source-level precision. That asymmetry
+should shape how confidently anything gets asserted about *why* a given
+harness dropped a specific piece of context: for Claude Code and Copilot
+CLI, "the docs/changelog say this is what's preserved" is the ceiling of
+what can honestly be claimed; for OpenCode, the actual selection and
+prompt-construction logic can be cited by function name and line-level
+behavior, with the standing caveat that it was read on the `dev` branch,
+not a tagged release; for pi, the docs themselves already operate at
+that level of detail (naming the exact settings keys, the exact section
+headings, the exact extension-event shapes), which is unusual among this
+book's closed-and-partially-open harnesses and worth treating as a
+genuinely distinct third position on the verifiability spectrum, not
+merely "docs-only" in the same sense as Claude Code's or Copilot CLI's
+sections above.
 
 ---
 
 ## Sources
 
-All fetched 2026-07-30 (memory-management.md's §1.7/§2.4 sources, and
-agent-loop-implementations.md's Claude-Code-SDK source, were fetched in
+All fetched 2026-07-30 unless noted otherwise (memory-management.md's §1.7/§2.4
+sources, and agent-loop-implementations.md's Claude-Code-SDK source, were fetched in
 a prior session and are cited above by cross-reference rather than
-re-fetched).
+re-fetched; §4's pi section was added 2026-08-20).
 
 **Claude Code (authoritative for its own documented behavior only):**
 - `https://code.claude.com/docs/en/context-window` -- the interactive
@@ -642,3 +837,20 @@ not a stable release tag):**
 - `https://opencode.ai/docs/` -- fetched fresh this session; confirmed
   it contains no compaction-specific content (a negative result,
   established by fetching rather than assumed).
+
+**pi (authoritative for its own documented behavior; fetched 20 August 2026 from
+`github.com/earendil-works/pi`, `main` branch; this session read the docs, not pi's own
+TypeScript source, for this page specifically -- see §5's verifiability note):**
+- `packages/coding-agent/docs/compaction.md` (via `gh api
+  repos/earendil-works/pi/contents/packages/coding-agent/docs/compaction.md`, in full) --
+  §4.1's compaction-vs-branch-summarization split and shared-format statement, §4.2's
+  trigger formula, cut-point rules, and split-turn two-summary merge, §4.3's fixed
+  six-section summary template and `serializeConversation()` tool-call/tool-result
+  serialization behavior, §4.4's `session_before_compact`/`session_compact`/
+  `session_compact_failed`/`session_before_tree` extension-event contracts, and §4.6's
+  full `compaction` settings-key table.
+- `packages/coding-agent/docs/custom-provider.md` (fetched the same way) -- §4.5's
+  overflow-detection sequence (`stopReason === "error"` plus a recognized `errorMessage`
+  pattern, drop-compact-retry-once) and its explicit warning against conflating overflow
+  normalization with pi's separate retry-with-backoff path, cross-referenced against
+  [retries.md](retries.md)'s own pi section.

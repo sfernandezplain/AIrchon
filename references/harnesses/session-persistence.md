@@ -2,7 +2,7 @@
 
 **Scope note.** This page answers one specific question: once a single
 agent process exits -- terminal closed, machine rebooted, `claude`/
-`copilot`/`opencode`/`dsh` re-invoked hours or days later -- what actually
+`copilot`/`opencode`/`dsh`/`pi` re-invoked hours or days later -- what actually
 survives on disk, under what identifier, and how do you get back into
 it? That is a narrower question than two pages that sit right next to
 it. [memory-management.md](memory-management.md) covers what a *fresh*
@@ -21,7 +21,7 @@ This page is about neither: it is the on-disk transcript of one
 session's own conversation, the identifier that names that transcript,
 and the mechanics (`--resume`, `--continue`, `--fork-session`/`/branch`,
 `--fork`, `revert`) for reopening, copying, or rewinding it after the
-process that wrote it is long gone. All four products keep a
+process that wrote it is long gone. All five products keep a
 session-level record; the format, the store, and what "forking" means
 at the storage layer differ completely.
 
@@ -943,9 +943,166 @@ fits its own addressing scheme most naturally.
 
 ---
 
-## 5. Synthesis
+## 5. pi
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | DeepSeek Harness |
+Sources for this section: VERIFIED, fetched 20 August 2026 directly from
+`github.com/earendil-works/pi`'s `packages/coding-agent/docs/` tree (`session-format.md`
+and `sessions.md`, both in full) and cross-referenced against
+`packages/coding-agent/docs/compaction.md` for the compaction-entry detail this section
+shares with [context-compression.md](context-compression.md).
+
+### 5.1 One JSONL file per session, but tree-structured from the format's own design, not bolted on
+
+pi's session store is, like Claude Code's, a plaintext JSONL file with one JSON object
+per line -- but where Claude Code's transcript is a linear append log that `/branch`
+copies wholesale to fork (§1.1, §1.4), pi's own format bakes branching into every entry
+from the start: "Session entries form a tree structure via `id`/`parentId` fields,
+enabling in-place branching without creating new files." Every entry except the
+`SessionHeader` (the first line, metadata-only, itself carrying no `id`/`parentId`) is a
+node with an 8-character-hex `id`, a `parentId` pointing at the entry it followed (`null`
+only for the very first real entry), and a `timestamp`. Location follows the same
+directory-encodes-the-project convention Claude Code uses:
+`~/.pi/agent/sessions/--<path>--/<timestamp>_<uuid>.jsonl`, where `<path>` is the working
+directory with `/` replaced by `-`. Sessions carry an explicit format-version field in
+the header -- version 1 (linear, legacy), version 2 (the current tree structure), version
+3 (a role rename, `hookMessage` to `custom`, from an "extensions unification" pass) --
+and pi auto-migrates any older session to the current version transparently on load, the
+same defensive-load posture Claude Code's changelog shows repeatedly for its own format
+(§1.7) and OpenCode's `MIGRATIONS` array shows for its own storage layer (§3.1), independently
+converged on by three unrelated teams maintaining a plaintext or embedded-database session
+format across format revisions.
+
+```mermaid
+flowchart LR
+    Header["SessionHeader (line 1)\ntype, version, id, timestamp, cwd\n-- no id/parentId of its own"]
+    Header --> E1["message (user)\nid: a1b2..., parentId: null"]
+    E1 --> E2["message (assistant)\nparentId: a1b2..."]
+    E2 --> E3["message (toolResult)\nparentId: prev entry"]
+    E3 --> Leaf1["...current leaf\n(active position)"]
+    E2 -.->|"/tree jumps here instead"| E4["branch_summary or\nalternate message entry\nparentId: same ancestor as E3"]
+    E4 --> Leaf2["alternate leaf"]
+```
+
+### 5.2 Nine entry types, and a session-context builder that walks the tree, not the file
+
+`session-format.md` names the full entry-type union, distinguishing types that
+participate in what the LLM sees from types that exist purely for extension/UI state:
+`SessionMessageEntry` (wraps an `AgentMessage` -- `user`/`assistant`/`toolResult`/
+`bashExecution`/`custom`/`branchSummary`/`compactionSummary`), `ModelChangeEntry` and
+`ThinkingLevelChangeEntry` (mid-session `/model` switches and reasoning-level changes,
+each becoming its own tree node rather than mutating prior entries), `CompactionEntry`
+and `BranchSummaryEntry` (both covered from the compaction-mechanics side in
+[context-compression.md](context-compression.md)'s own pi section, not repeated here in
+full), `CustomEntry` (extension state that "does NOT participate in LLM context" --
+persisted but invisible to the model), `CustomMessageEntry` (the opposite: an
+extension-injected message that *does* enter LLM context, with its own `display` flag
+controlling whether the TUI renders it), `LabelEntry` (a user-settable bookmark on an
+entry, clearable by setting `label` to `undefined`), and `SessionInfoEntry` (the
+human-readable session name set by `/name`, surfaced in the `/resume` picker in place of
+the first message once set). A dedicated `buildContextEntries()` function walks from the
+current leaf back to the root to produce the active branch's entry list -- honoring
+whichever compaction entry sits on that path, preferring a self-contained `retainedTail`
+snapshot when present and falling back to walking from `firstKeptEntryId` for
+older-format compactions -- and a second function, `buildSessionContext()`, converts that
+entry list into the actual message array plus the active model/thinking-level settings
+sent to the LLM. This two-stage build (walk the tree for the active branch, then convert
+that branch's entries into an LLM-ready message list) is architecturally the same shape
+as Claude Code's own compaction-aware context reconstruction and OpenCode's
+compaction-`prune()`/`process()` pipeline (both cross-referenced in
+[context-compression.md](context-compression.md)), but pi's version is unique among the
+harnesses this book documents in having to walk an explicit parent-pointer *tree*, not
+merely a linear log with a compaction cut-point, because any entry in a pi session may
+have sibling branches the active leaf is not currently on.
+
+### 5.3 `/tree`, `/fork`, and `/clone`: three genuinely different operations on the same underlying structure
+
+`sessions.md` draws a three-way distinction this book's other harnesses collapse into
+one or two mechanisms:
+
+| Feature | Output | View | Typical use |
+|---|---|---|---|
+| `/tree` | Same session file | Full tree, navigable | Explore alternatives in place, without leaving the file |
+| `/fork` | New session file | User-message selector | Start a new session from an earlier prompt |
+| `/clone` | New session file | Current active branch only | Duplicate current work before continuing further |
+
+`/tree` is the operation with no equivalent in this page's other three harness sections:
+because branching is native to the file format (§5.1), pi can move the "current leaf"
+pointer to any earlier entry -- reachable via `getTree()`/`getChildren()`/`branch(entryId)`
+on the `SessionManager` API -- and continue writing new entries from there, *inside the
+same file*, leaving the abandoned branch's entries physically present and still
+reachable by navigating back. This is closer in spirit to OpenCode's `SessionRevert`
+mechanism (§3.5) than to either harness's fork operation, except pi's version does not
+delete or roll back anything -- the abandoned branch's entries simply stop being on the
+active path, exactly analogous to checking out a different git branch without deleting
+the one you left. Selecting a user or custom-message entry in `/tree` moves the leaf to
+that entry's *parent* and drops the selected text back into the editor for revision (a
+resubmit-and-fork gesture); selecting any other entry type (assistant, tool, compaction)
+moves the leaf directly to it and leaves the editor empty, ready to continue from that
+exact point. `/fork` and `/clone`, by contrast, both write an entirely new `.jsonl` file
+-- `/fork`'s new `SessionHeader` records a `parentSession` field pointing at the
+originating file's path, the one piece of cross-file lineage pi's format preserves --
+with `/fork` presenting a picker over prior *user messages* specifically (fork from an
+earlier prompt) while `/clone` simply duplicates the currently active branch verbatim
+into a new file with no picker at all.
+
+The `SessionManager` class (`session-manager.ts`, named directly in the docs' own Source
+Files list) exposes this as a small, complete API surface: `SessionManager.create`/
+`.open`/`.continueRecent`/`.inMemory`/`.forkFrom` for constructing a manager;
+`newSession`/`setSessionFile`/`createBranchedSession` for session-level operations;
+`appendMessage`/`appendCompaction`/`appendCustomEntry`/`appendLabelChange`/etc. (each
+returning the new entry's ID) for writing; and `getLeafId`/`getBranch`/`getTree`/
+`branch`/`resetLeaf` for tree navigation -- a programmatic surface any extension or
+embedding application can drive directly, since it is exported from
+`@earendil-works/pi-coding-agent` rather than being internal-only plumbing.
+
+### 5.4 Deletion, and a small but genuinely distinctive UX choice
+
+Sessions are deleted by removing their `.jsonl` file under `~/.pi/agent/sessions/`, or
+interactively from the `/resume` picker (select, `Ctrl+D`, confirm). One detail worth
+noting for its own sake: "When available, pi uses the `trash` CLI to avoid permanent
+deletion" -- i.e. pi's own deletion path defaults to a recoverable OS trash/recycle-bin
+operation rather than an unrecoverable `unlink()` when the `trash` utility is present on
+the host, a small but deliberate safety margin this book has not found documented for
+Claude Code's, Copilot CLI's, or OpenCode's own session-deletion paths.
+
+---
+
+## 6. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | DeepSeek Harness | pi |
+|---|---|---|---|---|---|
+| Durable record format | Plaintext JSONL, one line per message/tool-use/tool-result | Session-state files (format undocumented) + a derived SQLite index (`session-store.db`, FTS5) | SQLite database (`opencode.db`, Drizzle ORM, WAL mode) on `dev`; legacy per-message JSON files superseded but still the format some community writeups describe | No first-party format at all in the framework's own core -- an append-only in-memory `SessionEvent` log persisted only by whichever pluggable persistence plugin is mounted (a JSONL "packed chunk rows" implementation is one such plugin, not a core-owned format) | Plaintext JSONL, but tree-structured (`id`/`parentId` on every entry) rather than linear -- branching is a property of the format itself, not a copy operation performed on top of it |
+| Location | `~/.claude/projects/<project>/<session-id>.jsonl` | `~/.copilot/session-state/<sessionID>/`, index at `~/.copilot/session-store.db` | `<xdgData>/opencode/opencode.db` (e.g. `~/.local/share/opencode/opencode.db`), path overridable via `OPENCODE_DB` | Not stated as a fixed path in the framework's own docs -- plugin-defined, since persistence itself is a pluggable seam rather than a core-owned location | `~/.pi/agent/sessions/--<path>--/<timestamp>_<uuid>.jsonl`, `<path>` the cwd with `/` replaced by `-` |
+| Session ID character | Opaque per the docs; propagated to MCP subprocesses as `CLAUDE_CODE_SESSION_ID` on resume | Opaque per the docs; printed by `/session` and on exit | Structured: `ses_` + embedded timestamp+counter + random suffix, ascending or descending, self-timestamping via `Identifier.timestamp()` | Sequence-numbered internally (the same numbering `fork()`'s boundary parameter addresses); no separate session-ID structure documented on the pages fetched this session | A UUID embedded in the filename itself (`<timestamp>_<uuid>.jsonl`); each *entry* additionally carries its own 8-char-hex `id`/`parentId` pair, a per-entry addressing scheme none of the other four harnesses' own session IDs provide at that granularity |
+| Resume same identity | `--continue` (most recent in cwd), `--resume [name\|id]`, `/resume` -- same session ID, appends | `--continue`/`-r --resume`, `/resume [SESSION-ID]` -- mutually exclusive `--continue`/`--resume` flags | `--continue`/`-c`, `--session <id>`/`-s <id>` | `Session.fromRestore()` -- validates envelope/sequence/surface-transition consistency and distinguishes a genuine resume from a crash via the `session/end-seed` marker; no CLI-flag-level resume syntax documented on the pages fetched this session | `-c`/`--continue` (most recent), `-r`/`--resume` (interactive picker), `--session <path\|id>` (specific file or partial UUID) |
+| Fork/branch semantics | `/branch [name]` or `--fork-session` -- copy-then-redirect in the *same process* if via `/branch` (permission grants carry over); a genuinely new process via CLI flag does not carry them | Not documented as a first-class fork/branch operation on the pages fetched this session | `--fork` + `--continue`/`--session`, backed by `Session.fork({sessionID, messageID?})` -- always a brand-new, fully independent `SessionTable` row from the first write, with an optional exclusive message cutoff | `fork()` -- a live session or session ID plus an optional **inclusive** boundary sequence number; deep-cloned seed events plus lineage metadata (`parentSession`, `seedLength`, `cwd`) | Three distinct operations, not one: `/tree` (in-place leaf move, same file, native to the tree format), `/fork` (new file, picker over prior user messages, records `parentSession` in the new header), `/clone` (new file, duplicates the active branch verbatim, no picker) |
+| Fork-from-a-specific-point | `/branch` forks at "now" (point in the live conversation), not an arbitrary earlier message | Not found | `Session.fork`'s `messageID` parameter is exactly this: fork truncated at an arbitrary earlier message, source-verified | `fork()`'s `boundary` parameter is the same capability, addressed by sequence number rather than message ID, with an inclusive rather than exclusive cutoff, and an explicit **rejection** (not a silent clip) of a boundary landing inside an open turn | `/fork`'s picker *is* fork-from-an-arbitrary-earlier-point by construction (it lists prior user messages to fork from); `/tree` additionally lets you navigate to, and continue from, any entry at all without even creating a new file |
+| In-session undo/rewind (not a new session) | `/rewind` -- file snapshots under `file-history/<session>/`, five restore modes, rides along across `--resume` | Not found as a distinct mechanism on the pages fetched | `SessionRevert.revert`/`unrevert` -- `session.revert` pointer on the existing row, file state restored via a shadow git repo (`snapshot/<projectID>/<hash>`) sharing object storage with the real repo | Not found on the pages fetched this session | `/tree`'s leaf-repositioning is the closest analog, but it moves the *conversation* pointer, not file state -- pi documents no file-snapshot/working-tree-revert mechanism of its own on the pages fetched this session (git or an external checkpointing workflow is the docs' own stated recommendation instead, per pi's `quickstart.md`, not repeated in full here) |
+| Retention/cleanup | `cleanupPeriodDays` (default 30, `settings.json`), swept on startup; `claude project purge` for explicit, previewable deletion | Not found documented on the pages fetched this session | Not found documented; SQLite DB has no stated retention policy on `dev` | Not documented on the pages fetched this session -- consistent with retention being a persistence-plugin's own concern rather than a core-owned policy | No automatic sweep documented -- sessions persist until manually deleted (`.jsonl` removal, or `/resume` + `Ctrl+D`); deletion prefers the `trash` CLI over a permanent `unlink()` when available |
+| Plaintext/at-rest security note | Explicitly documented as unencrypted; OS file permissions only | Not addressed on the pages fetched | Not addressed in the source read this session | Not addressed on the pages fetched this session | Not addressed directly in `session-format.md`/`sessions.md`; [Permissions & sandboxing architecture](permissions-and-sandboxing.md) §5.1's "treats files writable by that user as inside the same local trust boundary" framing applies to the session store the same way it applies to everything else pi writes |
+| Behavior-change history available | `CHANGELOG.md` -- extensive, session/resume/fork/transcript entries span the full file | `changelog.md` -- extensive, same pattern | None -- no `CHANGELOG.md` in the repo; `dev`-branch source is the only trace of change over time available to this project | None found this session; a large `docs/postmortem/` directory of numbered incident writeups exists in the repository (noted here as an existence finding, not fetched or cited as a behavior-change history for this specific mechanism) | Not checked this session for a dedicated changelog entry on session-format changes specifically; the format's own version field (v1/v2/v3) is itself evidence of at least two prior breaking revisions, auto-migrated on load |
+
+**The design lesson, updated for a fifth data point.** pi sharpens rather than
+complicates the pattern §5's prior synthesis (now §6) already drew between Claude Code's
+same-process live-conversation fork and OpenCode's/DeepSeek's stored-session
+arbitrary-point fork: pi makes arbitrary-point branching the *default shape of the file
+format itself*, not a special operation layered on top of a linear log. Where Claude
+Code has to copy the whole prior transcript to fork and OpenCode/DeepSeek have to clone
+rows into a genuinely separate store, pi's `/tree` needs neither -- moving the leaf
+pointer *is* the fork, because every entry already carries the `parentId` a fork
+elsewhere has to reconstruct or copy. pi still offers the heavier, new-file operations
+(`/fork`, `/clone`) for when a genuinely separate, independently resumable artifact is
+wanted, but treats them as one option among three rather than the only way to explore an
+alternate path -- a design point worth setting alongside this page's existing observation
+that arbitrary-point forking is a real, independently-discovered requirement once a
+session model is sequence- or tree-addressable at all: pi is the clearest instance in
+this book of a harness that decided to make that addressability the format's baseline
+property from day one, rather than adding a fork primitive on top of a format that
+started out linear.
+
+---
+
+## Sources
 |---|---|---|---|---|
 | Durable record format | Plaintext JSONL, one line per message/tool-use/tool-result | Session-state files (format undocumented) + a derived SQLite index (`session-store.db`, FTS5) | SQLite database (`opencode.db`, Drizzle ORM, WAL mode) on `dev`; legacy per-message JSON files superseded but still the format some community writeups describe | No first-party format at all in the framework's own core -- an append-only in-memory `SessionEvent` log persisted only by whichever pluggable persistence plugin is mounted (a JSONL "packed chunk rows" implementation is one such plugin, not a core-owned format) |
 | Location | `~/.claude/projects/<project>/<session-id>.jsonl` | `~/.copilot/session-state/<sessionID>/`, index at `~/.copilot/session-store.db` | `<xdgData>/opencode/opencode.db` (e.g. `~/.local/share/opencode/opencode.db`), path overridable via `OPENCODE_DB` | Not stated as a fixed path in the framework's own docs -- plugin-defined, since persistence itself is a pluggable seam rather than a core-owned location |
@@ -1010,7 +1167,7 @@ transparent, fully source-available members.
 
 Fetched 2026-08-01 unless dated 2026-08-17 or 2026-08-20 below (the §1.2
 task-tracking-persistence research added the former date; §4's DeepSeek
-Harness section added the latter).
+Harness section and §5's pi section were both added 2026-08-20).
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `https://code.claude.com/docs/en/sessions` -- session storage model,
@@ -1143,3 +1300,24 @@ repository-metadata citation, not repeated here):**
   §4.3's `fork()` mechanics (inclusive boundary sequence number, the
   open-turn rejection rule, deep-cloned seed events, `parentSession`/
   `seedLength`/`cwd` lineage metadata) in full.
+
+**pi (authoritative for its own documented behavior; fetched 20 August 2026 from
+`github.com/earendil-works/pi`, `main` branch):**
+- `packages/coding-agent/docs/session-format.md` (via `gh api
+  repos/earendil-works/pi/contents/packages/coding-agent/docs/session-format.md`) --
+  §5.1's full tree-structured JSONL format (`id`/`parentId`/`timestamp` on every entry,
+  the version 1/2/3 auto-migration history, the `~/.pi/agent/sessions/--<path>--/`
+  location pattern), §5.2's full nine-entry-type catalogue and the
+  `buildContextEntries()`/`buildSessionContext()` two-stage context-build pipeline, and
+  §5.3's `SessionManager` API surface (`create`/`open`/`continueRecent`/`inMemory`/
+  `forkFrom`, `newSession`/`setSessionFile`/`createBranchedSession`, the
+  `append*`/tree-navigation method list).
+- `packages/coding-agent/docs/sessions.md` (fetched the same way) -- §5.3's `/tree`/
+  `/fork`/`/clone` three-way comparison table, the tree-navigation selection-behavior
+  rules (user/custom entries move the leaf to the parent and reopen the editor;
+  non-user entries move the leaf directly and leave the editor empty), and §5.4's
+  `/resume` picker deletion mechanics and `trash`-CLI-preferred deletion behavior.
+- `packages/coding-agent/docs/compaction.md` (cross-referenced, fetched the same way) --
+  the `CompactionEntry`/`BranchSummaryEntry` structure named in passing in §5.2, covered
+  in full in [context-compression.md](context-compression.md)'s own pi section rather
+  than repeated here.

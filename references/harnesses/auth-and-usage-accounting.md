@@ -744,7 +744,117 @@ budget feature. It is included here only because it is the sole "budget" concept
 source actually implements, and omitting it would risk understating what was searched
 rather than what was found.
 
-## 4. Synthesis
+## 4. pi
+
+Sources for this section: VERIFIED, fetched 20 August 2026 directly from
+`github.com/earendil-works/pi`'s `packages/coding-agent/docs/providers.md` (in full) and
+`packages/coding-agent/docs/session-format.md`/`sessions.md`, cross-referenced against
+`packages/ai/README.md`'s "How Auth Resolves"/"Credential Store" sections already fully
+cited in [The LLM API contract](llm-api-contract.md) §3.5.
+
+### 4.1 A dual-mode credential store, spanning 29+ named providers
+
+Unlike Claude Code's and Copilot CLI's single-vendor OAuth flow or OpenCode's own
+`Auth.Service`, pi's `providers.md` documents the widest *named-provider* login surface
+in this book: `/login` offers subscription OAuth for **ChatGPT Plus/Pro (Codex)**,
+**Claude Pro/Max**, **GitHub Copilot**, **xAI (Grok/X subscription)**, **OpenRouter**
+(a PKCE flow that mints a user-controlled, non-expiring API key billed against
+OpenRouter's own credits, rather than a refreshable OAuth token), and **Radius** (a
+dynamic gateway whose model catalog itself refreshes independently of the OAuth token).
+Tokens land in `~/.pi/agent/auth.json` (`0600` permissions, matching OpenCode's own
+`auth.json` convention, §3) and auto-refresh when expired; `/logout` clears them. A
+remote/headless login path is explicitly documented for OpenRouter specifically: because
+the PKCE flow's browser callback needs a reachable loopback port, an SSH session instead
+pastes the final redirect URL or authorization code directly into the login prompt.
+Separately, `providers.md` names a full table of 29 API-key-only providers (Anthropic,
+OpenAI, DeepSeek, NVIDIA NIM, Google Gemini, Amazon Bedrock, Mistral, Groq, Cerebras,
+Cloudflare's two products, xAI, OpenRouter, Vercel AI Gateway, ZAI's two regional
+variants, OpenCode's own two hosted products, Hugging Face, Fireworks, Together AI,
+Baseten, Kimi For Coding, MiniMax's two regional variants, and Qwen's/Xiaomi's several
+region- and plan-scoped variants), each with its own named environment variable and
+`auth.json` key -- a materially wider provider roster than this page has found documented
+for Claude Code, Copilot CLI, or OpenCode individually, consistent with pi-ai's own
+role as a genuinely multi-provider abstraction layer
+([llm-api-contract.md](llm-api-contract.md) §3.5).
+
+### 4.2 Credential resolution order, and a `key` field with its own small expression language
+
+`providers.md` states the resolution order for a given provider's credential explicitly,
+as an ordered list: **(1)** the CLI's `--api-key` flag, **(2)** an `auth.json` entry
+(API key or OAuth token), **(3)** an environment variable, **(4)** a custom-provider key
+sourced from `models.json`. This is architecturally the same *shape* of precedence stack
+this page documents for Claude Code (§1) and Copilot CLI (§2) -- an explicit-flag,
+then-stored-credential, then-environment-variable ordering -- with the CLI flag winning
+outright rather than sitting mid-stack the way some of Claude Code's own six-source order
+does.
+
+A genuinely distinctive detail is the `key` field's own small resolution grammar inside
+`auth.json`, which pi documents as supporting four distinct forms rather than treating
+the field as a single string type: a **shell command** (a leading `"!"` runs the whole
+value as a command and caches its stdout for the process's lifetime -- the documented
+examples pull a credential from macOS Keychain via `security find-generic-password` or
+from a password manager via `op read`), **environment interpolation** (`"$ENV_VAR"` or
+`"${ENV_VAR}"`, with interpolation also working inside a larger literal string),
+**escape sequences** (`"$$"` for a literal `$`, `"$!"` for a literal `!` without
+triggering command execution), and a **plain literal** otherwise. This is a materially
+richer credential-value language than this page has found documented for any of Claude
+Code's, Copilot CLI's, or OpenCode's own credential-storage formats -- closer in spirit
+to a password-manager integration than a simple key-value config file.
+
+```mermaid
+flowchart TD
+    Key["auth.json credential 'key' field"] --> Shell{"Starts with '!'?"}
+    Shell -->|Yes| Cmd["Execute as shell command;\ncache stdout for process lifetime"]
+    Shell -->|No| Env{"Starts with '$'?"}
+    Env -->|Yes| Interp["Environment variable interpolation\n(works inside larger literals too)"]
+    Env -->|No| Esc{"Starts with '$$' or '$!'?"}
+    Esc -->|Yes| Literal2["Literal '$' or '!' emitted,\nno command/interpolation triggered"]
+    Esc -->|No| Literal["Plain literal value, used as-is"]
+```
+
+API-key credentials can additionally carry a provider-scoped `env` object -- named
+environment values (e.g. `CLOUDFLARE_ACCOUNT_ID`, `AZURE_OPENAI_*` settings, `PI_CACHE_RETENTION`,
+`HTTP_PROXY`/`HTTPS_PROXY`) that are consulted *before* the process environment when
+resolving that specific provider's own headers or configuration -- letting one provider's
+settings diverge from the ambient shell environment without a separate mechanism.
+
+### 4.3 Usage and cost accounting: a structured `Usage` type on every message, no documented spend cap
+
+[Session & transcript persistence](session-persistence.md) §5.2 already documents the
+`Usage` shape pi attaches to every `AssistantMessage`/`ToolResultMessage`/compaction and
+branch-summary entry -- `input`/`output`/`cacheRead`/`cacheWrite`/`totalTokens` token
+counts alongside a matching `cost` object broken down the same four ways plus a `total` --
+not re-derived here. What this page adds is the accounting *policy* around that data
+structure: `/session` surfaces the current session's message count, token totals, and
+cost live; the interactive footer shows the same figures continuously, with the docs
+stating explicitly that displayed totals "include assistant responses, usage reported by
+tools, and summary generation" -- i.e. compaction/branch-summarization LLM calls
+([context-compression.md](context-compression.md) §4) count toward the session's own
+displayed spend, the same inclusive-accounting principle Claude Code's `/usage` applies
+to its own subagent spend (§1.3) and a genuinely different choice than simply summing
+only the visible conversational turns. `warnings.anthropicExtraUsage` (default `true`)
+is pi's one accounting-adjacent settings key found this session: it surfaces a warning
+specifically when Anthropic subscription auth (Claude Pro/Max routed through pi, per
+§4.1) may draw on paid "extra usage" rather than plan-included quota -- a narrower,
+single-provider analog of Copilot CLI's own premium-request quota messaging (§2), scoped
+to the one subscription pi's docs flag as having this specific billing subtlety.
+
+No page fetched this session for pi documents an in-harness spend ceiling comparable to
+Claude Code's Agent SDK `max_budget_usd`/Workflow `budget` object (§1.4) or an
+OTel export pipeline comparable to Claude Code's cost/usage metric catalogue (§1.5) --
+pi's own accounting surface is display-only (footer, `/session`, the persisted `Usage`
+fields on every message) with no mechanism found this session that halts a session or
+refuses a request once cumulative spend crosses any threshold, the same
+enforcement-free posture this page's Synthesis table already documents for OpenCode
+(§3) and, per this same section's own credential-store finding, for a different reason
+than OpenCode's: pi's `pi-ai` layer does compute and report cost per request
+([llm-api-contract.md](llm-api-contract.md) §3.5's `finalMessage.usage.cost.total`), the
+accounting machinery clearly exists end to end, but nothing found this session wires
+that number to an enforcement decision.
+
+---
+
+## 5. Synthesis
 
 ```mermaid
 flowchart LR
@@ -769,18 +879,25 @@ flowchart LR
         OC3["Usage display: TUI footer, live $ + context%"]
         OC4["Budget: none found in the CLI/TUI/server;\nonly Zen's own provider-side router"]
     end
+    subgraph PI["pi"]
+        direction TB
+        PI1["Auth: --api-key > auth.json (0600) > env var\n> models.json custom key; auth.json 'key' field\nhas its own !command/$env/literal grammar"]
+        PI2["OAuth subscriptions: Codex, Claude Pro/Max,\nGitHub Copilot, xAI, OpenRouter, Radius --\nwidest named-provider roster in this book"]
+        PI3["Cost: structured Usage on every message\n(input/output/cacheRead/cacheWrite + cost\nbreakdown), footer + /session live display"]
+        PI4["Budget: none found -- accounting is\ncomputed and displayed end to end,\nnever wired to an enforcement decision"]
+    end
 ```
 
-| Dimension | Claude Code | Copilot CLI | OpenCode |
-|---|---|---|---|
-| Primary login mechanism | Browser OAuth via `/login` (or API key auto-approval) | OAuth device/web flow via `/login` | `/connect` or `opencode auth login`, per-provider (API key, OAuth, or cloud env vars) |
-| Credential storage | OS keychain (macOS) / `.credentials.json` 0600 (Linux/Windows) | OS keychain, with a documented plain-text fallback | `auth.json` 0600, or a full-store env-var override (`OPENCODE_AUTH_CONTENT`) |
-| CI/headless auth | `CLAUDE_CODE_OAUTH_TOKEN` (via `claude setup-token`) or `apiKeyHelper` | `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` | `.env` file, cloud provider env vars, or `OPENCODE_AUTH_CONTENT` |
-| Cost unit shown to the user | USD, locally computed at "standard list rates" | Premium requests (plus a token-based-billing variant for some plans) | USD, locally computed from the models.dev catalog |
-| Live usage command | `/usage` (absorbed `/cost`/`/stats` at v2.1.118) | `/usage` (introduced as such from v0.0.333) | TUI prompt-bar/subagent footer (no dedicated slash command found) |
-| Machine-readable export | OpenTelemetry metrics/events (export-only, no enforcement) | Not examined this session | None found |
-| In-harness spend cap | Agent SDK `max_budget_usd` (per query) + Workflow `budget` object (per script run) | None in the CLI itself | None found |
-| Org/platform-level spend cap | Console workspace limits, Team/Enterprise spend limits, cloud-provider budget tools | GitHub billing platform's four-tier budget hierarchy, $0-default hard stop | None documented; only Zen's own internal provider-budget router |
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi |
+|---|---|---|---|---|
+| Primary login mechanism | Browser OAuth via `/login` (or API key auto-approval) | OAuth device/web flow via `/login` | `/connect` or `opencode auth login`, per-provider (API key, OAuth, or cloud env vars) | `/login` -- subscription OAuth (Codex/Claude Pro-Max/GitHub Copilot/xAI/OpenRouter/Radius) or an API-key provider, same command |
+| Credential storage | OS keychain (macOS) / `.credentials.json` 0600 (Linux/Windows) | OS keychain, with a documented plain-text fallback | `auth.json` 0600, or a full-store env-var override (`OPENCODE_AUTH_CONTENT`) | `~/.pi/agent/auth.json`, `0600`; `key` field supports shell-command execution, env interpolation, escapes, or a plain literal |
+| CI/headless auth | `CLAUDE_CODE_OAUTH_TOKEN` (via `claude setup-token`) or `apiKeyHelper` | `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` | `.env` file, cloud provider env vars, or `OPENCODE_AUTH_CONTENT` | Any of 29+ named provider env vars (e.g. `ANTHROPIC_API_KEY`), or `auth.json`; OpenRouter's OAuth flow has a documented paste-the-redirect-URL fallback for SSH |
+| Cost unit shown to the user | USD, locally computed at "standard list rates" | Premium requests (plus a token-based-billing variant for some plans) | USD, locally computed from the models.dev catalog | USD, computed and stored per-message by `pi-ai` (`Usage.cost`), including compaction/branch-summary generation cost |
+| Live usage command | `/usage` (absorbed `/cost`/`/stats` at v2.1.118) | `/usage` (introduced as such from v0.0.333) | TUI prompt-bar/subagent footer (no dedicated slash command found) | Interactive footer (continuous) + `/session` (message count, tokens, cost) |
+| Machine-readable export | OpenTelemetry metrics/events (export-only, no enforcement) | Not examined this session | None found | None found on the pages fetched this session |
+| In-harness spend cap | Agent SDK `max_budget_usd` (per query) + Workflow `budget` object (per script run) | None in the CLI itself | None found | None found -- `warnings.anthropicExtraUsage` warns about paid-extra-usage risk on one specific subscription but enforces nothing |
+| Org/platform-level spend cap | Console workspace limits, Team/Enterprise spend limits, cloud-provider budget tools | GitHub billing platform's four-tier budget hierarchy, $0-default hard stop | None documented; only Zen's own internal provider-budget router | None found -- pi has no org/platform product layer of its own to enforce one |
 
 The throughline: Claude Code is the only harness examined here that gives the *harness
 layer itself* a programmable, in-product notion of a spending ceiling -- twice over, at
@@ -798,7 +915,19 @@ model-price catalog -- but, as far as this session's research found, nothing in 
 harness a user actually runs locally ever refuses a request because that accumulator
 crossed a line; the only budget-*enforcement* code in the entire repository belongs to
 the company's own hosted product deciding how to spend its own money across upstream
-providers, not to the open-source CLI session sitting in front of a user.
+providers, not to the open-source CLI session sitting in front of a user. pi lands
+alongside OpenCode on the enforcement axis -- no spend cap of any kind was found -- but
+distinguishes itself sharply on the *auth* axis instead: no other harness in this book
+documents as many named subscription-OAuth integrations (six, spanning three unrelated
+frontier labs plus two gateway/router products) or as expressive a per-credential
+resolution grammar (`auth.json`'s `!command`/`$env`/escape-sequence syntax, §4.2) as pi
+does. Read together with [The LLM API contract](llm-api-contract.md) §3.5's own finding
+that pi's credential store treats a stored credential as *owning* its provider outright
+(never silently falling back to an environment variable after a failed OAuth refresh),
+pi's overall posture on this page's two axes is: maximally rich and fail-closed on
+*authentication*, while offering nothing at all on *spend enforcement* -- a genuinely
+different combination of choices than any of the other three harnesses' own pairings of
+those two axes.
 
 ## Sources
 
@@ -902,3 +1031,28 @@ throughout this section, since it is not a stable release tag):**
   OpenCode Zen's own per-provider, per-minute, priority-tiered budget router, cited here
   specifically to distinguish it from (and rule it out as evidence of) any user-facing
   budget-enforcement feature in the OpenCode CLI/TUI/server proper.
+
+**pi (authoritative for its own documented behavior; fetched 20 August 2026 from
+`github.com/earendil-works/pi`, `main` branch):**
+- `packages/coding-agent/docs/providers.md` (via `gh api
+  repos/earendil-works/pi/contents/packages/coding-agent/docs/providers.md`, in full) --
+  the primary source for all of §4: the six named OAuth-subscription providers and their
+  individual flow notes (OpenRouter's PKCE flow and SSH-fallback, Radius's dynamic
+  gateway catalog), the 29+-row API-key/environment-variable/`auth.json`-key table, the
+  `auth.json` file's `0600` permissions and OAuth-credentials-also-stored-here note, the
+  `key` field's four-form resolution grammar (`!command`/`$env`/escapes/literal) with its
+  own worked examples, the provider-scoped `env` object and its precedence over the
+  process environment, and the final four-item credential-resolution-order list quoted
+  in §4.2.
+- `packages/coding-agent/docs/session-format.md`/`sessions.md` (cross-referenced,
+  already fully cited in [Session & transcript persistence](session-persistence.md)
+  §5's own Sources) -- the `Usage` type's structured token/cost fields and the footer's
+  "includes assistant responses, usage reported by tools, and summary generation"
+  accounting-scope statement, not re-derived here.
+- `packages/coding-agent/docs/settings.md` (cross-referenced, already cited in
+  [Configuration](configuration.md)'s own pi section) -- the `warnings.anthropicExtraUsage`
+  settings key.
+- `packages/ai/README.md` (cross-referenced, already fully cited in
+  [The LLM API contract](llm-api-contract.md) §3.5's own Sources) -- the credential-store
+  fail-closed/owns-its-provider finding and per-message `usage.cost.total` computation,
+  not re-derived here.

@@ -320,7 +320,116 @@ configuration.
 
 ---
 
-## 4. Synthesis -- three different meanings of "built-in"
+## 4. pi
+
+Sources for this section: VERIFIED, fetched 20 August 2026 directly from
+`github.com/earendil-works/pi`'s `packages/coding-agent/docs/skills.md`, in full.
+
+### 4.1 An explicit, named-standard implementation, with a documented, deliberate deviation
+
+pi's docs state its own compliance posture up front, in a way none of Claude Code's,
+Copilot CLI's, or OpenCode's own skills documentation states as directly: "Pi implements
+the [Agent Skills standard](https://agentskills.io/specification), warning about most
+violations but remaining lenient." This is the first harness in this book to name an
+external, cross-vendor specification as the thing it is implementing, rather than
+describing its own skill mechanism purely in its own terms -- a meaningfully different
+framing from Claude Code's and Copilot CLI's own skill docs (§1-§2), which describe their
+respective frontmatter/discovery rules without citing an outside standard they are
+conforming to. pi's docs also name one **deliberate, explicit deviation** from that
+standard rather than silently diverging: the Agent Skills specification requires a
+skill's `name` field to match its parent directory name, and pi's docs state plainly
+that pi does not enforce this, "because that standard requirement is suboptimal for
+shared skill directories used across multiple agent harnesses" -- i.e. the deviation
+exists specifically to make cross-harness skill-directory sharing (the same convergence
+§4's own closing paragraph below documents for Claude Code/Copilot CLI/OpenCode) work
+more smoothly for pi as a fourth participant in that sharing pattern, not out of mere
+laxness.
+
+### 4.2 No confirmed bundled skills -- reading like OpenCode's posture, for the same evidentiary reason
+
+pi's own `README.md`/`skills.md` name no skill shipped inside the pi product itself the
+way Claude Code names its dozen bundled skills (§1) or Copilot CLI names its cloud-agent
+environment guide (§2) -- the docs' own framing ("pi can create skills. Ask it to build
+one for your use case") treats skill authorship as something the user or an external
+skill repository supplies, not something pi ships pre-loaded. Treat "pi ships no
+built-in skills of its own" as **BEST CURRENT UNDERSTANDING** on the same evidentiary
+basis §3.1 already applies to OpenCode -- strongly supported by the documentation's own
+framing and the absence of any named bundled skill anywhere in the docs fetched this
+session, but not a sentence any pi source states in as many words ("we do not bundle any
+skills" does not appear verbatim on the page).
+
+### 4.3 Explicit, first-class cross-harness directory reuse -- the deepest documented instance in this book
+
+Where §4's own closing synthesis paragraph below observes that Claude Code's, Copilot
+CLI's, and OpenCode's skill-discovery logic *happens* to converge on reading
+`.claude/skills` as a shared path, pi's own docs go one step further and document this
+as an intentional, named feature with its own worked configuration example -- a
+dedicated "Using Skills from Other Harnesses" subsection instructing a reader to add
+`~/.claude/skills` and `~/.codex/skills` directly to pi's own `skills` settings array (or
+`../.claude/skills` in a project's `.pi/settings.json` for project-level Claude Code
+skills). This is the most explicit, first-party-endorsed instance of the cross-harness
+skill-portability pattern this book has found anywhere -- not an inferred convergence
+from three independently-written discovery-path lists, but a harness's own docs
+instructing a user how to point it at a *named competitor's* skill directory. pi's own
+discovery locations otherwise follow the same two-tier shape as OpenCode's (§3.2): global
+(`~/.pi/agent/skills/`, `~/.agents/skills/`) and project (`.pi/skills/`, and
+`.agents/skills/` walked from the cwd up to the git repo root or filesystem root),
+plus a packages channel (`skills/` directories or `pi.skills` entries in a pi
+package's own `package.json`, cross-referenced against
+[packaging-distribution-and-self-update.md](packaging-distribution-and-self-update.md)'s
+own pi section for the package-distribution mechanism itself) and repeatable `--skill
+<path>` CLI flags that remain additive even alongside `--no-skills`.
+
+A documented discovery-rule asymmetry worth naming precisely: in `~/.pi/agent/skills/`
+and `.pi/skills/`, a bare root-level `.md` file with valid skill frontmatter is
+discovered as its own individual skill; in `~/.agents/skills/` and project
+`.agents/skills/` specifically, root-level `.md` files are *ignored* even with valid
+frontmatter, and only nested `.md` files inside a grouping folder are discovered -- a
+deliberate difference in how the two directory conventions are walked, not a bug, since
+`.agents/skills/` is the shared, cross-tool convention pi is reading defensively rather
+than a pi-owned directory it fully controls the contents of.
+
+### 4.4 Frontmatter surface: closest to OpenCode's in size, with one field neither other harness's confirmed set names
+
+pi's documented frontmatter fields are `name` (required, the same 1-64-character
+lowercase-hyphenated rule as the other harnesses, minus the parent-directory-match
+requirement per §4.1), `description` (required, max 1024 characters), `license`,
+`compatibility` (max 500 characters, environment requirements), `metadata` (an arbitrary
+key-value map), `allowed-tools` (space-delimited, explicitly marked "experimental," the
+same pre-approved-tool-list concept Copilot CLI's own confirmed frontmatter set already
+names per §2), and `disable-model-invocation` (`true` hides the skill from the system
+prompt entirely, requiring the user to invoke it explicitly via `/skill:name` -- the same
+field name and semantics this page's §4's own closing paragraph already found in
+Copilot CLI's changelog-only field set, a second, independently-documented instance of
+the identical field name and behavior). This puts pi's frontmatter surface in between
+OpenCode's smaller confirmed set (§3.2: `name`/`description`/`license`/`compatibility`/
+`metadata`, no `allowed-tools` or `disable-model-invocation` named) and Copilot CLI's own
+(§2), while remaining well short of Claude Code's much larger field set (§1). Unknown
+frontmatter fields are documented as ignored, the same lenient-superset behavior
+OpenCode's own docs state (§3.2); a skill declared with a missing `description`,
+however, is not loaded at all and produces a warning -- description is the one field
+pi's docs treat as load-bearing enough that its absence blocks the skill outright rather
+than merely warning and proceeding.
+
+### 4.5 Invocation: `/skill:name`, with an explicit model-reliability caveat
+
+A discovered skill's name/description pair is rendered into the system prompt "in XML
+format per the specification" -- progressive disclosure, the same load-only-the-
+description-until-needed principle every harness's own skills mechanism in this book
+implements. Skills additionally register as `/skill:name` slash commands
+(`/skill:brave-search`, with arguments after the command name appended to the skill's own
+content as `User: <args>`), togglable globally via `enableSkillCommands` in
+`settings.json`. pi's docs name a specific reliability caveat worth quoting directly,
+since it bears on how much a skill author should rely on the model reading a skill's
+full content unprompted: "the agent uses `read` to load the full SKILL.md (models don't
+always do this; use prompting or `/skill:name` to force it)" -- i.e. pi's own docs treat
+model-invoked skill loading as probabilistic rather than guaranteed, and name the
+explicit slash command as the deterministic fallback when a task genuinely requires the
+skill's full content to load, not merely its description.
+
+---
+
+## 5. Synthesis -- four different meanings of "built-in"
 
 ```mermaid
 flowchart TD

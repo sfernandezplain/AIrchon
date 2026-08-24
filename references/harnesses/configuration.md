@@ -1,4 +1,4 @@
-# Configuration -- Claude Code, GitHub Copilot CLI, and OpenCode
+# Configuration -- Claude Code, GitHub Copilot CLI, OpenCode, and pi
 
 **Scope note.** This page is about the **general settings/config-file
 system** each harness reads on startup and during a session: where the
@@ -21,10 +21,10 @@ permission-rule *configuration mechanism* itself -- the file format,
 scope, and merge behavior that those per-tool rules are written into.
 
 Every claim is tagged VERIFIED (fetched this session) or BEST CURRENT
-UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, and OpenCode are
-three separate products from three separate organizations; a
-configuration behavior confirmed for one is never assumed to hold for
-another without its own citation.
+UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, and pi
+(Earendil Works) are four separate products from four separate
+organizations/authors; a configuration behavior confirmed for one is never
+assumed to hold for another without its own citation.
 
 ---
 
@@ -738,39 +738,386 @@ in §3.4 adds a second, independent instance of.
 
 ---
 
-## 4. Synthesis
+## 4. pi
 
-| Dimension | Claude Code | Copilot CLI | OpenCode |
-|---|---|---|---|
-| Config file format | JSON, optional `$schema` | JSON with comments | JSON or JSONC |
-| Number of named scopes | 4: Managed, User, Project, Local | Built-in defaults, MDM, user, repo, repo-local, env, CLI flags (7-link documented chain) | 8-source documented chain (remote, global, custom-env-path, project, `.opencode/`, inline-env-content, managed, macOS MDM) |
-| File-location analog across harnesses | `~/.claude/settings.json` (user), `.claude/settings.json` (project), `.claude/settings.local.json` (local) | `~/.copilot/settings.json` (user), `.github/copilot/settings.json` (repo), `.github/copilot/settings.local.json` (repo-local) | `~/.config/opencode/opencode.json` (global), `opencode.json` in project root |
-| Default merge policy | Later scope overrides earlier, **except permission rules, which merge/union across every scope** | Later scope overrides earlier; repo-settings merge policy is stated to vary **per key** (some allow override, some block removal of restrictions) | Explicit, source-named `mergeConfigConcatArrays()`: scalars override, **array-valued keys (e.g. `instructions`) concatenate rather than replace** |
-| Documented ordering of CLI flags/env vars relative to file-based scopes | CLI flags positioned as a session override above Local/Project/User; Managed is separately described as never-overridable -- the docs' own two passages order CLI-flags-vs-Managed inconsistently (§1.1, flagged) | Documented explicitly: env vars and CLI flags both rank **above** repo/local file config in the six/seven-link chain | `OPENCODE_CONFIG`/`OPENCODE_CONFIG_CONTENT` are named, ordered links in the same eight-source chain as the file-based scopes, not a separate top/bottom layer |
-| Cross-harness config interop found | None found (no evidence Claude Code reads a Copilot- or OpenCode-authored file) | Reads `.claude/settings.json`/`.claude/settings.local.json` as additional repo sources, and reads `extraKnownMarketplaces` from the same file, "for Claude compatibility" (v1.0.12/0.0.421) | None found |
-| Permission-config shape | Rule strings in `permissions.allow`/`permissions.deny` arrays (e.g. `"Bash(npm run lint)"`) | Named boolean/URL-list keys (`allowedUrls`, `permissions.disableBypassPermissionsMode`) plus a saved-decision store (`permissions-config.json`) keyed by project location | A dedicated `permission` object per tool-category, `"allow"`/`"ask"`/`"deny"`, with glob-pattern sub-keys, last-match-wins, and per-agent override merge -- the most granular, most fully documented-and-source-verified permission-config schema of the three |
-| Env-var substitution inside config values | Not found as a general config-value mechanism (settings-file `env` block sets variables *for subprocesses*, it does not interpolate `${VAR}` into other keys generally, though managed MCP allowlist entries do support `${VAR}` resolution per a dated changelog fix) | Not found as a general config-value mechanism in the sources this session fetched | `{env:VAR}` and `{file:path}` placeholder syntax, source-confirmed via `ConfigVariable.substitute()` |
-| Malformed-config resilience | Multiple dated fixes (v2.1.97/98, and others) hardening one-bad-key-should-not-invalidate-the-whole-file; managed settings explicitly strip-and-warn rather than fail closed | Dated hardening arc (1.0.40-1.0.44): invalid values/URLs now warn and skip rather than crash startup | Not directly evidenced in the sources this session fetched (BEST CURRENT UNDERSTANDING, UNCONFIRMED: no equivalent claim found either way) |
-| Structural migration history found | `.claude.json` -> `settings.json` (v1.0.7-v2.0.8); Windows managed-settings path change (deprecated ~v2.1.34, removed v2.1.75); `managed-settings.d/` drop-in directory added (v2.1.83) | `.github/copilot/config.json` -> `settings.json` (0.0.421 -> 0.0.422, ~48 hours); user `~/.copilot/settings.json` split from `~/.copilot/config.json` internal state (v1.0.35); `/settings` unified dialog absorbing scattered slash commands (1.0.57-1.0.72) | Legacy TOML `config` file auto-migrated to JSON on load, per source; no further multi-file-format migration history found in the sources fetched this session |
+Sources for this section: VERIFIED, fetched 24 August 2026 directly from
+`github.com/earendil-works/pi`'s `packages/coding-agent/docs/` tree
+(`settings.md`, `environment-variables.md`, `usage.md`), the same repository
+and branch (`main`) already cited for pi's sections in
+[The LLM API contract](llm-api-contract.md) §3.5,
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md) §5,
+[Model routing / selection](model-routing-and-selection.md) §4,
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §5,
+[Session & transcript persistence](session-persistence.md), and
+[Built-in skills](built-in-skills.md). pi is source-available
+(`earendil-works/pi`) but this session again reads only its docs for this
+specific page, the same standing caveat those other sections already state.
 
-**The design lesson.** All three harnesses converge on the same basic
-shape -- a small number of named scopes (user/global, project/repo,
-local, and a centrally-managed/enterprise tier), later scopes
-generally overriding earlier ones, with at least one deliberate,
-explicitly-named exception where the harness prefers an additive merge
-over an outright replacement (Claude Code's permission-rule union
-across scopes, Copilot CLI's per-key repo-merge nuance, OpenCode's
-array-concatenating `mergeConfigConcatArrays()`). Where they diverge
-most is in *transparency of that merge to the person configuring it*:
-OpenCode is the only one of the three whose merge function is a named,
-source-readable routine this session could inspect directly rather
-than infer from prose; Claude Code's own docs contain an internal
-inconsistency about where CLI flags sit relative to managed policy
-that this page flags rather than resolves; and Copilot CLI is the only
-harness found to actively read a sibling harness's own config file
-(`.claude/settings.json`) as a documented interop measure, a
+### 4.1 Two scopes, no managed/enterprise tier, and a stated recursive-merge rule
+
+```mermaid
+flowchart TD
+    Global["Global\n~/.pi/agent/settings.json\n(you, across every project)"]
+    Project["Project\n.pi/settings.json\n(this project only --\ngated by Project Trust, see 4.2)"]
+    CLIFlags["CLI flags\n(this run only)"]
+    EnvVars["A handful of PI_* / VISUAL/EDITOR/\nHTTP_PROXY env vars\n(process-level, not per-key overrides)"]
+    Merge["Nested-object merge:\nProject overrides Global\nkey-by-key, not wholesale"]
+    Effective["Effective setting for this key"]
+
+    Global --> Merge
+    Project --> Merge
+    Merge --> Effective
+    CLIFlags -->|"wins for this invocation\n(e.g. --session-dir, --model)"| Effective
+    EnvVars -->|"lower-priority than a CLI flag\nwhen both name the same concern"| Effective
+```
+
+Per `settings.md`, pi recognizes exactly two settings-file scopes --
+**global** (`~/.pi/agent/settings.json`, applying across every project) and
+**project** (`.pi/settings.json`, this project only) -- a materially smaller
+scope count than Claude Code's four (Managed/User/Project/Local, §1.1),
+Copilot CLI's six/seven-link chain (§2.2), or OpenCode's eight-source chain
+(§3.1). No managed/MDM/enterprise-policy tier is named anywhere in the
+fetched docs, a genuine structural absence (not merely undocumented) worth
+setting against the other three harnesses, all of which document some form
+of centrally-pushed configuration floor (Claude Code's Managed scope, §1.1;
+Copilot CLI's MDM-managed settings, §2.4; OpenCode's managed config files and
+macOS `.mobileconfig` preferences, §3.1). The docs state the merge rule
+directly with a fully worked example (reproduced in §4.6 below): project
+settings override global settings, and **nested objects are merged
+key-by-key** rather than one scope's whole object replacing the other's --
+`{"compaction": {"reserveTokens": 8192}}` at the project level narrows only
+`reserveTokens`, leaving `enabled: true` inherited from the global
+`compaction` object untouched. This is a third, independently-arrived-at
+instance of the additive-merge-over-wholesale-replacement design choice this
+book has now found in all four harnesses examined on this page: Claude
+Code's permission-rule union across scopes (§1.1), Copilot CLI's per-key
+repo-merge nuance (§2.3), OpenCode's array-concatenating
+`mergeConfigConcatArrays()` (§3.1), and pi's own key-by-key nested-object
+merge here -- though pi's version operates on arbitrary nested settings
+objects generally, not narrowly on permission rules (Claude Code) or
+array-valued keys specifically (OpenCode).
+
+### 4.2 Project trust: a config-loading gate layered in front of the project scope
+
+Unlike the other three harnesses' scope models, pi's project scope is not
+simply "another file that gets read" -- it is gated by a distinct **Project
+Trust** mechanism the docs describe as a startup precondition, not a
+permission-engine concern: on interactive startup, pi asks before trusting a
+project folder that contains project-local settings, resources, or a
+project `.agents/skills` directory, unless a saved decision for that folder
+or a parent folder already exists in `~/.pi/agent/trust.json`. Trusting a
+project is what actually enables `.pi/settings.json` and `.pi` resources to
+load, missing project packages to install, and project extensions to
+execute -- so the project half of §4.1's two-scope model is conditionally
+present, not unconditionally read the way Claude Code's Project scope or
+OpenCode's project config are. Before a trust decision resolves, pi still
+loads context files, user/global extensions, and CLI `-e`-supplied
+extensions specifically so they remain able to handle the `project_trust`
+extension event (cross-referenced, not repeated, against
+[hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §5's own
+pi coverage for that event's payload); project-local extensions and project
+settings load only once trust resolves. The same split applies again when a
+resumed session's cwd differs from the process's already-resolved trust
+state.
+
+Non-interactive modes (`-p`, `--mode json`, `--mode rpc`) never show the
+trust prompt at all; absent a saved decision, they fall back to a global
+`defaultProjectTrust` setting (`"ask"` by default, `"always"`, or
+`"never"`) -- `"ask"` and `"never"` both cause project resources to be
+ignored in these modes (the practical difference is UX, not resource
+loading), while `"always"` trusts unconditionally. `-a`/`--approve` and
+`-na`/`--no-approve` override project trust for a single run of `pi` itself,
+and the docs additionally state that `pi config` and package commands
+(`pi install`/`pi update`/etc.) run through this identical trust flow with
+the same per-invocation `--approve`/`--no-approve` override -- with one
+named exception: `pi update` never prompts for or is gated by project trust
+at all, regardless of setting. `/trust` in interactive mode persists a
+decision to `~/.pi/agent/trust.json` (optionally including the immediate
+parent folder), but the docs are explicit that this write does **not**
+reload the current session -- a restart is required for the new trust
+decision to take effect, a stricter, no-hot-path exception to the general
+reload picture in §4.5 below. This whole mechanism is a config-loading
+precondition, not pi's permission/sandboxing enforcement layer -- see
+[permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5.2 for the
+full security-rationale treatment of the same mechanism from the
+enforcement-architecture angle, not repeated here.
+
+### 4.3 Major settings-file key clusters
+
+`settings.md` groups `~/.pi/agent/settings.json`/`.pi/settings.json` keys
+into named clusters, several of which this page cross-references to their
+own dedicated treatment elsewhere rather than re-deriving:
+
+- **Model & Thinking:** `defaultProvider`, `defaultModel`,
+  `defaultThinkingLevel`, `hideThinkingBlock`, `showCacheMissNotices`,
+  `thinkingBudgets` (per-thinking-level numeric token budgets, natively
+  honored by Anthropic/Google/Bedrock and by OpenAI-compatible models only
+  when a `compat.thinkingTokenBudgetField`/`supportsThinkingTokenBudget`
+  override is set on that model's `models.json` entry) -- the full
+  model-selection precedence stack these keys feed into is
+  [model-routing-and-selection.md](model-routing-and-selection.md) §4's own
+  territory, not repeated here.
+- **UI & Display:** `theme`, `externalEditor` (Ctrl+G; takes precedence
+  over `$VISUAL`/`$EDITOR`), `quietStartup`, `defaultProjectTrust` (§4.2,
+  global-setting-only), `collapseChangelog`, `doubleEscapeAction`
+  (`"tree"`/`"fork"`/`"none"`), `treeFilterMode`, `editorPaddingX`,
+  `outputPad`, `autocompleteMaxVisible`, `showHardwareCursor`, `tuiMode`
+  (`"regular"`/experimental `"fullscreen"`; also settable per-run via
+  `--tui-mode`), `fullscreenExitOutput`, `fullscreenScrollbar`.
+- **Telemetry and update checks:** `enableInstallTelemetry` (an anonymous
+  install/update version ping to `https://pi.dev/api/report-install`;
+  distinct from, and does not disable, the separate `pi.dev/api/
+  latest-version` update check itself), `enableAnalytics` (opt-in, currently
+  asked only during an experimental `PI_EXPERIMENTAL=1` first-time setup),
+  `trackingId`. `PI_SKIP_VERSION_CHECK` and `--offline`/`PI_OFFLINE` are the
+  corresponding environment-variable/flag-level disables (§4.4) -- a
+  three-layer telemetry/update-check surface (settings key, dedicated
+  skip-only env var, blanket offline env var/flag) worth setting alongside
+  this book's separate, dedicated
+  [Observability and self-diagnostics](observability-and-self-diagnostics.md)
+  treatment of vendor telemetry generally (that page has no pi section as of
+  this writing).
+- **Network:** `httpProxy` (global-setting-only, applied as both
+  `HTTP_PROXY` and `HTTPS_PROXY`).
+- **Warnings:** `warnings.anthropicExtraUsage` (default `true`).
+- **Compaction:** `compaction.enabled`, `compaction.reserveTokens` (default
+  16384), `compaction.keepRecentTokens` (default 20000) -- the mechanism
+  these keys tune is [context-compression.md](context-compression.md)'s own
+  pi section, not repeated here; §4.6 below reuses this exact key as the
+  worked project-override example.
+- **Branch Summary:** `branchSummary.reserveTokens`,
+  `branchSummary.skipPrompt` -- tunes the "Summarize branch?" prompt on
+  `/tree` navigation, adjacent to but distinct from ordinary compaction.
+- **Retry:** `retry.enabled`, `retry.maxRetries` (default 3),
+  `retry.baseDelayMs` (default 2000, exponential 2s/4s/8s),
+  `retry.provider.timeoutMs`, `retry.provider.maxRetries` (default `0`),
+  `retry.provider.maxRetryDelayMs` (default 60000) -- the docs explicitly
+  warn against raising `retry.provider.maxRetries` above `0` casually,
+  since a provider/SDK-level retry can absorb an out-of-usage-limit error
+  before pi's own agent-level retry logic ever observes it, potentially
+  blocking the agent until the provider's quota resets; the full retry
+  architecture this key cluster configures is
+  [retries.md](retries.md)'s own pi section, not repeated here.
+- **Message Delivery:** `steeringMode`/`followUpMode` (`"all"` or
+  `"one-at-a-time"`, governing how queued Enter/Alt+Enter messages are
+  delivered mid-turn), `transport` (`"sse"`/`"websocket"`/
+  `"websocket-cached"`/`"auto"`), `httpIdleTimeoutMs`,
+  `websocketConnectTimeoutMs`.
+- **Terminal & Images:** `terminal.showImages`, `terminal.imageWidthCells`,
+  `terminal.clearOnShrink`, `images.autoResize`, `images.blockImages`.
+- **Shell:** `shellPath`, `shellCommandPrefix` (prepended to every bash
+  command), `npmCommand` (an argv array overriding the package manager
+  invocation for all npm operations, including git-package dependency
+  installs -- user-scoped npm packages install under `~/.pi/agent/npm/`,
+  project-scoped ones under `.pi/npm/`).
+- **Tools:** `defaultTools` (a string array of built-in tools enabled at
+  startup; an empty array starts with no built-in tools while still keeping
+  extension/SDK custom tools enabled; a project-level `defaultTools` array
+  replaces, rather than merges with, the global array -- an explicit,
+  named exception to §4.1's general nested-object merge rule). `--tools`/
+  `-t` imposes a strict allowlist overriding this setting entirely,
+  `--no-tools`/`-nt` disables every tool, `--no-builtin-tools`/`-nbt`
+  disables only the built-ins while preserving extension/custom tools, and
+  `--exclude-tools`/`-xt` filters the resulting list afterward.
+- **Sessions:** `sessionDir` (accepts absolute/relative/`~` paths) -- see
+  §4.4 for its documented three-way precedence against `--session-dir` and
+  `PI_CODING_AGENT_SESSION_DIR`, and
+  [session-persistence.md](session-persistence.md)'s own pi section for the
+  session-file format this directory holds.
+- **Model Cycling:** `enabledModels` (a string array of model patterns for
+  `Ctrl+P` cycling, same format as the `--models` CLI flag).
+- **Markdown:** `markdown.codeBlockIndent`, `markdown.mermaid`
+  (`"off"`/`"final"`/`"streaming"`).
+- **Resources:** `packages` (npm/git package sources, string form loading
+  every resource a package declares or object form filtering to specific
+  named `skills`/`extensions`), `extensions`, `skills`, `prompts`, `themes`
+  (each a string array of local paths/directories, glob-pattern-aware, with
+  `!pattern` exclusion and `+path`/`-path` exact force-include/exclude),
+  `enableSkillCommands` (registers skills as `/skill:name` commands, default
+  `true`) -- resource *loading and discovery* semantics for this cluster are
+  [built-in-skills.md](built-in-skills.md)'s own pi section's territory, not
+  repeated here; this page covers only that they are configuration-file
+  keys, scoped and merged the same way as every other cluster on this list.
+  Paths in the global settings file resolve relative to `~/.pi/agent`; paths
+  in the project settings file resolve relative to `.pi`.
+
+### 4.4 CLI flags and environment variables
+
+`usage.md`'s CLI Reference table documents flag clusters that map onto (and,
+for several keys, directly override) the settings clusters in §4.3: **Model
+Options** (`--provider`, `--model` -- accepting a bare pattern, a
+`provider/id` pair, and an optional `:<thinking-level>` suffix,
+`--api-key`, `--thinking`, `--models`, `--list-models`); **Session Options**
+(`-c`/`--continue`, `-r`/`--resume`, `--session`, `--fork`, `--session-dir`,
+`--no-session`, `--name`/`-n`); **Tool Options** (`--tools`/`-t`,
+`--exclude-tools`/`-xt`, `--no-builtin-tools`/`-nbt`, `--no-tools`/`-nt`,
+with the seven built-in tools named explicitly: `read`, `bash`, `edit`,
+`write`, `grep`, `find`, `ls`); **Resource Options**
+(`-e`/`--extension`, `--no-extensions`, `--skill`, `--no-skills`,
+`--prompt-template`, `--no-prompt-templates`, `--theme`, `--no-themes`,
+`--no-context-files`/`-nc`); and a residual **Other Options** cluster
+(`--system-prompt`, `--append-system-prompt`, `--tui-mode`, `--use-theme`,
+`--verbose`, `-a`/`--approve`, `-na`/`--no-approve`, `--`, `-h`/`--help`,
+`-v`/`--version`). The docs state a general composability rule for the
+Resource Options cluster specifically -- `--no-extensions` combined with an
+explicit `-e ./my-extension.ts` loads *exactly* that one extension while
+ignoring whatever `settings.json` would otherwise have discovered, i.e. the
+`--no-*` flags and their positive counterparts are designed to be combined
+in the same invocation to override settings-file discovery precisely,
+rather than functioning only as blanket on/off switches.
+
+`sessionDir` is the one setting whose CLI-flag/env-var/settings-file
+precedence the docs state explicitly and completely, worth naming as a
+concrete instance of a documented resolution order that most other
+individual keys on this page do not get: `--session-dir` (highest), then
+`PI_CODING_AGENT_SESSION_DIR`, then `sessionDir` in `settings.json`
+(lowest) -- structurally the same three-tier shape (flag > env var >
+settings file) every other harness on this page also uses, but pi's docs
+are unusually explicit about naming it for this one key by name.
+
+`environment-variables.md` frames pi's own environment-variable surface as
+serving three distinct purposes, worth holding apart rather than treating
+as one undifferentiated list: **process configuration** (variables like
+`PI_OFFLINE` that configure the pi process itself: `PI_CODING_AGENT_DIR`
+overrides the config directory away from `~/.pi/agent` entirely,
+`PI_CODING_AGENT_SESSION_DIR` overrides session storage, `PI_PACKAGE_DIR`
+overrides the package directory -- called out as useful for Nix/Guix
+store paths, `PI_OFFLINE` disables every startup network operation,
+`PI_SKIP_VERSION_CHECK` disables only the version check,
+`PI_TELEMETRY` overrides the install/update telemetry and
+provider-attribution-header behavior independently of the
+`enableInstallTelemetry` settings key, `PI_CACHE_RETENTION=long` requests
+extended provider prompt-cache retention where supported,
+`PI_SHARE_VIEWER_URL` overrides `/share`'s base URL, `PI_HARDWARE_CURSOR`
+and `PI_TUI_ESC_TIMEOUT` are terminal-behavior tuning variables, plus the
+`VISUAL`/`EDITOR` external-editor fallback pair and the standard
+`HTTP_PROXY`/`HTTPS_PROXY` pair); **process markers** (`AI_AGENT=pi`, a
+generic marker any tooling can check to detect that pi launched the
+process, and `PI_CODING_AGENT=true`, a pi-specific equivalent -- both
+inherited by child processes, but explicitly *not* session-specific and
+*not* set automatically when pi is embedded via the SDK rather than run as
+a CLI); and **bash-tool session variables** (`PI_SESSION_ID`,
+`PI_SESSION_FILE`, `PI_PROVIDER`, `PI_MODEL`, `PI_REASONING_LEVEL`,
+resolved fresh at the start of each bash-tool invocation -- already
+documented from the model-identity angle in
+[model-routing-and-selection.md](model-routing-and-selection.md) §4.4, not
+repeated here). A `createBashTool()`-based custom bash tool exposes this
+same session-variable set by default when registered with pi, injected
+before any `spawnHook` runs (so a hook receives them pre-populated in
+`ctx.env` and can extend or override them), and `exposeSessionEnvironment:
+false` disables the injection -- at which point pi additionally strips any
+inherited values for these same variable names, specifically so a nested
+pi process does not surface its parent session's stale metadata as if it
+were its own.
+
+### 4.5 Reload semantics
+
+The fetched docs state reload behavior for three specific cases rather than
+a single blanket rule the way Claude Code's docs attempt a two-bucket
+split (§1.4): `/reload` is a dedicated slash command that explicitly
+reloads keybindings, extensions, skills, prompts, themes, and context
+files together, in one user-invoked action, without a full process
+restart -- the most direct, single-command hot-reload mechanism named on
+this page for any of the four harnesses. `models.json`
+(`~/.pi/agent/models.json`, the custom-model/provider catalog covered in
+[model-routing-and-selection.md](model-routing-and-selection.md) §4.3) is
+separately documented as reloading live every time `/model` is opened, no
+restart required. Against those two positive findings, `/trust`'s own
+write to `trust.json` is documented with the opposite property: the
+current session is explicitly *not* reloaded, and a restart is required
+for a saved trust decision to take effect (§4.2) -- a deliberately named
+exception, not an oversight the docs are silent on. Beyond these three
+named cases, the fetched pages do not state a general reload policy for
+ordinary `settings.json` edits themselves (e.g., whether editing
+`compaction.reserveTokens` mid-session takes effect on the next compaction
+or requires `/new`/a restart) -- flagged here as an honest documentation
+gap, BEST CURRENT UNDERSTANDING, UNCONFIRMED either way, the same shape of
+gap §3.5 already flags for OpenCode's own retry/permission-override
+surface not being fully exposed on its public docs page.
+
+### 4.6 The worked project-override example, and what it demonstrates about §4.1's merge rule
+
+`settings.md`'s own worked example is directly reusable as concrete
+evidence for the nested-object merge rule stated in §4.1:
+
+```json
+// ~/.pi/agent/settings.json (global)
+{
+  "theme": "dark",
+  "compaction": { "enabled": true, "reserveTokens": 16384 }
+}
+
+// .pi/settings.json (project)
+{
+  "compaction": { "reserveTokens": 8192 }
+}
+
+// Result
+{
+  "theme": "dark",
+  "compaction": { "enabled": true, "reserveTokens": 8192 }
+}
+```
+
+`theme` is untouched because the project file never mentions it;
+`compaction.enabled` survives from the global file even though the project
+file's own `compaction` object never restates it; only
+`compaction.reserveTokens` is actually overridden. This is the same
+*kind* of per-key, non-destructive merge OpenCode's `mergeConfigConcatArrays()`
+performs for array-valued keys specifically (§3.1), generalized by pi to
+ordinary nested objects -- with the one named, explicit exception already
+called out in §4.3: `defaultTools` is documented as replacing wholesale at
+the project level rather than merging, so this generalization is not
+completely uniform across every key on the settings schema.
+
+---
+
+## 5. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi |
+|---|---|---|---|---|
+| Config file format | JSON, optional `$schema` | JSON with comments | JSON or JSONC | JSON |
+| Number of named scopes | 4: Managed, User, Project, Local | Built-in defaults, MDM, user, repo, repo-local, env, CLI flags (7-link documented chain) | 8-source documented chain (remote, global, custom-env-path, project, `.opencode/`, inline-env-content, managed, macOS MDM) | 2: global, project -- no managed/MDM tier documented at all (§4.1) |
+| File-location analog across harnesses | `~/.claude/settings.json` (user), `.claude/settings.json` (project), `.claude/settings.local.json` (local) | `~/.copilot/settings.json` (user), `.github/copilot/settings.json` (repo), `.github/copilot/settings.local.json` (repo-local) | `~/.config/opencode/opencode.json` (global), `opencode.json` in project root | `~/.pi/agent/settings.json` (global), `.pi/settings.json` (project) |
+| Default merge policy | Later scope overrides earlier, **except permission rules, which merge/union across every scope** | Later scope overrides earlier; repo-settings merge policy is stated to vary **per key** (some allow override, some block removal of restrictions) | Explicit, source-named `mergeConfigConcatArrays()`: scalars override, **array-valued keys (e.g. `instructions`) concatenate rather than replace** | Project overrides global via **key-by-key nested-object merge** (§4.6's worked example), with one named exception: `defaultTools` replaces wholesale rather than merging (§4.3) |
+| Documented ordering of CLI flags/env vars relative to file-based scopes | CLI flags positioned as a session override above Local/Project/User; Managed is separately described as never-overridable -- the docs' own two passages order CLI-flags-vs-Managed inconsistently (§1.1, flagged) | Documented explicitly: env vars and CLI flags both rank **above** repo/local file config in the six/seven-link chain | `OPENCODE_CONFIG`/`OPENCODE_CONFIG_CONTENT` are named, ordered links in the same eight-source chain as the file-based scopes, not a separate top/bottom layer | Stated explicitly for exactly one key (`sessionDir`): `--session-dir` > `PI_CODING_AGENT_SESSION_DIR` > settings file (§4.4) -- no equivalent blanket statement found for keys generally |
+| Cross-harness config interop found | None found (no evidence Claude Code reads a Copilot- or OpenCode-authored file) | Reads `.claude/settings.json`/`.claude/settings.local.json` as additional repo sources, and reads `extraKnownMarketplaces` from the same file, "for Claude compatibility" (v1.0.12/0.0.421) | None found | `usage.md` documents pi loading `AGENTS.md` **or** `CLAUDE.md` (whichever is present) as its own context-file convention, but this session found no equivalent reading of a Claude Code/Copilot CLI/OpenCode *settings*-schema file the way Copilot CLI reads Claude Code's |
+| Permission-config shape | Rule strings in `permissions.allow`/`permissions.deny` arrays (e.g. `"Bash(npm run lint)"`) | Named boolean/URL-list keys (`allowedUrls`, `permissions.disableBypassPermissionsMode`) plus a saved-decision store (`permissions-config.json`) keyed by project location | A dedicated `permission` object per tool-category, `"allow"`/`"ask"`/`"deny"`, with glob-pattern sub-keys, last-match-wins, and per-agent override merge -- the most granular, most fully documented-and-source-verified permission-config schema of the three | No permission-config schema at all -- see [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5.1's own source-verified negative finding; pi's only comparable gate is the Project Trust ask/always/never tri-state (§4.2), a config-*loading* gate, not a per-tool permission engine |
+| Env-var substitution inside config values | Not found as a general config-value mechanism (settings-file `env` block sets variables *for subprocesses*, it does not interpolate `${VAR}` into other keys generally, though managed MCP allowlist entries do support `${VAR}` resolution per a dated changelog fix) | Not found as a general config-value mechanism in the sources this session fetched | `{env:VAR}` and `{file:path}` placeholder syntax, source-confirmed via `ConfigVariable.substitute()` | Not found as a general config-value mechanism in the sources this session fetched |
+| Malformed-config resilience | Multiple dated fixes (v2.1.97/98, and others) hardening one-bad-key-should-not-invalidate-the-whole-file; managed settings explicitly strip-and-warn rather than fail closed | Dated hardening arc (1.0.40-1.0.44): invalid values/URLs now warn and skip rather than crash startup | Not directly evidenced in the sources this session fetched (BEST CURRENT UNDERSTANDING, UNCONFIRMED: no equivalent claim found either way) | Not directly evidenced in the sources this session fetched (BEST CURRENT UNDERSTANDING, UNCONFIRMED: no equivalent claim found either way -- pi ships no changelog this session cross-referenced for this page, unlike the two closed-source harnesses' own dated hardening histories) |
+| Structural migration history found | `.claude.json` -> `settings.json` (v1.0.7-v2.0.8); Windows managed-settings path change (deprecated ~v2.1.34, removed v2.1.75); `managed-settings.d/` drop-in directory added (v2.1.83) | `.github/copilot/config.json` -> `settings.json` (0.0.421 -> 0.0.422, ~48 hours); user `~/.copilot/settings.json` split from `~/.copilot/config.json` internal state (v1.0.35); `/settings` unified dialog absorbing scattered slash commands (1.0.57-1.0.72) | Legacy TOML `config` file auto-migrated to JSON on load, per source; no further multi-file-format migration history found in the sources fetched this session | Not evidenced in the docs pages fetched this session (no changelog cross-referenced for this specific page) -- BEST CURRENT UNDERSTANDING, UNCONFIRMED either way |
+| Config-loading precondition beyond mere scope/precedence | None found -- Local/Project settings are read unconditionally once present | None found -- repo settings are read unconditionally once present | None found -- project config is read unconditionally once present | **Project Trust** (§4.2): the project scope's own settings file is conditionally read at all, gated by an `ask`/`always`/`never` policy and a per-folder `trust.json` decision store -- a structural feature none of the other three harnesses' fetched docs name an equivalent of |
+
+**The design lesson.** All four harnesses converge on the same basic
+shape -- a small number of named scopes (user/global and project/repo at
+minimum), later scopes generally overriding earlier ones, with at least
+one deliberate, explicitly-named exception where the harness prefers an
+additive merge over an outright replacement (Claude Code's permission-rule
+union across scopes, Copilot CLI's per-key repo-merge nuance, OpenCode's
+array-concatenating `mergeConfigConcatArrays()`, pi's key-by-key
+nested-object merge). Where they diverge most is in *transparency of that
+merge to the person configuring it*: OpenCode is the only one of the four
+whose merge function is a named, source-readable routine this session
+could inspect directly rather than infer from prose; Claude Code's own
+docs contain an internal inconsistency about where CLI flags sit relative
+to managed policy that this page flags rather than resolves; Copilot CLI
+is the only harness found to actively read a sibling harness's own config
+file (`.claude/settings.json`) as a documented interop measure, a
 cross-harness config-compatibility decision this research found no
-reciprocal or three-way equivalent of.
+reciprocal or three-way equivalent of; and pi is the outlier on scope
+*count* rather than merge mechanics -- the smallest scope surface of the
+four (no managed/enterprise tier at all), but the only one of the four to
+gate its one non-global scope behind an explicit, independently
+config-loading-time trust decision rather than reading it unconditionally.
+That last property is worth holding apart from the other three harnesses'
+permission engines specifically because it operates one step *earlier* in
+the pipeline than any of them: Claude Code, Copilot CLI, and OpenCode all
+ask "is this specific tool call allowed" once a project's settings and
+resources are already loaded and in effect, while pi asks "should this
+project's own settings and resources be allowed to load in the first
+place" as a logically prior question -- a genuinely different point in the
+startup sequence to place a trust boundary, not merely a differently-named
+version of the same permission-prompt idea the other three implement.
 
 ---
 
@@ -858,3 +1205,33 @@ a stable release tag):**
   `Flag.OPENCODE_PERMISSION`/`mergeDeep()` environment-variable
   permission-override path not found on the public docs page (§3.4),
   and the `OPENCODE_DISABLE_PROJECT_CONFIG` flag (§3.1).
+
+**pi (authoritative for its own documented behavior; fetched 24 August 2026
+from `github.com/earendil-works/pi`, `main` branch):**
+- `packages/coding-agent/docs/settings.md` (via `gh api
+  repos/earendil-works/pi/contents/packages/coding-agent/docs/settings.md`,
+  in full) -- the primary source for §4.1's two-scope model and nested-merge
+  statement, §4.2's Project Trust settings-side surface
+  (`defaultProjectTrust`, `/settings`-editable), §4.3's full key-cluster
+  listing (Model & Thinking through Resources), and §4.6's worked
+  global/project-merge example, quoted verbatim.
+- `packages/coding-agent/docs/environment-variables.md` (fetched the same
+  way, in full) -- the primary source for §4.4's three-way
+  process-configuration/process-marker/bash-tool-session-variable framing,
+  the full `PI_*` variable table, and the `createBashTool()`/`spawnHook`/
+  `exposeSessionEnvironment` SDK-level detail.
+- `packages/coding-agent/docs/usage.md` (fetched the same way, in full) --
+  the primary source for §4.2's fuller Project Trust narrative (the
+  pre-trust extension-loading split, non-interactive-mode fallback
+  behavior, `pi config`/package-command trust flow, and the `pi update`
+  never-prompts exception), and §4.4's complete CLI Reference table (Mode,
+  Model, Session, Tool, Resource, and Other Options clusters) plus the
+  `/reload` slash-command description cited in §4.5.
+- Cross-referenced against, not re-fetched from,
+  [The LLM API contract](llm-api-contract.md) §3.5,
+  [Permissions & sandboxing architecture](permissions-and-sandboxing.md) §5,
+  [Model routing / selection](model-routing-and-selection.md) §4,
+  [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §5,
+  [Session & transcript persistence](session-persistence.md), and
+  [Built-in skills](built-in-skills.md) for the mechanisms this page's own
+  pi section cross-links to rather than repeats.

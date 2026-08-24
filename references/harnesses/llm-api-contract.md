@@ -16,19 +16,22 @@ that tool and posting a `tool_result` block back **is** the Observation
 being appended to context. This page grounds that mechanism at the byte
 level; agent-loop.md names the pattern.
 
-Two materially different wire contracts are in play across the three
+Two materially different wire contracts are in play across the five
 harnesses this book covers, because they are built by different vendors
 against different providers: **Anthropic's Messages API** (a typed
 content-block array per message, one `stop_reason` field) and
 **OpenAI's Chat Completions / Responses APIs** (a `tool_calls` array
 attached to an assistant message, a `finish_reason` field, and, for the
 Responses API specifically, a stream of named `response.*` events
-distinct from Anthropic's `content_block_*` event names). Every claim
-below is tagged VERIFIED (fetched this session from a named source) or
-BEST CURRENT UNDERSTANDING, UNCONFIRMED, and a fact verified for one
-provider's API is never assumed to hold for the other's without its own
-citation -- the same authority-overreach guard this book applies across
-harnesses applies here across model-provider APIs too.
+distinct from Anthropic's `content_block_*` event names) -- with pi's
+own §3.5 additionally naming Google's Generative AI API as a fourth wire
+family its own provider abstraction speaks natively, not independently
+detailed at the wire level on this page the way §1/§2 detail the other
+two. Every claim below is tagged VERIFIED (fetched this session from a
+named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED, and a fact
+verified for one provider's API is never assumed to hold for the other's
+without its own citation -- the same authority-overreach guard this book
+applies across harnesses applies here across model-provider APIs too.
 
 ---
 
@@ -604,6 +607,138 @@ seams, on the stated principle that a seam exists specifically where
 deployment-time or provider-time substitutability is the actual design
 point -- not wherever an interface merely exists.
 
+### 3.5 pi (`@earendil-works/pi-ai`)
+
+VERIFIED, fetched 20 August 2026 directly from `github.com/earendil-works/pi`, `main`
+branch: `packages/ai/README.md` in full (a 513+-line first-party package README, not
+inferred behavior), cross-referenced against `packages/coding-agent/docs/models.md` and
+`packages/coding-agent/docs/providers.md` for the config-facing side of the same
+abstraction. Like OpenCode (§3.3), pi's own multi-provider layer is source-README-
+documented at genuine implementation precision rather than inferred from changelog
+entries the way Copilot CLI's is (§3.2) -- the README itself states the package's stated
+purpose directly: "Unified LLM API with provider collections, automatic auth resolution,
+token and cost tracking, and simple context persistence and hand-off to other models
+mid-session," with the explicit design constraint that it "only includes models that
+support tool calling (function calling), as this is essential for agentic workflows."
+
+**Four wire-protocol families, the same set this page's own §1/§2 structure already
+organizes around.** `pi-ai` names, as real internal API-type discriminators (both in
+`models.json`'s own `api` field, per `models.md`, and in its own provider factories),
+exactly the same four protocol families OpenCode's `packages/llm/AGENTS.md` decomposes
+its routes around (§3.3): `openai-completions` (OpenAI Chat Completions, described in
+`models.md` as "most compatible" -- the fallback shape for third-party OpenAI-compatible
+servers such as Ollama, vLLM, and LM Studio), `openai-responses` (OpenAI's newer Responses
+API, §2), `anthropic-messages` (§1), and `google-generative-ai`. Unlike OpenCode's
+`Route.make(Protocol, Endpoint, Auth, Framing)` four-*axis* composition, pi's own
+documented model does not name a comparably explicit endpoint/auth/framing decomposition
+for constructing a route -- the `api` field alone selects the wire contract, with
+per-provider `baseUrl`/`apiKey`/`headers`/`compat` fields layered on as configuration
+rather than as named architectural axes -- so treat pi's provider abstraction as
+covering the *same protocol-family ground* §1-§2 and OpenCode's §3.3 already establish,
+without assuming it is internally structured the same four-axis way.
+
+```mermaid
+flowchart LR
+    Ctx["pi-ai Context\n(systemPrompt + messages + tools)"] --> Stream["models.stream(model, context)"]
+    Stream --> P1["anthropic-messages\nprotocol"]
+    Stream --> P2["openai-completions\nprotocol"]
+    Stream --> P3["openai-responses\nprotocol"]
+    Stream --> P4["google-generative-ai\nprotocol"]
+    P1 --> Norm["normalized StreamEvent union:\nstart / text_* / thinking_* /\ntoolcall_* / done / error"]
+    P2 --> Norm
+    P3 --> Norm
+    P4 --> Norm
+    Norm --> Final["AssistantMessage\n(content blocks + 5-value stopReason + usage/cost)"]
+```
+
+**A normalized `StreamEvent` union, directly comparable to OpenCode's `LLMEvent`.**
+VERIFIED, the README's own Quick Start streaming example: every provider's stream,
+regardless of which of the four wire families above produced it, yields the same tagged
+event sequence -- `start`, `text_start`/`text_delta`/`text_end`,
+`thinking_start`/`thinking_delta`/`thinking_end`, `toolcall_start`/`toolcall_delta`/
+`toolcall_end`, `done`, and `error`. This is architecturally the same move OpenCode's
+`LLMEvent` tagged union makes (§3.3) -- one shared, provider-neutral event alphabet
+standing in for however many distinct wire-level event names the four underlying
+protocols actually use -- with `toolcall_delta` as pi's own single normalized name for
+both Anthropic's `input_json_delta` and OpenAI's `function_call_arguments.delta`/
+`tool_calls[].function.arguments` partial-JSON streams, the exact same normalization
+OpenCode's `tool-input-delta` performs (§3.3). `toolcall_end` carries the fully assembled
+`toolCall.arguments` object (already parsed, not a raw string the caller must
+`JSON.parse()` themselves), consistent with pi's Quick Start example passing it directly
+into a tool dispatcher without a parsing step.
+
+**A five-value `stopReason` enum, the leanest of the three normalized enumerations this
+page has now catalogued.** VERIFIED, the README's own "Stop Reasons" section: every
+`AssistantMessage` carries a `stopReason` of `"stop"` (final message for the turn),
+`"length"` (hit the max-token limit), `"toolUse"` (calling tools, expects results),
+`"error"`, or `"aborted"` (cancelled via an `AbortSignal`) -- plus a sixth,
+partial-message-only value, `"pending"`, reserved for a still-streaming message whose
+final reason is not yet known and explicitly never persisted to a completed message
+(cross-referenced against [session-persistence.md](session-persistence.md) §5.2's own
+`StopReason` type listing, which names the identical six values from the session-format
+angle). Set directly alongside the other two enumerations this book has now fully
+catalogued -- Anthropic's own seven-value `stop_reason` (§1.3), OpenAI's four-value
+`finish_reason` (§2.2), and OpenCode's shared six-value `FinishReason` (§3.3) -- pi's
+five terminal values (excluding `"pending"`, which no other harness's own enum needs a
+placeholder for since none of them documents an equivalent partial-message state as part
+of the enum itself) is the smallest surface of the four, folding Anthropic's
+`pause_turn`/`refusal`/`model_context_window_exceeded` distinctions and OpenAI's
+`content_filter` value down into its own plain `"error"` rather than preserving them as
+separate cases -- the same *kind* of lossy-but-simplifying normalization OpenCode's own
+`mapFinishReason()` performs (§3.3's table), reached independently by a second,
+unrelated engineering team.
+
+**Auth resolution and header merging are handled as an explicit, ordered pipeline,
+distinct from Copilot CLI's undocumented internals (§3.2) and closer in spirit to
+OpenCode's fully-specified route composition (§3.3).** `models.stream()`/`complete()`
+resolve auth "through the owning provider" (environment variable, a stored credential
+from `/login`, or a refreshed OAuth token) and merge it into the request, with an
+explicit per-request override always winning over whatever the provider would have
+resolved on its own. A separate, `Models`-level `transformHeaders` option runs once, after
+provider-auth headers, `model.headers`, and any explicit `options.headers` have already
+been merged (case-insensitively, with a later stage always able to override an earlier
+one, and a `null` value able to suppress a lower-level default entirely) but strictly
+*before* the request is actually dispatched to a `Provider.stream*()` implementation --
+the documented ordering is `provider auth headers -> model.headers -> explicit
+options.headers -> transformHeaders -> Provider.stream*()`. A `CredentialStore`
+abstraction (`read`/`list`/`modify`/`delete`, one type-tagged credential per provider)
+backs this: OAuth token refresh is explicitly serialized through the store's own
+`modify()` read-modify-write operation "so concurrent requests and processes cannot
+double-refresh a rotated token," and a stored credential is documented as *owning* its
+provider outright -- "environment variables are only consulted when nothing is stored,
+and a failed refresh never silently falls back to an env key," a fail-closed rather than
+fail-open posture on credential resolution worth setting alongside
+[auth-and-usage-accounting.md](auth-and-usage-accounting.md)'s own pi section, which
+covers the credential-storage surface this paragraph's resolution pipeline sits on top
+of, not repeated here.
+
+**Error handling never throws out of the stream.** VERIFIED: a request failure
+(including an abort or a tool-argument validation failure) surfaces as an ordinary
+`error`-typed `StreamEvent` mid-stream, and the *final* accumulated message itself also
+carries `stopReason: "error"`/`"aborted"` plus whatever partial `content` and partial
+`usage`/`cost` had already accumulated before the failure -- a caller that only inspects
+the final message, never touching the event stream directly, still gets a fully
+populated, if partial, `AssistantMessage` to reason about rather than a thrown exception
+propagating out of the streaming call itself. This is a materially different error-
+surfacing discipline from what this page's other four contract descriptions state (none
+of §1/§2/§3.1-§3.4 documents an equivalent "the terminal object is always well-formed,
+even on failure" guarantee as an explicit design point, though none rules it out either
+-- this is offered as a positive finding for pi specifically, not a comparative claim
+about the others' absence of the same behavior).
+
+**A direct, named cross-harness dependency worth flagging explicitly.** §3.4 above
+already names `llm-pi-ai` as one of the real Service Providers DeepSeek Harness ships for
+its own `ctx.llm` capability seam, alongside `llm-deepseek` and the fixture-replaying
+`llm-replay`. That name is not a coincidence of vocabulary: it is DeepSeek Harness
+depending directly on pi's own `@earendil-works/pi-ai` package (the exact package this
+section documents) as one of its swappable LLM-request providers -- a genuine, concrete
+instance of one harness in this book consuming another's own multi-provider abstraction
+as a mounted implementation, rather than merely resembling it architecturally. This
+session did not additionally verify the `llm-pi-ai` provider's own source (only
+DeepSeek's docs naming it, per §3.4's citation), so treat "DeepSeek wraps pi-ai
+unmodified" as the plain reading of the provider's name rather than as independently
+confirmed integration-code detail.
+
 ---
 
 ## 4. Synthesis
@@ -623,6 +758,7 @@ point -- not wherever an interface merely exists.
 | Copilot CLI | Closed source; changelog confirms "Responses API" as a real internally-named provider-protocol category (BYOK sessions, MCP namespace mapping, AI-credits display) across three separate releases, and confirms a reasoning-content *feature* exists, but does not document the exact request/response schema; the separate, adjacent Copilot SDK product documents an explicit three-way `anthropic`/`openai` (`completions`)/`openai` (`responses`) dispatch that is architecturally consistent with, but not proof of, Copilot CLI's own internal routing |
 | OpenCode | Fully source-verified: a four-axis `Protocol`/`Endpoint`/`Auth`/`Framing` route composition, one protocol module per wire contract (`anthropic-messages.ts`, `openai-chat.ts`, `openai-responses.ts`, `gemini.ts`, `bedrock-converse.ts`), each with its own `mapFinishReason()` normalizing into one shared six-value `FinishReason` enum and one shared `LLMEvent` tagged union, plus explicit, source-documented workarounds where the contracts genuinely disagree (hosted-tool continuation shape, tool-result media support, native vs. text-wrapped mid-conversation system updates) |
 | DeepSeek Harness | Fully source-verified (docs, not implementation code, for this specific point): names the substitutability boundary itself, one level of abstraction above OpenCode's four axes, as a **capability seam** -- a Service Definition/Provider/Consumer three-role unit, with `ctx.llm` as the seam governing this page's own subject, real interchangeable providers (`llm-deepseek`, `llm-pi-ai`, `llm-replay`) mounted underneath a provider-neutral Consumer interface the agent loop itself never inspects |
+| pi | Fully README-verified (a first-party package README documenting the implementation at genuine precision, though this session did not additionally cross-check pi's own TypeScript source): the same four wire-protocol families (`anthropic-messages`/`openai-completions`/`openai-responses`/`google-generative-ai`) as named `api` discriminators, a normalized `StreamEvent` tagged union directly comparable to OpenCode's `LLMEvent`, a five-terminal-value `stopReason` enum (the leanest of the four enumerations this page catalogues) plus a sixth partial-only `"pending"` value, an explicit ordered auth/header-merge pipeline with a fail-closed stored-credential-owns-its-provider rule, and a documented guarantee that stream failures never throw -- they surface as an `error` event plus a still-well-formed final message |
 
 **The design lesson.** Every harness examined on this page has to solve
 the same underlying problem even though only OpenCode's solution is
@@ -646,7 +782,21 @@ docs supply, independently of OpenCode's engineering, a genuinely useful
 *name* for the underlying design principle both harnesses converge on --
 "provider-neutral consumer, swappable provider, one shared interface" --
 without this page treating that naming contribution as evidence either
-harness's own internal axis structure resembles the other's.
+harness's own internal axis structure resembles the other's. pi supplies a
+fourth, independently-arrived-at instance of the same normalization move,
+this time documented at package-README precision rather than either
+inferred from a changelog or read from a source file directly: a shared
+`StreamEvent` alphabet and a shared `stopReason` enum standing in for the
+same four wire-protocol families this page's own §1-§2 structure already
+organizes around. That four separate engineering efforts -- Anthropic's
+own SDK wrapping (via Claude Code), OpenCode's `Route`/`LLMEvent`
+machinery, DeepSeek's capability-seam vocabulary, and pi's own
+`StreamEvent`/`stopReason` pair -- all converge on "one normalized event
+union plus one normalized terminal-reason enum" as the right shape for
+this exact problem, each reached independently, is itself a datapoint
+worth taking seriously: this looks like a discovered necessity of
+building a multi-provider agent harness, not a coincidence of API design
+taste.
 
 ---
 
@@ -724,3 +874,20 @@ here):**
   distinction (`ctx.sessions`/`ctx.invariants` deliberately kept unseamed),
   cross-checked against the same two files' citation in
   [Session & transcript persistence](session-persistence.md) §4.
+
+**pi (authoritative for its own documented behavior; fetched 20 August 2026 from
+`github.com/earendil-works/pi`, `main` branch):**
+- `packages/ai/README.md` (via `gh api
+  repos/earendil-works/pi/contents/packages/ai/README.md`, in full, 513+ lines) -- the
+  primary source for all of §3.5: the package's own stated purpose and tool-calling-only
+  model scope, the four wire-protocol-family `api` discriminators, the full supported-
+  providers list, the normalized `StreamEvent` tagged union (Quick Start streaming
+  example), the "Stop Reasons" section's five-terminal-plus-`"pending"` enumeration, the
+  "How Auth Resolves"/"Transforming Request Headers"/"Credential Store" sections'
+  ordered auth-and-header-merge pipeline and fail-closed stored-credential rule, and the
+  "Error Handling" section's stream-never-throws guarantee.
+- `packages/coding-agent/docs/models.md` and `packages/coding-agent/docs/providers.md`
+  (fetched the same way) -- cross-referenced for the config-facing side of the same
+  abstraction (`models.json`'s `api` field, provider/model `compat` overrides, the
+  credential-resolution order also covered in
+  [auth-and-usage-accounting.md](auth-and-usage-accounting.md)'s own pi section).
