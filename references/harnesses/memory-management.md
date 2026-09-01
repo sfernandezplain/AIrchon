@@ -1,4 +1,4 @@
-# Memory management -- Claude Code, GitHub Copilot CLI, OpenCode, and Hermes Agent
+# Memory management -- Claude Code, GitHub Copilot CLI, OpenCode, pi, and Hermes Agent
 
 How each harness persists information across sessions, how that
 information gets back into context, and what happens to it when a long
@@ -6,15 +6,19 @@ session compacts.
 
 Every claim below is tagged VERIFIED (fetched this session from the
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Sources and
-fetch dates at the bottom. Claude Code, Copilot CLI, OpenCode, and
-Hermes Agent are separate products from separate organizations --
-nothing confirmed for one is assumed for another. §3 (OpenCode) was
-added 2026-08-24 as a gap-fill: an earlier 2026-08-24 update to this
-page had added Hermes Agent as a third harness section, but the page
-still had never covered OpenCode -- one of this book's own three named
-target harnesses -- leaving a real gap this update closes; §4 (Hermes
-Agent) and §5 (Synthesis) are renumbered from that earlier update, not
-otherwise changed.
+fetch dates at the bottom. Claude Code, Copilot CLI, OpenCode, pi
+(Earendil Works), and Hermes Agent are separate products from separate
+organizations -- nothing confirmed for one is assumed for another. §3
+(OpenCode) was added 2026-08-24 as a gap-fill: an earlier 2026-08-24
+update to this page had added Hermes Agent as a third harness section,
+but the page still had never covered OpenCode -- one of this book's own
+three named target harnesses -- leaving a real gap this update closes.
+§4 (pi) was added 1 September 2026, slotted in ahead of Hermes Agent to
+match the harness ordering already established for pages that cover
+both (see e.g. [Permissions & sandboxing](permissions-and-sandboxing.md),
+[Session & transcript persistence](session-persistence.md)); Hermes
+Agent moves from §4 to §5 and Synthesis from §5 to §6 as a result, with
+no other change to either section's own content.
 
 **The one-line answer to "is it a memory tool or file convention?":**
 Claude Code is entirely file-based and machine-local -- plain markdown
@@ -29,8 +33,13 @@ rather than frozen at session start -- but ships **no dedicated
 agent-authored memory tool of its own at all**; the closest thing is a
 third-party plugin filling the gap, the same shape this book's own
 [context-retrieval-and-agentic-search.md](context-retrieval-and-agentic-search.md)
-already found for OpenCode's native RAG support. All three claims
-VERIFIED, see below.
+already found for OpenCode's native RAG support. pi is file-based too,
+and also ships **no agent-authored memory tool of its own** -- the same
+real, source-verified absence as OpenCode -- but sits between Claude
+Code and OpenCode on the mid-session-edit question: neither frozen
+until restart (Claude Code) nor re-read every turn with no command
+needed (OpenCode), but reloadable on demand via one named,
+user-invoked slash command, `/reload`. All claims VERIFIED, see below.
 
 ```mermaid
 flowchart LR
@@ -45,6 +54,10 @@ flowchart LR
     subgraph OC["OpenCode"]
         OCA["AGENTS.md hierarchy + config instructions[]<br/>(on disk, human-authored, re-read every turn)"] --> Ctx3b[Context window]
         OCP["Third-party plugin memory<br/>(e.g. opencode-supermemory) -- no native equivalent"] -.->|"not core"| Ctx3b
+    end
+    subgraph PI["pi"]
+        PIA["AGENTS.md/CLAUDE.md hierarchy, first-match-per-dir<br/>(on disk, human-authored, reload via /reload or restart)"] --> Ctx3c[Context window]
+        PIN["No agent-authored memory tool -- native absence"] -.->|"not shipped"| Ctx3c
     end
     subgraph HM["Hermes Agent"]
         SOUL["SOUL.md (identity, prompt slot #1) +\ncontext-file discovery (.hermes.md, AGENTS.md,\nCLAUDE.md, .cursorrules)"] --> Ctx3[Context window]
@@ -670,7 +683,7 @@ nested-file re-reads as the only two paths that pull instruction content
 off disk again mid-session; Copilot CLI's own §2.4 above leaves the
 question explicitly UNKNOWN. OpenCode's answer is the strongest,
 most-directly-source-verified "yes, live" of the three, and closes a
-question this page's own Synthesis table (§5) previously had no OpenCode
+question this page's own Synthesis table (§6) previously had no OpenCode
 column to answer at all.
 
 ### 3.3 A nearby-file auto-attach mechanism, distinct from tier 1 and structurally closest to Claude Code's own nested-CLAUDE.md behavior
@@ -719,7 +732,209 @@ sessions to consult.
 
 ---
 
-## 4. Hermes Agent (Nous Research)
+## 4. pi
+
+Sources for this section: VERIFIED, fetched 1 September 2026 directly from
+`github.com/earendil-works/pi` (`main` branch, via `gh api`) --
+`packages/coding-agent/docs/quickstart.md` and `packages/coding-agent/docs/usage.md`
+(both in full, for the documented Context Files and `/reload` behavior),
+`packages/coding-agent/docs/environment-variables.md` (checked and found to name no
+memory- or context-file-specific variable), `packages/coding-agent/examples/sdk/07-context-files.ts`
+(the `agentsFilesOverride` SDK example), and the real implementation source
+`packages/coding-agent/src/core/resource-loader.ts` (`loadContextFileFromDir()`,
+`loadProjectContextFiles()`, `findShadowedContextFile()`) -- the same repository and
+docs tree already cited for pi's own sections in
+[The LLM API contract](llm-api-contract.md) §3.5,
+[Configuration](configuration.md) §4,
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md) §5,
+[Session & transcript persistence](session-persistence.md) §5,
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §5,
+[Built-in skills](built-in-skills.md) §4,
+[Model routing / selection](model-routing-and-selection.md) §4, and
+[Auth & usage accounting](auth-and-usage-accounting.md) §4. pi is
+source-available (`earendil-works/pi`) but, consistent with those other
+sections' own standing caveat, this session again reads its docs plus the one
+implementation file named above, not the full product build.
+
+### 4.1 No agent-authored memory tool -- a real, source-verified absence, and a resolved naming question
+
+VERIFIED, negative finding, established the same way this page's own §3.1
+established it for OpenCode: a repository-wide GitHub code search
+(`search/code?q=%22MEMORY.md%22+repo:earendil-works/pi`) returned zero hits, and a
+second search for the bare word `memory` across the whole `earendil-works/pi`
+monorepo surfaced no agent-authored persistent-knowledge-store feature comparable to
+Claude Code's auto memory (§1.5) or Copilot Memory's `store_memory`/`vote_memory`
+tool-call service (§2.2) -- only telemetry plumbing, credential-storage code, and one
+false cognate worth flagging explicitly so it is not mistaken for a hit: `packages/agent`
+(npm name `@earendil-works/pi-agent-core`, a separate, lower-level "general-purpose
+agent" package the coding-agent product is built on) uses the word "Memory" in its own
+`docs/harness.md` design document purely as the name of one of three interchangeable
+**session-storage backends** (Memory / JSONL / SQLite -- an in-RAM-only backend with no
+persistence across restarts, functionally the volatile option among the three), not as
+an agent-authored knowledge store. That is a completely different subsystem from the
+one this page's word "memory" means throughout -- it is session/transcript storage, the
+territory this book's own [Session & transcript persistence](session-persistence.md) §5
+already covers for pi's actual shipping JSONL-tree format -- and citing it here would be
+exactly the kind of blended-sounding claim GROUNDING DISCIPLINE forbids. Treat "pi ships
+no agent-authored memory tool of its own" as the same evidentiary category §3.1 already
+applies to OpenCode: strongly supported by a dedicated, empty-handed docs-and-code
+search, not a sentence any pi source states in as many words.
+
+This session also resolves a standing naming inconsistency this book's own pages carry
+across pi's sections: [The LLM API contract](llm-api-contract.md) §3.5 and several other
+pages cite `@earendil-works/pi-ai`, while [Deterministic orchestration](deterministic-orchestration.md)
+and this book's own installation-facing citations elsewhere use
+`@earendil-works/pi-coding-agent`. Fetched directly this session,
+`packages/coding-agent/package.json` and `packages/ai/package.json` both exist in the
+same `earendil-works/pi` monorepo and are two genuinely different, both-real npm
+packages, not a spelling error to fix: `@earendil-works/pi-coding-agent`
+("Coding agent CLI with read, bash, edit, write tools and session management") is the
+installable product itself -- `npm install -g @earendil-works/pi-coding-agent`, binary
+name `pi` -- the harness every pi section of this book, including this one, actually
+describes; `@earendil-works/pi-ai` ("Unified LLM API with automatic model discovery and
+provider configuration") is a separate, lower-level package the coding-agent product
+depends on for its own provider/model abstraction layer, which is exactly why
+[llm-api-contract.md](llm-api-contract.md) §3.5 -- a page specifically about that
+API-contract layer -- correctly names `pi-ai` rather than `pi-coding-agent` there. Every
+existing citation in this book was already using the name correct for its own page's
+subject matter; there was no error to correct, only an unstated distinction to make
+explicit, now recorded here for any page that cites pi going forward.
+
+### 4.2 The persistent-instruction tier: `AGENTS.md`/`CLAUDE.md` discovery, first-match-per-directory precedence, and worktree-shadow dedup
+
+```mermaid
+flowchart TD
+    G["Global\n~/.pi/agent/AGENTS.md (or CLAUDE.md)"] --> Assemble["Assembled context-file list\n(global first, then root-most ancestor down to cwd)"]
+    Root["Root-most ancestor directory\nwith AGENTS.override.md / AGENTS.md / CLAUDE.md"] --> Assemble
+    Mid["...intermediate ancestor directories..."] --> Assemble
+    Cwd["Current working directory\n(read last, nearest launch dir)"] --> Assemble
+    Assemble --> Ctx[System prompt / context]
+```
+
+Per `quickstart.md` and `usage.md`: "Pi loads `AGENTS.md` or `CLAUDE.md` at startup"
+from three places -- `~/.pi/agent/AGENTS.md` for global instructions, "parent
+directories, walking up from the current working directory," and the current directory
+itself. `--no-context-files`/`-nc` disables the whole tier for one run. That much is
+stated in the docs; the *precedence* question the docs leave implicit -- what happens
+when a single directory contains both an `AGENTS.md` and a `CLAUDE.md` -- is answered
+directly by `resource-loader.ts`'s own `loadContextFileFromDir()`, source-verified this
+session: it tries a fixed candidate list, **`["AGENTS.override.md", "AGENTS.md",
+"AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]`**, in that order, per directory, and returns the
+first file that exists -- so `AGENTS.md` always wins over a `CLAUDE.md` in the same
+directory, and at most one context file loads per directory, never both. This is the
+same first-match-wins shape [Configuration](configuration.md) documents elsewhere in
+this book for other per-key precedence rules, applied here to file discovery rather than
+settings.
+
+`loadProjectContextFiles()`, the caller that assembles the full list, then does two more
+things the docs do not describe at all, both source-only findings: it walks from cwd
+**up** to the filesystem root, `unshift`-ing each directory's discovered file onto an
+accumulator array as it goes -- which, worked through by hand, produces a final order of
+**root-most ancestor first, cwd's own file last** -- and pushes the global
+`~/.pi/agent/AGENTS.md` context file at the very front of the whole list, ahead of every
+ancestor. The net assembly order is therefore **global, then broadest-ancestor-down-to-
+nearest-to-cwd** -- independently the same broadest-first-nearest-last shape this book's
+own §1.2 documents for Claude Code's CLAUDE.md hierarchy ("ordered filesystem-root-down,
+so instructions nearest your launch directory are read last"), arrived at by a
+completely separate codebase and never stated as a design goal in either harness's own
+docs. A second source-only mechanism, `findShadowedContextFile()`, prevents a linked git
+worktree from double-loading the same logical repository's context file: it detects when
+the current working directory is a linked worktree of a main repository (comparing
+canonicalized `commondir`/`gitdir` paths, with an explicit comment noting the realpath
+handling exists because `git worktree add` writes gitdir targets in realpath form while
+cwd may still be symlinked, e.g. macOS's `/tmp` -> `/private/tmp`) and, if so, skips
+re-loading the ancestor context file already covered by the main repository's own copy.
+This is a different problem from Claude Code's own worktree behavior (§1.5's single
+shared auto-memory directory across worktrees of one repo) -- pi has no agent-authored
+memory to share across worktrees at all (§4.1) -- but it is the same underlying
+observation, that a linked worktree and its main repository are one logical project, applied
+to the human-authored instruction-file tier instead.
+
+`AGENTS.override.md` is the one entry in that candidate list not yet explained: per
+`usage.md`, "If a directory contains `AGENTS.override.md`, Pi loads it instead of
+`AGENTS.md` or `CLAUDE.md` from that directory. Context files from other directories
+still layer normally." Source-verified, this is an **exclusive, per-directory
+substitution**, not a merge -- `loadContextFileFromDir()`'s first-match-wins list means a
+directory with an `AGENTS.override.md` never also contributes its own `AGENTS.md`/
+`CLAUDE.md` to the assembled list, while every other directory in the walk is
+unaffected and layers in as usual.
+
+### 4.3 SDK-level programmatic control over the same tier: `agentsFilesOverride`
+
+`packages/coding-agent/examples/sdk/07-context-files.ts`, titled "Context Files
+(AGENTS.md)," demonstrates a `DefaultResourceLoader` constructor option,
+`agentsFilesOverride`, that receives the disk-discovered list from §4.2 and returns a
+replacement list -- used in the example to append a synthetic, in-memory context file
+(`path: "/virtual/AGENTS.md"`) with programmatically generated content, and the example's
+own comment states the same hook can instead "Disable context files entirely by
+returning an empty list." `getAgentsFiles()` reflects whatever the override function
+last returned; calling `.reload()` re-runs disk discovery and re-applies the override.
+This is a real, exported capability of the `@earendil-works/pi-coding-agent` package
+itself (not internal-only plumbing, per the same `export`-surface pattern this book's
+[Session & transcript persistence](session-persistence.md) §5.3 already documents for
+pi's `SessionManager` class) -- an embedding application can inject or suppress the
+entire persistent-instruction tier programmatically, a degree of host-application
+control over the instruction-file tier this page finds documented for no other harness's
+own SDK surface.
+
+### 4.4 `SYSTEM.md`/`APPEND_SYSTEM.md`: a materially different injection point than `AGENTS.md`/`CLAUDE.md`
+
+A second, separate file pair sits above the context-file tier rather than augmenting it:
+per `usage.md`'s own "System Prompt Files" section, `.pi/SYSTEM.md` (project) or
+`~/.pi/agent/SYSTEM.md` (global) **replaces** pi's default system prompt outright, while
+`APPEND_SYSTEM.md` in either location **appends** to the default prompt without replacing
+it. The `--system-prompt` CLI flag does the same replacement for one run, but the docs
+are explicit that "context files and skills are still appended" even then -- so
+`AGENTS.md`/`CLAUDE.md` (§4.2) and skills load regardless of which system-prompt mode is
+in effect. This is architecturally distinct from the context-file tier, which augments
+rather than replaces the system prompt, and gives pi a named, file-based lever at the
+system-prompt layer that neither Claude Code (whose `CLAUDE.md` is documented as
+delivered as a *user message after* the system prompt, never inside it, §1.6) nor
+Copilot CLI's own instruction files are documented as having; it is closer in kind, if
+not in file-naming or mechanism, to Hermes Agent's own `SOUL.md`-in-system-prompt-slot-#1
+placement (§5.4 below).
+
+### 4.5 Mid-session edits: `/reload`, a third, distinct answer among the harnesses this page documents
+
+Both `quickstart.md` and `usage.md` are direct on this point, and it is the cleanest
+documented answer this page has found for any of its harnesses: "Restart pi, or run
+`/reload`, after changing context files" (`quickstart.md`), and `usage.md`'s own
+slash-command table states `/reload`'s scope in full -- "Reload keybindings, extensions,
+skills, prompts, themes, and context files." Set against this page's other three
+harnesses' own documented (or undocumented) answers to "is an edited instruction file
+picked up mid-session": Claude Code documents no watcher or hot-reload at all for its
+launch-loaded tier, with compaction and nested-file first-reads as the only two
+documented off-disk re-reads short of a restart (§1.8); Copilot CLI leaves the question
+explicitly undocumented either way (§2.5); OpenCode re-reads its entire persistent tier
+unconditionally on every turn of the main session loop, no command needed at all (§3.2).
+pi sits between Claude Code and OpenCode: neither silently frozen until a full process
+restart, nor automatically re-read every turn, but reloadable **on demand, mid-session,
+via one explicit, user-invoked command** that re-discovers `AGENTS.md`/`CLAUDE.md`
+(§4.2) alongside keybindings, extensions, skills, prompts, and themes together, in one
+action. This is the same `/reload` command [Configuration](configuration.md) §4.5
+already documents from the general config-reload angle (cross-referenced, not
+re-derived here) -- the addition this page makes is the memory-tier-specific
+consequence: an edited `AGENTS.md` is one slash command away from taking effect, not a
+restart away. A nearby, easily-confused exception is worth naming precisely because it
+is *not* the same lever: `/trust`'s own write to `~/.pi/agent/trust.json` (§4.2's project
+trust gate, [Configuration](configuration.md) §4.2/§4.5) is documented as explicitly
+**not** reloading the current session -- a restart is required for a new trust decision
+to take effect, even though `/reload` exists for context files in the same product.
+
+### 4.6 Session-level persistence (distinct from memory)
+
+Cross-referenced, not re-derived: this book's own
+[Session & transcript persistence](session-persistence.md) §5 documents pi's session
+store in full -- a tree-structured, `id`/`parentId`-linked JSONL format (not a linear
+append log), `/tree`/`/fork`/`/clone` as three genuinely different operations on that
+tree, and an auto-migrating format-version field. None of that is agent-authored
+*memory* in the sense §4.1-§4.4 above use the word -- it is a record of what already
+happened, addressable and branchable, but not a store pi deliberately curates for a
+future session to consult the way Claude Code's auto memory or Copilot Memory are.
+
+---
+
+## 5. Hermes Agent (Nous Research)
 
 Sources for this section: VERIFIED, fetched 24 August 2026 directly
 from `hermes-agent.nousresearch.com/docs/user-guide/features/memory`,
@@ -729,7 +944,7 @@ product -- see [Permissions & sandboxing architecture](permissions-and-sandboxin
 §6 for this book's fuller architectural introduction to the harness
 itself, not repeated here.
 
-### 4.1 `MEMORY.md`/`USER.md`: two bounded files, hard caps, no silent truncation
+### 5.1 `MEMORY.md`/`USER.md`: two bounded files, hard caps, no silent truncation
 
 Hermes' own built-in memory is two bounded files under
 `~/.hermes/memories/` -- **`MEMORY.md`** (capped at 2,200 characters:
@@ -762,7 +977,7 @@ also errors rather than silently truncates on overflow, but only as of
 v2.1.210; Hermes' docs state the no-silent-truncation guarantee as the
 mechanism's baseline design, not a later hardening.
 
-### 4.2 A closed, post-turn learning loop feeding both memory and skills
+### 5.2 A closed, post-turn learning loop feeding both memory and skills
 
 The **closed learning loop** named in Hermes' own marketing copy
 resolves, on direct inspection, into a specific mechanism: "a
@@ -779,7 +994,7 @@ Memory's own write path (also ordinary in-loop `store_memory` tool
 calls, §2.2) is documented as running a separate, dedicated
 background-review step the way Hermes' own closed learning loop is.
 
-### 4.3 FTS5 cross-session search: a second, independent memory channel
+### 5.3 FTS5 cross-session search: a second, independent memory channel
 
 **Session search** is a second, independent memory channel from the
 two bounded files above: "agents access unlimited historical
@@ -794,7 +1009,7 @@ from the always-loaded memory tier -- though Hermes' docs describe FTS5
 full-text search specifically, where Copilot CLI's own docs do not name
 the underlying search technology.
 
-### 4.4 `SOUL.md`: a persona file pinned to a stated prompt position
+### 5.4 `SOUL.md`: a persona file pinned to a stated prompt position
 
 `SOUL.md` is Hermes' persona/identity file, and its position in the
 prompt is stated with unusual precision -- "SOUL.md content goes
@@ -810,7 +1025,7 @@ files are documented as occupying a named, fixed slot inside the system
 prompt itself the way `SOUL.md` is -- a materially different injection
 point from either harness's own documented mechanism.
 
-### 4.5 Context-file discovery: naming other harnesses' own conventions directly
+### 5.5 Context-file discovery: naming other harnesses' own conventions directly
 
 Separately, and independently verified from the Features Overview page,
 Hermes "automatically discovers **Context Files** (`.hermes.md`,
@@ -849,63 +1064,72 @@ storage mechanism.
 
 ---
 
-## 5. Synthesis
+## 6. Synthesis
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | Hermes Agent |
-|---|---|---|---|---|
-| Human-authored persistent instructions | `CLAUDE.md` hierarchy (managed → user → project → local), `.claude/rules/` | `.github/copilot-instructions.md`, `.github/instructions/**/*.instructions.md`, `AGENTS.md`, `~/.copilot/instructions/**/*.instructions.md` | `AGENTS.md` (project + global), config `instructions[]` (local globs + remote URLs), `CLAUDE.md`/deprecated `CONTEXT.md` as compat fallbacks | `SOUL.md` (identity, prompt slot #1) plus auto-discovered Context Files (`.hermes.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`) |
-| Reads the *other* harness's file? | No -- `AGENTS.md` not read at runtime; `/init` only mines it at authoring time | Yes -- `CLAUDE.md` is read and `@`-import-expanded (changelog) | Yes -- both `CLAUDE.md` and `AGENTS.md` named directly in its own Context Files discovery list |
-| Path-scoped instruction tier | `.claude/rules/` with `paths:` frontmatter | `.github/instructions/**/*.instructions.md` (bodies no longer always in system prompt) | Not found in the docs pages fetched this session (see [instruction-context-budget.md](instruction-context-budget.md) §3.2) | Not found in the one docs page fetched this session |
-| `@`-import expansion | Yes, 4-hop cap, launch-time | Yes (changelog: AGENTS.md, CLAUDE.md, Copilot instruction files) | Not applicable -- no `@`-import-expansion mechanism found; a manual, agent-followed "read this file when needed" convention exists instead (§3.2) | A distinct `@`-syntax exists, but for **Context References** (inline message injection), not documented as an import mechanism inside `SOUL.md`/Context Files themselves |
-| Agent-authored memory | Auto memory: local markdown at `~/.claude/projects/<project>/memory/`, `MEMORY.md` index (200 lines / 25KB) + on-demand topic files | Copilot Memory: **server-side**, repo-level facts + user-level preferences, citation-validated, 28-day unused-expiry | **None, natively** -- no dedicated agent-authored memory tool found; cross-session persistent memory exists only via a third-party plugin (`opencode-supermemory`, §3.1) | `MEMORY.md` (2,200-char cap) + `USER.md` (1,375-char cap), both always loaded whole, no on-demand topic-file tier |
-| Written how | Ordinary file tools; no dedicated memory tool | Dedicated model-facing tools `store_memory` / `vote_memory`, permission-prompted per write, scope shown | Ordinary file tools on `AGENTS.md`, same as Claude Code's own instruction-file tier; no dedicated memory-writing tool of its own | A `memory` tool plus a dedicated **post-turn closed learning loop** review pass, distinct from ordinary in-loop tool calls |
-| Overflow behavior | Error + reminder to shorten near/at the limit (v2.1.210+), no silent truncation | Not documented on pages fetched | Not applicable -- no bounded memory store to overflow | Hard error on overflow, no auto-compaction, by original design (not a later hardening) |
-| Memory sharing | Machine-local; shared across worktrees of one repo; never across machines | Repo facts shared with repo collaborators; user prefs private to the user/billing entity; server-side so cross-machine by construction | `AGENTS.md` at project scope is team-shared via Git (docs explicitly recommend committing it); global scope is machine-local and explicitly recommended for personal-only rules | Machine-local (`~/.hermes/memories/`), profile-isolated under `HERMES_HOME` |
-| Enable/disable | `autoMemoryEnabled`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `/memory` toggle | `/memory on\|off\|show`, GitHub Copilot settings (per user; admin gate on Enterprise) | Not applicable to memory (none exists); Claude-compat *fallback* specifically is disableable via `OPENCODE_DISABLE_CLAUDE_CODE`/`_PROMPT`/`_SKILLS` | Not documented on pages fetched; `skills.write_approval`-style gating exists for skills, and a comparable `write_approval` flag is named for memory writes generally |
-| Injection timing | Session start (system prompt then a *user message* carrying CLAUDE.md; `MEMORY.md` early in startup) | Session start prompt injection, **plus refresh after 30 minutes** in long-lived sessions | **Every turn** -- `Instruction.system()` re-reads and reassembles tier 1 on each iteration of the main session loop, source-verified (§3.2) | Session start, as a **frozen snapshot** explicitly to preserve prefix-cache reuse |
-| Cross-session recall beyond the loaded tier | Not found as a distinct feature (session resume is the mechanism, §1.9) | Experimental cross-session memory + `/chronicle search` | Not native; the third-party `opencode-supermemory` plugin is the only documented answer (§3.1) | FTS5 full-text search across the SQLite conversation database, "without consuming tokens in the current session" |
-| Mid-session re-read of an *edited* instruction file | No documented watcher/hot-reload; launch-loaded tier is a session-start read. Off-disk re-reads happen only at compaction (root CLAUDE.md, unscoped rules, auto memory) and on trigger-file reads (nested CLAUDE.md, `paths:` rules). Restart or `--continue` is the sure path | Undocumented either way; reload primitives exist for MCP/LSP/plugins but not instruction files. `/instructions` can toggle which files are active in-session | **Yes, every turn** -- the strongest, most directly source-verified "yes" of the four harnesses on this page (§3.2); a nearby-file auto-attach mechanism (§3.3) additionally re-surfaces subdirectory instruction files on each new matching `read` call | Not documented on pages fetched -- `SOUL.md`/Context Files are described as loaded, not as watched |
-| Auto-compaction trigger | Documented behaviorally (evict tool outputs, then summarize); no % on fetched pages | **95% of token limit**, background, non-blocking | Token-budget-based (see [context-compression.md](context-compression.md) §3 for the source-verified `overflow.ts` mechanics; not re-derived here) | Not documented on pages fetched; **Checkpoints** ("automatic snapshots for rollback protection") are named but not confirmed as the same mechanism |
-| Focused manual compaction | `/compact focus on ...`, plus "Compact Instructions" section in CLAUDE.md | `/compact [FOCUS-INSTRUCTIONS]` | Not investigated on this page; see [context-compression.md](context-compression.md) §3 | Not documented on pages fetched |
-| Post-compaction re-injection | Documented per-mechanism table (root CLAUDE.md + auto memory re-injected; path-scoped rules and nested CLAUDE.md lost until retriggered; skill bodies capped 5K/25K) | Skills survive; instruction-file re-injection **undocumented** | Moot in the usual sense -- tier 1 is rebuilt from disk every turn regardless of compaction state (§3.2), so there is nothing distinct to "re-inject" | Not documented on pages fetched |
-| Pre-compaction hook | `PreCompact`, can block (exit 2 / `{"decision":"block"}`) | `preCompact` exists; blocking capability unconfirmed | Not investigated on this page; see [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §3 for OpenCode's own hook catalogue | Not documented on pages fetched (contrast its own shell-hook `pre_tool_call` blocking, [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §6) |
-| Session transcripts | Plaintext JSONL under `~/.claude/projects/` | Session databases under `~/.copilot/` (`COPILOT_HOME`); "session SQL" | SQLite database (`opencode.db`, Drizzle ORM, WAL mode) per [session-persistence.md](session-persistence.md) §3, not re-derived here | SQLite with FTS5 full-text indexing |
-| Resume / continue | `claude --continue`, `--resume`, `--fork-session` / `/branch` | `--continue`, `--resume` / `/resume` (mutually exclusive), `--session-id` | `--fork` (`Session.fork()`), `SessionRevert`; see [session-persistence.md](session-persistence.md) §3 for the full, source-verified mechanics | Not independently researched on this page; see [session-persistence.md](session-persistence.md) for this book's general resume/fork coverage |
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
+|---|---|---|---|---|---|
+| Human-authored persistent instructions | `CLAUDE.md` hierarchy (managed → user → project → local), `.claude/rules/` | `.github/copilot-instructions.md`, `.github/instructions/**/*.instructions.md`, `AGENTS.md`, `~/.copilot/instructions/**/*.instructions.md` | `AGENTS.md` (project + global), config `instructions[]` (local globs + remote URLs), `CLAUDE.md`/deprecated `CONTEXT.md` as compat fallbacks | `AGENTS.md`/`CLAUDE.md` (global `~/.pi/agent/AGENTS.md` + ancestor walk to cwd, first-match-per-directory), `AGENTS.override.md` (exclusive per-directory substitute), `SYSTEM.md`/`APPEND_SYSTEM.md` at the system-prompt layer | `SOUL.md` (identity, prompt slot #1) plus auto-discovered Context Files (`.hermes.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`) |
+| Reads the *other* harness's file? | No -- `AGENTS.md` not read at runtime; `/init` only mines it at authoring time | Yes -- `CLAUDE.md` is read and `@`-import-expanded (changelog) | Yes -- both `CLAUDE.md` and `AGENTS.md` named directly in its own Context Files discovery list | Yes -- both `AGENTS.md` and `CLAUDE.md` loaded natively, `AGENTS.md` winning first-match when both exist in one directory (§4.2) | Yes -- both `CLAUDE.md` and `AGENTS.md` named directly in its own Context Files discovery list, alongside its native `.hermes.md`/`SOUL.md` (§5.5) |
+| Path-scoped instruction tier | `.claude/rules/` with `paths:` frontmatter | `.github/instructions/**/*.instructions.md` (bodies no longer always in system prompt) | Not found in the docs pages fetched this session (see [instruction-context-budget.md](instruction-context-budget.md) §3.2) | Not found in the docs/source fetched this session | Not found in the one docs page fetched this session |
+| `@`-import expansion | Yes, 4-hop cap, launch-time | Yes (changelog: AGENTS.md, CLAUDE.md, Copilot instruction files) | Not applicable -- no `@`-import-expansion mechanism found; a manual, agent-followed "read this file when needed" convention exists instead (§3.2) | Not found for context files; a distinct `@`-fuzzy-file-reference syntax exists in the editor/CLI for pasting file contents into a message, not for importing into `AGENTS.md`/`CLAUDE.md` itself | A distinct `@`-syntax exists, but for **Context References** (inline message injection), not documented as an import mechanism inside `SOUL.md`/Context Files themselves |
+| Agent-authored memory | Auto memory: local markdown at `~/.claude/projects/<project>/memory/`, `MEMORY.md` index (200 lines / 25KB) + on-demand topic files | Copilot Memory: **server-side**, repo-level facts + user-level preferences, citation-validated, 28-day unused-expiry | **None, natively** -- no dedicated agent-authored memory tool found; cross-session persistent memory exists only via a third-party plugin (`opencode-supermemory`, §3.1) | **None, natively** -- the same real, source-verified absence as OpenCode (§4.1); a false cognate ("Memory" as one of three session-storage backends in the separate `pi-agent-core` package) is not this and is explicitly not counted | `MEMORY.md` (2,200-char cap) + `USER.md` (1,375-char cap), both always loaded whole, no on-demand topic-file tier |
+| Written how | Ordinary file tools; no dedicated memory tool | Dedicated model-facing tools `store_memory` / `vote_memory`, permission-prompted per write, scope shown | Ordinary file tools on `AGENTS.md`, same as Claude Code's own instruction-file tier; no dedicated memory-writing tool of its own | Ordinary file tools on `AGENTS.md`/`CLAUDE.md`, same as Claude Code's and OpenCode's own instruction-file tier; no dedicated memory-writing tool of its own | A `memory` tool plus a dedicated **post-turn closed learning loop** review pass, distinct from ordinary in-loop tool calls |
+| Overflow behavior | Error + reminder to shorten near/at the limit (v2.1.210+), no silent truncation | Not documented on pages fetched | Not applicable -- no bounded memory store to overflow | Not applicable -- no bounded memory store to overflow | Hard error on overflow, no auto-compaction, by original design (not a later hardening) |
+| Memory sharing | Machine-local; shared across worktrees of one repo; never across machines | Repo facts shared with repo collaborators; user prefs private to the user/billing entity; server-side so cross-machine by construction | `AGENTS.md` at project scope is team-shared via Git (docs explicitly recommend committing it); global scope is machine-local and explicitly recommended for personal-only rules | `AGENTS.md`/`CLAUDE.md` at project scope team-shared via Git like OpenCode's own; `~/.pi/agent/AGENTS.md` global scope machine-local; worktree-shadow dedup (§4.2) prevents a linked worktree double-loading the main repo's own copy | Machine-local (`~/.hermes/memories/`), profile-isolated under `HERMES_HOME` |
+| Enable/disable | `autoMemoryEnabled`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `/memory` toggle | `/memory on\|off\|show`, GitHub Copilot settings (per user; admin gate on Enterprise) | Not applicable to memory (none exists); Claude-compat *fallback* specifically is disableable via `OPENCODE_DISABLE_CLAUDE_CODE`/`_PROMPT`/`_SKILLS` | Not applicable to memory (none exists); the context-file *tier itself* is disableable via `--no-context-files`/`-nc`, or programmatically via `agentsFilesOverride` returning an empty list (§4.3) | Not documented on pages fetched; `skills.write_approval`-style gating exists for skills, and a comparable `write_approval` flag is named for memory writes generally |
+| Injection timing | Session start (system prompt then a *user message* carrying CLAUDE.md; `MEMORY.md` early in startup) | Session start prompt injection, **plus refresh after 30 minutes** in long-lived sessions | **Every turn** -- `Instruction.system()` re-reads and reassembles tier 1 on each iteration of the main session loop, source-verified (§3.2) | Session start; re-hydrated on demand via `/reload` (§4.5), not automatically | Session start, as a **frozen snapshot** explicitly to preserve prefix-cache reuse |
+| Cross-session recall beyond the loaded tier | Not found as a distinct feature (session resume is the mechanism, §1.9) | Experimental cross-session memory + `/chronicle search` | Not native; the third-party `opencode-supermemory` plugin is the only documented answer (§3.1) | Not found as a distinct feature on the docs/source fetched this session | FTS5 full-text search across the SQLite conversation database, "without consuming tokens in the current session" |
+| Mid-session re-read of an *edited* instruction file | No documented watcher/hot-reload; launch-loaded tier is a session-start read. Off-disk re-reads happen only at compaction (root CLAUDE.md, unscoped rules, auto memory) and on trigger-file reads (nested CLAUDE.md, `paths:` rules). Restart or `--continue` is the sure path | Undocumented either way; reload primitives exist for MCP/LSP/plugins but not instruction files. `/instructions` can toggle which files are active in-session | **Yes, every turn** -- the strongest, most directly source-verified "yes" of the five harnesses on this page (§3.2); a nearby-file auto-attach mechanism (§3.3) additionally re-surfaces subdirectory instruction files on each new matching `read` call | **On demand, one command** -- `/reload` re-discovers `AGENTS.md`/`CLAUDE.md` (alongside extensions/skills/prompts/themes) without a restart (§4.5); neither automatic nor restart-only, the one harness on this page with an explicit, named, user-invoked lever for exactly this question | Not documented on pages fetched -- `SOUL.md`/Context Files are described as loaded, not as watched |
+| Auto-compaction trigger | Documented behaviorally (evict tool outputs, then summarize); no % on fetched pages | **95% of token limit**, background, non-blocking | Token-budget-based (see [context-compression.md](context-compression.md) §3 for the source-verified `overflow.ts` mechanics; not re-derived here) | Token-budget-based; see [context-compression.md](context-compression.md) §4 for pi's own compaction mechanics, not re-derived here | Not documented on pages fetched; **Checkpoints** ("automatic snapshots for rollback protection") are named but not confirmed as the same mechanism |
+| Focused manual compaction | `/compact focus on ...`, plus "Compact Instructions" section in CLAUDE.md | `/compact [FOCUS-INSTRUCTIONS]` | Not investigated on this page; see [context-compression.md](context-compression.md) §3 | `/compact [prompt]`, per [context-compression.md](context-compression.md) §4, not re-derived here | Not documented on pages fetched |
+| Post-compaction re-injection | Documented per-mechanism table (root CLAUDE.md + auto memory re-injected; path-scoped rules and nested CLAUDE.md lost until retriggered; skill bodies capped 5K/25K) | Skills survive; instruction-file re-injection **undocumented** | Moot in the usual sense -- tier 1 is rebuilt from disk every turn regardless of compaction state (§3.2), so there is nothing distinct to "re-inject" | Not investigated on this page; context files are not part of the message tree §4.6 describes compaction operating over, so likely unaffected either way -- BEST CURRENT UNDERSTANDING, UNCONFIRMED | Not documented on pages fetched |
+| Pre-compaction hook | `PreCompact`, can block (exit 2 / `{"decision":"block"}`) | `preCompact` exists; blocking capability unconfirmed | Not investigated on this page; see [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §3 for OpenCode's own hook catalogue | Not investigated on this page; see [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §5 for pi's own extension-event catalogue | Not documented on pages fetched (contrast its own shell-hook `pre_tool_call` blocking, [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §6) |
+| Session transcripts | Plaintext JSONL under `~/.claude/projects/` | Session databases under `~/.copilot/` (`COPILOT_HOME`); "session SQL" | SQLite database (`opencode.db`, Drizzle ORM, WAL mode) per [session-persistence.md](session-persistence.md) §3, not re-derived here | Tree-structured, `id`/`parentId`-linked JSONL under `~/.pi/agent/sessions/`, per [session-persistence.md](session-persistence.md) §5, not re-derived here | SQLite with FTS5 full-text indexing |
+| Resume / continue | `claude --continue`, `--resume`, `--fork-session` / `/branch` | `--continue`, `--resume` / `/resume` (mutually exclusive), `--session-id` | `--fork` (`Session.fork()`), `SessionRevert`; see [session-persistence.md](session-persistence.md) §3 for the full, source-verified mechanics | `pi -c`/`pi -r`/`--session`, `/resume`, `/tree`, `/fork`, `/clone`; see [session-persistence.md](session-persistence.md) §5 for the full, source-verified mechanics | Not independently researched on this page; see [session-persistence.md](session-persistence.md) for this book's general resume/fork coverage |
 
 **The design lesson.** All harnesses on this page converge on some
 version of a *two-tier* shape -- a small always-loaded index plus a
 larger lazily-read or separately-searchable body -- but diverge
 completely on where the agent-authored tier lives, how strictly it is
-bounded, and, on OpenCode specifically, whether an agent-authored tier
-exists at all. Claude Code keeps its memory as plain files you own, on
-your machine, auditable with a text editor and invisible to your
+bounded, and, on OpenCode and pi specifically, whether an agent-authored
+tier exists at all. Claude Code keeps its memory as plain files you own,
+on your machine, auditable with a text editor and invisible to your
 teammates; Copilot puts it in a GitHub-hosted store with repository
 scoping, write-access gating, citation validation against the current
-branch, and automatic expiry; OpenCode has no agent-authored memory
-tier of its own to compare on this axis at all -- its only persistent,
-human-authored tier (`AGENTS.md`) is architecturally closer to Claude
-Code's own instruction files than to either harness's memory mechanism,
-and it distinguishes itself instead on *freshness*: it is the only one
-of the four harnesses on this page that re-reads its persistent tier
-from disk on every turn rather than freezing it at session start (or
-at a fixed refresh interval, Copilot CLI's own 30-minute compromise
-between the two). Hermes keeps its own memory machine-local like Claude
-Code but enforces a **hard, error-on-overflow character cap** from the
-outset rather than a soft/reminder-based budget, and adds a dedicated
-**post-turn review pass** as the writing mechanism rather than routing
-memory writes through the same ordinary tool-calling loop the other
-harnesses use. That is a governance/reviewability tradeoff for Claude
-Code vs. Copilot specifically: Claude Code's model can be inspected and
-diffed but never shared; Copilot's is shared and centrally deletable
-but not a file you can grep. Hermes adds a third axis to that
-comparison -- *how memory writes get proposed in the first place* --
-that neither Claude Code's auto memory nor Copilot Memory varies on
-(both write during the ordinary agentic loop, where Hermes' closed
-learning loop is a separate, dedicated background pass). OpenCode adds
-a fourth axis distinct from all three: *whether the tier is even
-re-read while the session is still running*, which none of the other
-three harnesses' own documented mechanisms answers "yes, unconditionally,
-every turn" to.
+branch, and automatic expiry; OpenCode and pi both have no
+agent-authored memory tier of their own to compare on this axis at all
+-- each one's only persistent tier is the human-authored instruction
+file (`AGENTS.md`/`CLAUDE.md` for both), architecturally closer to
+Claude Code's own instruction files than to either harness's memory
+mechanism. Where the two diverge from each other is *freshness* and how
+that freshness is obtained: OpenCode re-reads its persistent tier from
+disk unconditionally on every turn, no command needed; pi's own tier is
+frozen at session start like Claude Code's, but reloadable mid-session
+on demand via one explicit, named command, `/reload` (§4.5) -- a third
+point on the same freshness axis, between OpenCode's automatic every-
+turn re-read and Claude Code's restart-or-compaction-only re-read, and
+distinct again from Copilot CLI's own fixed 30-minute refresh interval
+for its *memory* tier specifically (not its instruction files, which are
+undocumented on this axis, §2.5). Hermes keeps its own memory
+machine-local like Claude Code but enforces a **hard, error-on-overflow
+character cap** from the outset rather than a soft/reminder-based
+budget, and adds a dedicated **post-turn review pass** as the writing
+mechanism rather than routing memory writes through the same ordinary
+tool-calling loop the other harnesses use. That is a governance/
+reviewability tradeoff for Claude Code vs. Copilot specifically: Claude
+Code's model can be inspected and diffed but never shared; Copilot's is
+shared and centrally deletable but not a file you can grep. Hermes adds
+a third axis to that comparison -- *how memory writes get proposed in
+the first place* -- that neither Claude Code's auto memory nor Copilot
+Memory varies on (both write during the ordinary agentic loop, where
+Hermes' closed learning loop is a separate, dedicated background pass).
+OpenCode and pi both add a further axis distinct from all three,
+*whether the tier is even re-read while the session is still running*,
+but land at different points on it: OpenCode answers "yes,
+unconditionally, every turn"; pi answers "yes, but only when you ask
+it to" -- neither answer that Claude Code's, Copilot CLI's, or Hermes'
+own documented mechanisms give for their respective launch-loaded
+tiers.
 
 **Consequences for anything that must work across harnesses** (directly
 relevant to this project's cross-harness requirement):
@@ -917,10 +1141,17 @@ relevant to this project's cross-harness requirement):
    Code does not read `AGENTS.md` or `copilot-instructions.md` at
    runtime; OpenCode's own primary file is `AGENTS.md`, with `CLAUDE.md`
    honoured only as a fallback when no `AGENTS.md` exists at the same
-   scope. An `AGENTS.md` with the same content as a `CLAUDE.md`, kept in
-   sync, is the closest thing to a shared file across all three of this
-   project's own target harnesses -- not a single file all three read
-   identically by default.
+   scope; pi reads both natively too, with `AGENTS.md` winning a
+   first-match-per-directory precedence check over `CLAUDE.md` when both
+   exist in one directory (§4.2) -- not a merge of the two. An
+   `AGENTS.md` with the same content as a `CLAUDE.md`, kept in sync, is
+   the closest thing to a shared file across all three of this project's
+   own target harnesses -- not a single file all three read identically
+   by default. pi is not one of this project's own deploy targets (this
+   book documents it as a harness of general interest, same footing as
+   Hermes and DeepSeek Harness elsewhere in this book), but its own
+   `AGENTS.md`/`CLAUDE.md` convention is the same shared-file candidate,
+   worth noting for anyone extending this project's own reach to it.
 2. Anything that must survive a long run should be in the
    always-loaded tier, not conversation. On Claude Code that means
    project-root `CLAUDE.md` or an unscoped rule (both re-injected after
@@ -931,7 +1162,13 @@ relevant to this project's cross-harness requirement):
    rebuilt from disk every turn regardless of compaction state, so an
    `AGENTS.md` invariant is never at risk of the same kind of loss --
    though it is equally never protected from a *bad* edit made
-   mid-session, since that too takes effect immediately.
+   mid-session, since that too takes effect immediately. On pi, whether
+   the context-file tier survives compaction specifically is not
+   established either way on this page (Synthesis table row above,
+   "Post-compaction re-injection") -- what *is* established is that a
+   bad or good edit reaches the model only after `/reload` or a restart
+   (§4.5), a middle ground between OpenCode's immediate effect and
+   Claude Code's restart-or-compaction-gated effect.
 3. Instrumentation asymmetry for profiling compaction: Copilot CLI
    emits a machine-checkable OTel marker
    (`gen_ai.conversation.compacted=true` plus a `CompactionPart`);
@@ -946,7 +1183,7 @@ relevant to this project's cross-harness requirement):
    [index.md](index.md) framing), so nothing above changes this
    project's own cross-harness requirement -- but its design is worth
    citing as a reasoning aid: a **hard, error-on-overflow character
-   cap** (§4.1) is a stricter, more predictable failure mode than either
+   cap** (§5.1) is a stricter, more predictable failure mode than either
    Claude Code's warn-then-error-near-the-limit auto memory or Copilot
    Memory's undocumented overflow behavior, at the cost of occasionally
    forcing an explicit consolidation step rather than growing silently.
@@ -954,14 +1191,27 @@ relevant to this project's cross-harness requirement):
    OpenCode specifically, the honest answer per this session's own
    research is: build it yourself, or adopt a named third-party plugin
    (`opencode-supermemory`, §3.1) -- do not assume a Claude-Code- or
-   Copilot-Memory-shaped feature is coming for free on that harness.
+   Copilot-Memory-shaped feature is coming for free on that harness. The
+   identical caveat applies to pi (§4.1): this session found no named
+   third-party plugin filling the gap the way `opencode-supermemory`
+   does for OpenCode, so a project needing agent-authored memory on pi
+   has strictly more to build itself than on OpenCode, not merely the
+   same absence.
+6. pi's `agentsFilesOverride` SDK hook (§4.3) is worth flagging
+   separately from the docs-level findings above: it is the one
+   mechanism this page found, across all five harnesses, that lets a
+   *host application* inject or suppress an entire harness's
+   persistent-instruction tier programmatically rather than through
+   on-disk files or CLI flags alone -- relevant for anyone embedding pi
+   rather than running it interactively.
 
 ---
 
 ## Sources
 
 Claude Code and Copilot CLI sections fetched 2026-07-30; the OpenCode
-and Hermes Agent sections fetched 2026-08-24 (see below).
+and Hermes Agent sections fetched 2026-08-24; the pi section fetched
+2026-09-01 (see below).
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `https://code.claude.com/docs/en/memory` -- CLAUDE.md hierarchy, load order, imports, AGENTS.md non-support, `.claude/rules/`, auto memory storage/limits/settings, `/memory`, compaction troubleshooting.
@@ -978,12 +1228,46 @@ and Hermes Agent sections fetched 2026-08-24 (see below).
 - `https://github.com/github/copilot-cli` `changelog.md` and `README.md` (via `gh api repos/github/copilot-cli/contents/...`) -- `/memory on|off|show`, `store_memory`/`vote_memory`, permission-prompt scoping, timeline citations, memory-backend failure modes, 30-minute memory refresh, cross-session memory (experimental), `CLAUDE.md` reading and `@`-import expansion, `~/.copilot/instructions/`, compaction checkpoints, `preCompact` hook, OTel compaction attributes, session databases. Authoritative for its own behavior-change history; this repo ships no implementation source.
 
 **Hermes Agent (authoritative for its own documented behavior only; fetched 24 August 2026 from `hermes-agent.nousresearch.com/docs/`):**
-- `https://hermes-agent.nousresearch.com/docs/user-guide/features/memory` (WebFetch) -- the `MEMORY.md`/`USER.md` two-file architecture and character caps, the frozen-snapshot/prefix-cache injection detail, the closed-learning-loop post-turn review mechanism, the does-not-auto-compact error-on-overflow behavior, FTS5 cross-session search, and write-approval gating (§4.1-4.3).
-- `https://hermes-agent.nousresearch.com/docs/user-guide/features/personality` (WebFetch) -- the `SOUL.md` prompt-slot-#1 statement, its user-editability and update-preservation guarantee, and its prompt-injection-scanning and fallback-identity behavior (§4.4).
-- `https://hermes-agent.nousresearch.com/docs/user-guide/features/overview` (WebFetch) -- the Context Files discovery list (`.hermes.md`/`AGENTS.md`/`CLAUDE.md`/`SOUL.md`/`.cursorrules`), the `@`-context-reference syntax, and the Checkpoints feature name (§4.5). A dedicated context-files documentation page returned HTTP 503 both times fetched this session and could not be independently read beyond what this Overview page states.
+- `https://hermes-agent.nousresearch.com/docs/user-guide/features/memory` (WebFetch) -- the `MEMORY.md`/`USER.md` two-file architecture and character caps, the frozen-snapshot/prefix-cache injection detail, the closed-learning-loop post-turn review mechanism, the does-not-auto-compact error-on-overflow behavior, FTS5 cross-session search, and write-approval gating (§5.1-5.3).
+- `https://hermes-agent.nousresearch.com/docs/user-guide/features/personality` (WebFetch) -- the `SOUL.md` prompt-slot-#1 statement, its user-editability and update-preservation guarantee, and its prompt-injection-scanning and fallback-identity behavior (§5.4).
+- `https://hermes-agent.nousresearch.com/docs/user-guide/features/overview` (WebFetch) -- the Context Files discovery list (`.hermes.md`/`AGENTS.md`/`CLAUDE.md`/`SOUL.md`/`.cursorrules`), the `@`-context-reference syntax, and the Checkpoints feature name (§5.5). A dedicated context-files documentation page returned HTTP 503 both times fetched this session and could not be independently read beyond what this Overview page states.
 
 **OpenCode (fetched 2026-08-24; authoritative for OpenCode's documented and real-source behavior, with the standing `dev`-branch caveat):**
 - `opencode.ai/docs/rules/`, source-checked against `github.com/anomalyco/opencode`'s own `packages/web/src/content/docs/rules.mdx` (`dev` branch, via `gh api`) -- `AGENTS.md` project/global discovery and precedence, the Claude Code-compatibility fallback (`CLAUDE.md`, `~/.claude/CLAUDE.md`) and its three disable env vars, the config `instructions` array (local globs, remote URLs with a 5-second fetch timeout), and the "combined with your AGENTS.md files" additive framing (§3.2).
 - `packages/web/src/content/docs/ecosystem.mdx`, same repo/branch/method -- the third-party plugin catalogue, specifically `opencode-supermemory` ("Persistent memory across sessions using Supermemory"), grounding the no-native-memory finding (§3.1).
 - `packages/opencode/src/session/instruction.ts` and `packages/opencode/src/session/prompt.ts`, same repo/branch/method -- the `Instruction.system()`/`Instruction.resolve()` implementation: per-turn fresh-disk-read of tier-1 instruction files with no caching (called from the main `while (true)` turn loop in `prompt.ts`), the deprecated `CONTEXT.md` filename not named on the docs page fetched, and the nearby-instruction-file auto-attach mechanism keyed off `read`-tool calls (§3.3). Authoritative for OpenCode's real implementation as of this session's fetch; per this book's standing caveat, `dev` is not a stable release tag and may not match the current stable release.
 - A `search/code` sweep of `packages/web/src/content/docs` for `"MEMORY.md"`, same session -- zero hits, grounding §3.1's no-native-agent-authored-memory finding alongside the `ecosystem.mdx` third-party-plugin evidence.
+
+**pi (fetched 1 September 2026; authoritative for pi's documented and real-source
+behavior, `earendil-works/pi` `main` branch, via `gh api`):**
+- `packages/coding-agent/docs/quickstart.md` (in full) -- "Pi loads context files at
+  startup," the three discovery locations, `AGENTS.override.md`'s exclusive
+  substitution, and "Restart pi, or run `/reload`, after changing context files"
+  (§4.2, §4.5).
+- `packages/coding-agent/docs/usage.md` (in full) -- the "Context Files" and "System
+  Prompt Files" sections (`SYSTEM.md`/`APPEND_SYSTEM.md`, `--no-context-files`/`-nc`,
+  `--system-prompt` still appending context files/skills), the `/reload` slash-command
+  description, and the `/trust`-does-not-reload exception (§4.2, §4.4, §4.5).
+- `packages/coding-agent/docs/environment-variables.md` (in full) -- checked for and
+  found to name no memory- or context-file-specific environment variable (§4.1
+  negative finding, supporting evidence).
+- `packages/coding-agent/examples/sdk/07-context-files.ts` (in full) -- the
+  `DefaultResourceLoader`/`agentsFilesOverride` SDK example, including the "Disable
+  context files entirely by returning an empty list" comment (§4.3).
+- `packages/coding-agent/src/core/resource-loader.ts` (in full, via `gh api`) -- the
+  real implementation source for `loadContextFileFromDir()` (the
+  `["AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]`
+  first-match candidate list), `loadProjectContextFiles()` (the global-first,
+  root-most-ancestor-to-cwd assembly order), and `findShadowedContextFile()` (the
+  git-worktree shadow-dedup logic) -- none of this discovery-order or precedence detail
+  is stated in the docs pages above; it is source-only (§4.2).
+- `packages/coding-agent/package.json` and `packages/ai/package.json` (via `gh api`) --
+  the `name` fields confirming `@earendil-works/pi-coding-agent` (the coding-agent
+  product) and `@earendil-works/pi-ai` (the separate unified-LLM-API layer it depends
+  on) are both real, distinct packages in the same monorepo, resolving this book's own
+  cross-page naming question (§4.1).
+- GitHub code search (`search/code?q=%22MEMORY.md%22+repo:earendil-works/pi` and
+  `search/code?q=memory+repo:earendil-works/pi`), same session -- zero hits for an
+  agent-authored memory file or tool; the only "memory"-adjacent hit of substance was
+  `packages/agent/docs/harness.md`'s own unrelated use of "Memory" as a session-storage
+  backend name, explicitly not counted (§4.1).

@@ -690,18 +690,424 @@ not available to read.
 
 ---
 
-## 4. Synthesis
+## 4. pi
 
-| Concern | Claude Code | Copilot CLI | OpenCode |
-|---|---|---|---|
-| Partial tool-call JSON: attempted a mid-parse? | No evidence found; changelog shows byte/JSON reassembly *bugs* fixed (v2.1.92, v2.1.94), never a speculative-parse feature | Docs state tool calls arrive whole, no fragmentation of arguments at the SDK's own event layer (bounded, adjacent-surface citation) | Source-confirmed: never attempted anywhere in three independently-written consumers (`publish-llm-event.ts`, `message-updater.ts`, TUI's `data.tsx`) |
-| Partial tool-call JSON: held in live state at all while pending? | Unknown (closed source) | Unknown; docs suggest not, since arguments aren't fragmented to begin with | Diverges *within the same codebase*: the shared `core` reducer no-ops the delta entirely; the TUI's and app's own reducers accumulate the raw string but gate its display until the call is complete |
-| Render-cost mitigation under sustained streaming | Time-based coalescing (100ms window, ~37% CPU cut, v2.1.191), no-op subtree-walk skipping (v2.1.196), a swapped-out WASM layout engine (v2.1.85) | Spinner/polling-cost optimization (v1.0.13), a `time_to_first_chunk` OTel metric (v1.0.19) to measure the user-facing consequence | SolidJS fine-grained reactive signals (only the specific memoized value that changed re-renders) plus an explicit reuse-check in the Markdown projector (`project()`'s frozen-block-skip, §3.4) -- a declarative/structural answer rather than a time-based debounce |
-| Terminal/DOM flicker mitigation | Synchronized-output escape sequences (v2.1.200 and others), a dedicated `NO_FLICKER` mode (v2.1.89) and a separate `/tui fullscreen` renderer (v2.1.110), both independently maintained | Synchronized output *skipped* under tmux specifically to avoid a flicker regression (v1.0.66) -- the same mechanism, opposite conclusion for one terminal/multiplexer combination | Not directly addressed by any source read this session (OpenTUI's own internals, a third-party dependency, were out of scope) |
-| Display pace vs. delivery cadence | Symptom-level tuning only (line-by-line granularity, v2.1.78/v2.1.181); no algorithm exposed | Not documented | Fully source-verified, explicit, tunable algorithm (`createPacedValue`, §3.5) decoupling the two entirely, with its own burst-catch-up and immediate-reveal-on-large-backlog escape valve |
-| Incremental Markdown-partial handling | Changelog shows dozens of dated Markdown-rendering bugs fixed (tables, strikethrough, blockquotes, nested lists) but no exposed algorithm | Buffered (`--stream off`) vs. streamed output confirmed as genuinely separate Markdown-rendering code paths (nested-list rendering bug fixed only in buffered mode) | Fully source-verified tokenize/freeze/heal/reuse algorithm (`markdown-stream.ts`, §3.4), web/app surface only -- not shared with the terminal TUI |
+**Repo/package resolution, done live this session rather than trusted from either
+existing spelling in this book.** VERIFIED via `gh api repos/earendil-works/pi`
+(fetched fresh this session): the canonical repository is
+`github.com/earendil-works/pi`, `main` branch, description "AI agent toolkit:
+unified LLM API, agent loop, TUI, coding agent CLI." A second lookup,
+`gh api repos/earendil-works/pi-mono`, resolves to the *identical*
+`full_name: "earendil-works/pi"` -- i.e. `pi-mono` is not a second, parallel
+repository but an old name GitHub now silently redirects from a rename, which
+resolves this book's own inconsistent citation history: pages that cite
+`earendil-works/pi-mono` blob URLs (this session found several, e.g. in
+`docs/tui.md`'s own "Source" links) and pages that cite `earendil-works/pi`
+directly are both pointing at the same repository, just via its old and new
+names respectively. The root `package.json` names the workspace itself
+`"pi-monorepo"` (private, unpublished) with `workspaces: ["packages/*", ...]`.
+**The deeper finding the handoff asked this session to verify is that
+`pi-ai` and `pi-coding-agent` are not alternate spellings of one package --
+they are two distinct, separately-versioned-in-lockstep, separately-published
+npm packages living in the same monorepo, each independently confirmed this
+session by reading its own `package.json`:** `packages/ai/package.json` names
+`@earendil-works/pi-ai` ("Unified LLM API with automatic model discovery and
+provider configuration" -- the wire-protocol/model-routing layer
+llm-api-contract.md §3.5 already documents in full); `packages/coding-agent/
+package.json` names `@earendil-works/pi-coding-agent` ("Coding agent CLI with
+read, bash, edit, write tools and session management," with `bin: { pi:
+"dist/bundle/cli.js" }` -- confirming the `pi` executable itself ships from
+*this* package, not from `pi-ai`); and a third package this book had not yet
+named directly, `packages/tui/package.json`, names `@earendil-works/pi-tui`
+("Terminal User Interface library with differential rendering for efficient
+text-based applications" -- its own description already naming the exact
+mechanism this page's §4.5 documents from source below). All three carry the
+identical version string (`0.84.4` at the time of this session's fetch),
+confirming the monorepo is versioned as one lockstepped unit even though it
+publishes multiple independent packages. Practically: every other page in
+this book citing `@earendil-works/pi-ai` (llm-api-contract.md, auth-and-
+usage-accounting.md) and every page citing `@earendil-works/pi-coding-agent`
+(deterministic-orchestration.md, session-persistence.md) were both citing a
+real, correctly-named package all along -- this was never an error to
+resolve, only an underspecified distinction this page is the first to state
+explicitly. This page's own new material below draws on all three packages,
+plus the `packages/coding-agent/CHANGELOG.md` (a *separate* changelog file
+from the monorepo root, versioned identically to the packages themselves,
+5,625 lines at the time of this session's fetch, VERIFIED via `gh api
+repos/earendil-works/pi/contents/packages/coding-agent/CHANGELOG.md`) read
+and grepped this session the same way this page already treats Claude Code's
+and Copilot CLI's own changelogs (§1, §2) -- with the crucial difference that,
+like OpenCode, pi genuinely ships implementation source alongside that
+changelog, so most claims below are read directly from `packages/tui/src` and
+`packages/coding-agent/src`, not merely inferred from a dated bug-fix
+description.
 
-**The design lesson.** Across all three harnesses, "parsing partial tool
+```mermaid
+flowchart TD
+    Wire["pi-ai normalized StreamEvent\n(text_delta / toolcall_delta / ...)\nsee llm-api-contract.md S3.5 -- NOT re-derived here"]
+    Wire --> Acc["coding-agent AgentSession:\naccumulates delta into in-memory message.content;\n--mode json / RPC emit ONLY the delta itself\n(cumulative snapshot removed, v0.84.0 #7290)"]
+    Acc --> MD["pi-tui Markdown component:\nfull marked.lexer() re-lex of the\nWHOLE accumulated text on every delta\n(cache only skips an exact-repeat ask)"]
+    MD --> Mermaid{"a fenced code block\ntagged mermaid, and\nmarkdown.mermaid = streaming?"}
+    Mermaid -->|yes| Live["render() the still-growing,\npossibly-incomplete Mermaid source\ninto Unicode art now;\nwarnings suppressed until stream ends"]
+    Mermaid -->|no / mode = final| Plain["ordinary styled markdown lines\n(pending-LaTeX / partial-fence healing, S4.3)"]
+    Live --> Diff
+    Plain --> Diff["TuiMainScreen.doRender():\nfirst/last-changed-line diff,\ncoalesced to ~60fps (MIN_RENDER_INTERVAL_MS=16),\nsynchronized-output escape sequences"]
+    Diff --> Screen["terminal"]
+```
+
+### 4.1 The `--mode json` / RPC event stream: a real quadratic-growth bug, fixed by going delta-only
+
+VERIFIED, `packages/coding-agent/docs/json.md` (fetched in full this session):
+`pi --mode json "prompt"` emits one `JsonAgentSessionEvent` JSON object per
+line to stdout, beginning with a `{"type":"session", ...}` header, then the
+same `AgentEvent`/`AgentSessionEvent` lifecycle documented in
+`packages/coding-agent/src/core/agent-session.ts` and `packages/agent/src/
+types.ts` (`agent_start`/`turn_start`/`message_start`/`message_update`/
+`message_end`/`turn_end`/`agent_end`, plus tool-execution and compaction
+events). The docs state the accumulation discipline explicitly: "`message_update`
+records are delta-only. They omit both the cumulative `message` field and
+`assistantMessageEvent.partial` to keep stream size linear. ... Use
+`contentIndex` and `delta` to assemble live text, thinking, or tool-call
+arguments if needed" -- the identical caller-must-accumulate discipline
+llm-api-contract.md §1.5/§2.3 document at the raw-API level, and the identical
+one Copilot SDK's own docs state for its ephemeral `assistant.message_delta`
+event (§2.3 above: "Accumulate deltas to build the complete content").
+`toolcall_start` alone is the one exception, additionally carrying a
+constant-sized `id`/`toolName` pair alongside the deltas so a consumer can key
+its own accumulator before the call's arguments are fully assembled.
+
+The docs' own phrase "to keep stream size linear" is not decorative -- it is a
+direct, named reference to a real, dated, shipped bug. VERIFIED,
+`packages/coding-agent/CHANGELOG.md`, **v0.84.0** (2026-08-06), grepped this
+session for `stream|render|flicker|shrink|coalesc|mermaid|partial|fence`:
+"Changed JSON and RPC `message_update` events to emit only
+`assistantMessageEvent` deltas, removing the cumulative `message` and
+`assistantMessageEvent.partial` fields that caused quadratic output growth.
+Clients that need partial messages must assemble deltas between
+`message_start` and `message_end`; the latter remains authoritative"
+(`#7290`). Read plainly: before this fix, every single `message_update` event
+re-serialized the *entire* accumulated partial message (not just the new
+delta) onto the wire, so total bytes emitted over a streamed response grew
+quadratically in the response's own length -- the same *class* of bug
+Claude Code's changelog documents as a fixed quadratic-time SSE-frame-handling
+defect (§1.2, v2.1.90, "SSE transport now handles large streamed frames in
+linear time (was quadratic)") and the same discipline OpenCode's
+`publish-llm-event.ts` enforces by construction via its `Map<string,
+string[]>` fragment accumulator plus a separate, independent delta-rebroadcast
+(§3.1) -- three unrelated engineering teams independently arriving at "never
+re-send the whole accumulated buffer on every delta" as the fix for the same
+failure mode. The fix itself needed a follow-up correction one patch cycle
+later: **v0.84.2** (2026-08-14) shipped "Fixed JSON and RPC `message_update`
+events dropping cumulative usage during streaming" (`#7982`), confirming that
+stripping the cumulative *message* field in v0.84.0 had an unintended side
+effect on the *usage* field's own reporting, which had to be restored
+separately -- a concrete instance of the general risk in any "stop resending
+the whole state" refactor: adjacent fields riding along with the removed
+snapshot can silently break too.
+
+### 4.2 The TUI's incremental Markdown component: whole-string re-lex plus a targeted partial-fence fix
+
+VERIFIED, `packages/tui/src/components/markdown.ts` (1,015-line file read in
+full this session). The exported `Markdown` class implements `pi-tui`'s own
+`Component` interface (`render(width: number): string[]`, documented in
+`packages/coding-agent/docs/tui.md`'s extension-facing API) and holds a
+three-field cache -- `cachedText`/`cachedWidth`/`cachedLines` -- checked at the
+top of `render()`: "if (this.cachedLines && this.cachedText === this.text &&
+this.cachedWidth === width) return this.cachedLines." Because the coding
+agent's own message-rendering path calls `setText()` with the full
+accumulated string on every streamed delta (a plain `this.text = text;
+this.invalidate()`), this cache is a **no-op-skip** guard, not an incremental
+re-parse strategy: it only shortcuts a genuinely redundant re-render request
+for text/width the component has already rendered, never the common
+mid-stream case where the accumulated text has just grown by one delta. Every
+such delta therefore forces a full re-tokenization of the **entire**
+accumulated message via `markdownParser.lexer(normalizedText)` (the `marked`
+library, configured with a custom `StrictStrikethroughTokenizer` and two LaTeX
+tokenizer extensions), then a full re-render of every resulting token through
+`renderToken()`, line-wrapping, and padding. This is a materially different
+engineering tradeoff from OpenCode's `session-ui` Markdown projector (§3.4),
+which explicitly freezes already-completed blocks and only re-parses the
+trailing live one specifically to avoid this cost -- pi's own `packages/tui/
+README.md` names its cache only as "Render caching for performance," with no
+documented claim of an equivalent freeze-and-reuse discipline, and this
+session's reading of the source confirms none exists in this file: pi accepts
+an O(n) full re-lex on every delta as the cost of a simpler implementation,
+rather than OpenCode's more involved frozen-tail bookkeeping.
+
+One specific streaming artifact *is* handled with a targeted, source-visible
+fix: `trimPartialClosingFences()`, called immediately after every `lexer()`
+call. A still-streaming fenced code block's own **closing** delimiter
+(```` ``` ````/`~~~`) arrives character by character just like everything
+else; without correction, a partial closing marker (e.g. two of three
+backticks having streamed in) is itself valid enough to affect how `marked`
+tokenizes the block, so the rendered code block visibly shrinks or grows by a
+line at the exact moment the fence completes -- a flicker distinct from, but
+adjacent to, the general Markdown-partial-healing problem OpenCode's
+`markdown-stream.ts` solves differently (§3.4). The function's own source
+comment names the motivating report directly: "Trim streamed partial closing
+fences so code blocks do not shrink/flicker when the final fence character
+arrives. See `https://github.com/earendil-works/pi/issues/5825`." VERIFIED,
+`packages/coding-agent/CHANGELOG.md`, **v0.79.9** (2026-06-20): "Fixed
+inherited Markdown streaming code fence rendering so partial closing fences
+no longer make code blocks shrink or flicker while content streams" (`#5846`,
+by `@xl0`) -- the shipped fix this exact source function implements.
+
+The same file's LaTeX handling applies a comparable, independently-designed
+heuristic to a different partial-syntax problem: custom `latex`/`latexBlock`
+tokenizer extensions carry an explicit `pending: true` flag when an opening
+math delimiter (`$`, `$$`, `\(`, `\[`) has streamed in but its closing
+delimiter has not yet arrived, gated by a `looksLikePendingDollarMath()`
+heuristic (a regex checking for LaTeX-like control sequences or math
+operators) specifically so a bare, still-open `$` is not prematurely treated
+as the start of an in-progress equation when it might just as easily be plain
+currency text that never closes. A `pending` token is rendered as plain text
+rather than run through `renderLatex()` (both call sites gate on `!latexToken.pending`),
+functionally the same "don't render an incomplete structure as if it were the
+finished thing" discipline OpenCode's `remend`-based healing (§3.4) and its
+reasoning-title regex (§3.3) both apply to their own respective partial-syntax
+problems, arrived at independently here via a different heuristic (delimiter
+pairing plus a content-shape check, rather than auto-closing or a fixed
+regex).
+
+### 4.3 A genuine, source-verified exception: live Mermaid-diagram rendering while the diagram is still streaming in
+
+This is the single most novel finding of this session's research, and it
+meaningfully complicates the design lesson §5 below draws from Claude Code,
+Copilot CLI, and OpenCode alone: it is a real, shipped instance of a harness
+**speculatively parsing and rendering a non-trivial, still-incomplete
+structured grammar mid-stream**, something explicitly not found anywhere else
+in this book, though it applies to a Mermaid diagram body, not to JSON
+tool-call arguments specifically.
+
+VERIFIED, `packages/coding-agent/src/modes/interactive/components/
+mermaid.ts` (full file read this session, located via `gh search code
+mermaid repo:earendil-works/pi`). `createMermaidMarkdownTransformer()` builds
+a `MarkdownTransformer` that runs as part of the same markdown pipeline §4.2
+documents, invoked on every delta while `markdown.mermaid` (documented in
+`packages/coding-agent/docs/settings.md`, values `"off"`/`"final"`/
+`"streaming"`, **default `"streaming"`**) is not `"off"`. For every top-level
+fenced code block whose language tag is `mermaid`, the transformer calls
+`render(token.text)` from the third-party `grok-mermaid` package directly on
+the diagram source **as accumulated so far** -- which, mid-stream, is by
+construction a syntactically incomplete Mermaid program (a partially-typed
+node or edge declaration, an unclosed subgraph, etc.) -- and, if that render
+call succeeds and the result fits the available terminal width, replaces the
+raw fenced block with the rendered diagram immediately, before the fence has
+even closed. The gating logic is precise about when this is attempted: the
+transformer no-ops entirely when `mode === "off"` or for
+`assistant-thinking` message blocks, and -- the operative condition for this
+finding -- **while `context.isStreaming` is true, a render is even attempted
+at all only when `mode === "streaming"`** (the default); setting
+`markdown.mermaid: "final"` defers any rendering attempt until the block is
+known to be complete, functionally opting back into the
+"decline-to-parse-until-whole" discipline this book documents everywhere
+else. A second, independent gate governs *warnings specifically*: `grok-mermaid`
+can return a rendered `MermaidArt` alongside non-fatal `warnings`, and the
+transformer only surfaces those warnings once `!context.isStreaming` -- i.e.
+a diagram that is merely unfinished, not actually malformed, is rendered
+silently while streaming rather than flashing a warning line for syntax that
+simply hasn't arrived yet, deferring the "is this actually wrong, or just not
+done" judgment call to the point where the source is known to be final. If
+`render()` itself returns nothing, or the rendered art is wider than
+`context.availableWidth`, the transformer falls back to leaving the raw
+fenced block untouched -- a graceful degrade to "just show the source text"
+rather than a crash or a blocked render.
+
+The rendered output is re-encoded as more Markdown, not composited
+separately: each diagram row (an array of theme-colored `Span`s inside a
+`MermaidArt`) is wrapped in an inline code span via a `codeSpan()` helper that
+computes a backtick-fence run one character longer than the longest backtick
+run already present in that row's own text (so a diagram row that itself
+contains backticks, e.g. box-drawing characters escaped as literal backticks
+in a label, still round-trips through CommonMark correctly), then joined with
+Markdown hard-break (two trailing spaces) so every diagram row lands on its
+own rendered line -- meaning the Mermaid renderer hands its output straight
+back into the same `marked`-based pipeline §4.2 documents, rather than
+maintaining a separate rendering surface for diagrams. VERIFIED,
+`packages/coding-agent/CHANGELOG.md`, **v0.84.0** (2026-08-06): "**Mermaid
+and LaTeX rendering** -- Render Mermaid diagrams and terminal-friendly Unicode
+math in interactive transcripts," with the streaming-specific capability
+traced to an earlier, separately-dated entry, **v0.82.0** (2026-07-24, `#7624`,
+by `@xl0` -- the same contributor who filed Issue #5825 in §4.2/§4.5): "Added
+configurable themed Unicode rendering for supported Mermaid diagrams in
+interactive messages, including optional rendering while streaming."
+
+### 4.4 Render-cost coalescing: a ~60fps floor, and an explicit escape hatch for input latency
+
+VERIFIED, `packages/tui/src/tui.ts` (1,263-line file read this session,
+`TuiBase` class). A private constant, `MIN_RENDER_INTERVAL_MS = 16`, backs a
+`requestRender()`/`scheduleRender()` pair functioning as a genuine
+time-coalescing scheduler: `requestRender()` (called on every incoming
+streamed delta touching the rendered tree) sets a `renderRequested` flag and
+defers to `process.nextTick(() => this.scheduleRender())` rather than
+rendering synchronously; `scheduleRender()` computes `delay =
+Math.max(0, MIN_RENDER_INTERVAL_MS - elapsed)` against the time since the
+last actual render and arms a single `setTimeout` at that delay, so any
+number of `requestRender()` calls arriving faster than roughly a 60fps
+cadence collapse into one `doRender()` pass per ~16ms window -- architecturally
+the identical *purpose* as Claude Code's changelog-documented 100ms
+coalescing window (§1.1, v2.1.191, "~37% CPU" reduction) and OpenCode's
+24ms `TEXT_RENDER_PACE_MS` reveal ticker (§3.5), though pi's own constant is
+framed in source as a literal frame-interval budget rather than as a
+measured CPU-savings percentage, and -- unlike OpenCode's pacer -- pi's
+mechanism coalesces *render passes*, not the *rate text is revealed*: once a
+render actually fires, it always shows the full accumulated state, with no
+separate reveal-throttling layer on top (§4.6 below flags this directly as a
+negative finding).
+
+A distinct, explicitly commented escape hatch exists for input latency
+specifically: `requestImmediateRender()` bypasses the coalescing timer
+entirely via its own `process.nextTick` callback, with the source comment
+naming the exact reason: "Keyboard input is latency-sensitive. Avoid the
+throttled timer path, where even `setTimeout(0)` can take a full 16 ms tick on
+Windows." VERIFIED as a real, shipped fix rather than a hypothetical concern,
+`packages/coding-agent/CHANGELOG.md`, **v0.84.0** (2026-08-06): "Fixed
+inherited keyboard input rendering latency on Windows by letting input
+preempt the throttled render timer" -- confirming this exact code path was
+added specifically to correct a user-visible input-lag regression on one
+platform, a smaller-scale echo of Claude Code's own platform-specific
+streaming carve-out (§1.1, v2.1.81's Windows-specific line-by-line-streaming
+disablement).
+
+### 4.5 The differential-render/`clearOnShrink` tradeoff, and a still-open scroll-jump bug
+
+VERIFIED, `packages/tui/src/tui-main-screen.ts` (654-line file read this
+session) and `packages/tui/README.md` (fetched this session). `pi-tui`'s own
+package description states the mechanism this section verifies directly:
+"Terminal User Interface library with **differential rendering** for
+efficient text-based applications." `TuiMainScreen.doRender()` renders the
+full component tree to a `newLines: string[]` array every pass, then chooses
+between two strategies: a `fullRender(clear: boolean)` path (wrapped in
+`\x1b[?2026h`/`\x1b[?2026l` synchronized-output escape sequences -- the same
+terminal convention Claude Code's changelog names for tmux 3.4+, §1.1, and
+Copilot CLI's for the opposite reason, §2.2) that clears and rewrites
+everything, versus a line-diff path -- confirmed directly in `packages/tui/
+README.md`'s own description of its sibling `TuiAltScreen` renderer's
+identical three-tier update strategy: "1. First render... 2. Width Changed or
+Change Above Viewport: Clear screen and fully re-render. 3. Normal Update:
+Move the cursor to the first changed line, clear to the end, and render
+changed lines" -- and confirmed in `TuiMainScreen`'s own source by a loop
+computing `firstChanged`/`lastChanged` line indices by comparing `newLines`
+against a retained `previousLines` array line-by-line.
+
+`fullRender` is deliberately forced, not merely a fallback, under four named
+conditions read directly from source: the very first render; any terminal
+**width** change (rewrapping invalidates line boundaries entirely); a
+terminal **height** change, with an explicit carve-out for Termux specifically
+("Termux changes height when the software keyboard shows or hides. In that
+environment, a full redraw causes the entire history to replay on every
+toggle" -- `isTermuxSession()` suppresses the full-redraw trigger there
+alone); and -- the condition this section's remaining finding turns on --
+**`this.getClearOnShrink() && newLines.length < this.maxLinesRendered &&
+!this.hasOverlayEntries`**. `terminal.clearOnShrink` (`packages/coding-agent/
+docs/settings.md`, boolean, **default `false`**) is documented by pi's own
+docs with the tradeoff stated plainly in the settings table itself: "Clear
+empty rows when content shrinks (can cause flicker)" -- pi's own
+documentation names this as a live, user-facing configuration choice between
+two real defects, rather than treating either as solved.
+
+The tradeoff is not hypothetical, and remains only partially resolved as of
+this session's check. VERIFIED, GitHub Issue #5825, "Streaming markdown
+forces scroll to bottom" (fetched via `gh issue view 5825 -R
+earendil-works/pi` this session, 42 comments, still shown as `state: CLOSED`
+but with an unresolved sub-thread -- read below): the reporter (`@xl0`)
+demonstrated that with `clearOnShrink` enabled, a streaming assistant message
+whose rendered line count shrinks (which the Markdown re-lex of §4.2 causes
+routinely as tokens resolve) periodically triggers `fullRender(true)`, whose
+side effect is resetting the viewport to the bottom -- defeating a reader's
+attempt to scroll up mid-stream to reread earlier output, since "Pi will
+soon scroll to the bottom on its own." A maintainer (`@badlogic`) later
+commented that a narrower fix "landed on `main` in `5d499272`": rather than
+addressing message-body shrinkage generally, it reworked the interactive
+**status-indicator row** specifically (the working/retry/compaction/
+branch-summary indicator) so that when one of those indicators disappears, a
+same-height blank placeholder is left in its place instead of shrinking the
+rendered tree -- narrowly avoiding the `clearOnShrink` trigger for that one
+row. A contributor (`@petrroll`) then replied on the same thread that the
+*general* message-body case the issue originally reported "Could (still)
+repro on fresh master with ^^ commit" -- i.e., read plainly from the thread
+as fetched this session, the narrower status-row fix does not resolve the
+broader case, and no comment in the thread as read this session states that
+it has been separately fixed since. Treat "the general clearOnShrink
+scroll-jump problem is fully resolved" as **BEST CURRENT UNDERSTANDING,
+UNCONFIRMED** and leaning negative, not VERIFIED -- only the narrower
+status-row fix is VERIFIED as shipped. This sits alongside one earlier, more
+basic version of the same problem family that *was* fully fixed: `packages/
+coding-agent/CHANGELOG.md`, **v0.79.0** (2026-06-08): "Fixed inherited TUI
+rendering to clear stale lines when content shrinks to zero" -- i.e. pi's own
+shrink-handling has iterated across at least three separate releases
+(v0.79.0's zero-shrink case, v0.80.3's `#6026` status-row attempt, and the
+still-only-partially-resolved `#5825`/`5d499272` case), the same
+multiply-revisited-over-time pattern §1.1 documents at length for Claude
+Code's own flicker fixes.
+
+### 4.6 Two negative findings worth stating plainly
+
+**No exposed display-pacing layer distinct from render coalescing.** Unlike
+OpenCode's `createPacedValue` (§3.5), which explicitly decouples "how fast
+the network delivered the bytes" from "how fast the UI shows them" via a
+tunable, adaptive typewriter ticker, this session found no comparable
+mechanism in pi: a repo-wide `gh search code` for `typewriter`, `pace`, and
+`reveal` against `earendil-works/pi` returned zero results this session. §4.4's
+`MIN_RENDER_INTERVAL_MS` coalescing floor governs only how often a render
+*pass* fires, not how much of the already-accumulated text that pass reveals
+-- once a render fires, it shows the full state accumulated so far,
+immediately. State this as BEST CURRENT UNDERSTANDING, UNCONFIRMED beyond the
+literal negative search result: absence of a hit for those three search terms
+in one session's code search is not proof the feature does not exist under
+some other internal name.
+
+**Incremental tool-output streaming for the bash tool, confirmed as a real,
+dated feature, parallel to Copilot CLI's own.** VERIFIED,
+`packages/coding-agent/CHANGELOG.md`, **v0.73.0** (2026-05-04, `#4145`):
+"**Incremental bash output streaming** -- Bash tool output now appears while
+commands run instead of only after completion" -- the same feature category
+Copilot CLI's Issue #1127 documents as shipped in its own v0.0.348 (§2.2), now
+confirmed present in a third harness with its own independent release date.
+A separate, RPC-specific instance of the same underlying capability is named
+in the same changelog's **v0.81.0**-era "session-aware, streaming bash
+integrations" entry and documented in `packages/coding-agent/docs/rpc.md`'s
+`bash_execution_update` event: correlated incremental output specifically for
+bash commands invoked over pi's RPC transport (a different caller surface
+from the interactive TUI), mirroring the same "the CLI itself" vs. "an
+adjacent SDK/RPC caller" layering this page already documents for Copilot
+CLI against its own SDK (§2.3).
+
+### 4.7 Synthesis for pi
+
+Read end to end, pi's own engineering history shows the identical *shape* of
+problem this page documents for Claude Code and OpenCode -- a quadratic
+accumulation bug at the reassembly layer (§4.1), a multi-release,
+still-not-fully-settled fight against shrink-triggered flicker/scroll-jump at
+the render layer (§4.5), and an explicit render-coalescing floor tuned to a
+frame-interval budget (§4.4) -- reached by a third, independent engineering
+team via its own vocabulary (`clearOnShrink`, `MIN_RENDER_INTERVAL_MS`,
+`fullRender`) rather than by sharing implementation with either harness
+already covered. Its one genuinely distinctive contribution to this page's
+overall picture is §4.3's live Mermaid rendering: the clearest example found
+anywhere in this book of a harness choosing to *attempt* a speculative,
+mid-stream parse of a non-trivial, still-incomplete structured grammar rather
+than declining to render it until complete -- the opposite choice from every
+tool-call-JSON case this page and llm-api-contract.md document, made
+deliberately safe by scoping the risk narrowly (a failed or oversized render
+just falls back to raw source text, and warnings specifically are held back
+until the source is known to be final) rather than by avoiding the attempt
+altogether.
+
+---
+
+## 5. Synthesis
+
+| Concern | Claude Code | Copilot CLI | OpenCode | pi |
+|---|---|---|---|---|
+| Partial tool-call JSON: attempted a mid-parse? | No evidence found; changelog shows byte/JSON reassembly *bugs* fixed (v2.1.92, v2.1.94), never a speculative-parse feature | Docs state tool calls arrive whole, no fragmentation of arguments at the SDK's own event layer (bounded, adjacent-surface citation) | Source-confirmed: never attempted anywhere in three independently-written consumers (`publish-llm-event.ts`, `message-updater.ts`, TUI's `data.tsx`) | No evidence of a JSON mid-parse either -- but source-confirmed to attempt exactly this for a *different* structured grammar: a still-incomplete Mermaid diagram body, rendered live by default (§4.3) |
+| Partial tool-call JSON: held in live state at all while pending? | Unknown (closed source) | Unknown; docs suggest not, since arguments aren't fragmented to begin with | Diverges *within the same codebase*: the shared `core` reducer no-ops the delta entirely; the TUI's and app's own reducers accumulate the raw string but gate its display until the call is complete | `toolcall_delta`/`toolcall_end` follow the identical caller-must-accumulate discipline as the wire level (llm-api-contract.md §3.5); no source read this session shows the TUI attempting to render a partial tool-call argument string |
+| Render-cost mitigation under sustained streaming | Time-based coalescing (100ms window, ~37% CPU cut, v2.1.191), no-op subtree-walk skipping (v2.1.196), a swapped-out WASM layout engine (v2.1.85) | Spinner/polling-cost optimization (v1.0.13), a `time_to_first_chunk` OTel metric (v1.0.19) to measure the user-facing consequence | SolidJS fine-grained reactive signals (only the specific memoized value that changed re-renders) plus an explicit reuse-check in the Markdown projector (`project()`'s frozen-block-skip, §3.4) -- a declarative/structural answer rather than a time-based debounce | A literal ~60fps render-pass floor (`MIN_RENDER_INTERVAL_MS = 16`, §4.4) coalescing any burst of `requestRender()` calls into one `doRender()` per window, plus a `process.nextTick`-based bypass for input latency specifically |
+| Terminal/DOM flicker mitigation | Synchronized-output escape sequences (v2.1.200 and others), a dedicated `NO_FLICKER` mode (v2.1.89) and a separate `/tui fullscreen` renderer (v2.1.110), both independently maintained | Synchronized output *skipped* under tmux specifically to avoid a flicker regression (v1.0.66) -- the same mechanism, opposite conclusion for one terminal/multiplexer combination | Not directly addressed by any source read this session (OpenTUI's own internals, a third-party dependency, were out of scope) | Same synchronized-output convention (`\x1b[?2026h`/`l`) plus a source-confirmed differential line-diff renderer (§4.5); its own `clearOnShrink` setting names an explicit, still-only-partially-fixed flicker-vs-scroll-jump tradeoff (Issue #5825) |
+| Display pace vs. delivery cadence | Symptom-level tuning only (line-by-line granularity, v2.1.78/v2.1.181); no algorithm exposed | Not documented | Fully source-verified, explicit, tunable algorithm (`createPacedValue`, §3.5) decoupling the two entirely, with its own burst-catch-up and immediate-reveal-on-large-backlog escape valve | No comparable mechanism found (repo-wide code search for "typewriter"/"pace"/"reveal" returned nothing, §4.6); render coalescing (above) is the only throttle, and it governs render-pass frequency, not reveal rate |
+| Incremental Markdown-partial handling | Changelog shows dozens of dated Markdown-rendering bugs fixed (tables, strikethrough, blockquotes, nested lists) but no exposed algorithm | Buffered (`--stream off`) vs. streamed output confirmed as genuinely separate Markdown-rendering code paths (nested-list rendering bug fixed only in buffered mode) | Fully source-verified tokenize/freeze/heal/reuse algorithm (`markdown-stream.ts`, §3.4), web/app surface only -- not shared with the terminal TUI | Fully source-verified whole-string re-lex on every delta (no freeze-tail discipline), plus a targeted fix for one specific artifact (streamed partial closing code-fences, §4.2) and a `pending`-flagged heuristic for still-open LaTeX delimiters |
+
+**The design lesson.** Across all four harnesses, "parsing partial tool
 calls out of a token stream" turns out, on the evidence actually gathered
 this session, to have a strikingly uniform answer at the argument-JSON
 layer specifically: nobody examined in this book attempts to parse or
@@ -709,25 +1115,42 @@ display a genuinely incomplete JSON object mid-stream. Every mechanism found
 either declines to hold the partial string in live state at all (OpenCode's
 shared `core` reducer), holds it but withholds it from display until
 complete (OpenCode's TUI and web/app reducers, both independently), or --
-per the one adjacent-surface citation available for Copilot -- appears not
-to fragment tool-call arguments across the wire at all. The genuinely
-divergent, harder engineering problem all three harnesses *do* visibly
-grapple with, each in its own idiom, is the second-order one this page's
-name points at more than its handoff description initially suggested:
-turning an already-safely-accumulated, still-growing plain-text or Markdown
-string into a terminal or DOM update that neither flickers, stalls, nor
-burns unbounded CPU as the growth rate varies -- and, per OpenCode's
-uniquely source-visible §3.5 finding, optionally re-pacing that reveal to a
-rate independent of the network's own delivery cadence entirely. Claude
-Code's multi-year changelog record is the deepest evidence of how much
-sustained engineering effort that second problem alone can demand even once
-the first one (safe JSON reassembly) is solved.
+per the one adjacent-surface citation available for Copilot, and per pi's own
+`toolcall_end`-only-carries-parsed-arguments discipline -- appears not to
+fragment tool-call arguments for display at all. pi's own Mermaid-rendering
+finding (§4.3) is the one genuine complication to that uniformity: it shows
+that "decline to parse an incomplete structured grammar mid-stream" is a
+choice made specifically and consistently for tool-call JSON across every
+harness examined, not a universal law about partial structured text in
+general -- a harness that has already built the machinery to parse a grammar
+safely (Mermaid, via a dedicated third-party renderer with its own
+failure-handling contract) can and does choose to run that parse
+speculatively on each delta, provided a failed or incomplete attempt degrades
+gracefully rather than corrupting the render. The genuinely divergent, harder
+engineering problem all four harnesses *do* visibly grapple with, each in its
+own idiom, is the second-order one this page's name points at more than its
+handoff description initially suggested: turning an already-safely-accumulated,
+still-growing plain-text or Markdown string into a terminal or DOM update
+that neither flickers, stalls, nor burns unbounded CPU as the growth rate
+varies -- and, per OpenCode's uniquely source-visible §3.5 finding, optionally
+re-pacing that reveal to a rate independent of the network's own delivery
+cadence entirely (a refinement pi's own coalescing floor, per §4.6, does not
+attempt). Claude Code's multi-year changelog record and pi's own
+still-partially-open shrink/scroll-jump bug (§4.5) are, between them, the
+deepest evidence in this book of how much sustained engineering effort that
+second problem alone can demand even once the first one (safe JSON
+reassembly) is solved -- and how it can remain only partially solved for
+years at a time even in a codebase whose implementation is fully
+source-inspectable.
 
 ---
 
 ## Sources
 
-All fetched or read fresh this session (2026-08-01) unless noted otherwise.
+Claude Code, Copilot CLI, and OpenCode sources fetched or read fresh in the
+original session that authored this page (2026-08-01); the pi section (§4)
+was researched and added in a separate session (2026-09-01), sources fetched
+fresh then, as itemized in its own block below.
 
 **Claude Code (authoritative for its own documented CLI behavior; no
 implementation source exists in this repo):**
@@ -788,3 +1211,58 @@ release tag):**
   (relevant sections, §3.5), `packages/tui/package.json` and
   `specs/tui-package.md` (dependency confirmation, §3.4) -- covering §3 in
   full.
+
+**pi (authoritative for its own documented behavior AND, like OpenCode, its
+own real implementation; `github.com/earendil-works/pi`, `main` branch,
+fetched fresh 2026-09-01, distinct from the rest of this page's 2026-08-01
+session):**
+- `gh api repos/earendil-works/pi` and `gh api repos/earendil-works/pi-mono`
+  -- confirmed both resolve to the identical `full_name: "earendil-works/pi"`,
+  resolving this book's inconsistent `pi`/`pi-mono` citation history; covers
+  §4 intro.
+- `packages/ai/package.json`, `packages/tui/package.json`, `packages/
+  coding-agent/package.json` (all read in full) -- confirmed the three
+  distinct, lockstep-versioned npm packages `@earendil-works/pi-ai`,
+  `@earendil-works/pi-tui`, `@earendil-works/pi-coding-agent` (the last
+  owning the `pi` executable's own `bin` entry); covers §4 intro.
+- `packages/coding-agent/docs/json.md` (fetched in full) -- `--mode json`'s
+  `JsonAgentSessionEvent` shape and its explicit delta-only/
+  caller-must-accumulate discipline; covers §4.1.
+- `packages/coding-agent/docs/settings.md` (fetched in full) -- the
+  `markdown.mermaid` (`"off"`/`"final"`/`"streaming"`, default `"streaming"`)
+  and `terminal.clearOnShrink` (boolean, default `false`, "can cause
+  flicker") settings; covers §4.3 and §4.5.
+- `packages/tui/src/components/markdown.ts` (1,015-line file, read in full)
+  -- the `Markdown` component's cache/invalidation discipline, `marked`-based
+  full re-lex on every delta, `trimPartialClosingFences()`, and the
+  `pending`-flagged LaTeX tokenizer extensions; covers §4.2.
+- GitHub Issue #5825, "Streaming markdown forces scroll to bottom"
+  (`earendil-works/pi`, fetched via `gh issue view 5825 -R earendil-works/pi`
+  including all 42 comments) -- the `clearOnShrink` scroll-jump bug report,
+  the narrower `5d499272` fix, and its still-open general case; covers §4.2
+  and §4.5.
+- `packages/coding-agent/src/modes/interactive/components/mermaid.ts`
+  (fetched in full, located via `gh search code mermaid
+  repo:earendil-works/pi`) -- `createMermaidMarkdownTransformer()`'s
+  streaming-gated, warnings-deferred live Mermaid rendering; covers §4.3.
+- `packages/tui/src/tui.ts` (1,263-line file, read in full) -- `TuiBase`'s
+  `MIN_RENDER_INTERVAL_MS = 16` render-coalescing scheduler
+  (`requestRender`/`scheduleRender`) and its `requestImmediateRender`
+  input-latency bypass; covers §4.4.
+- `packages/tui/src/tui-main-screen.ts` (654-line file, read in full) and
+  `packages/tui/README.md` (fetched in full) -- `TuiMainScreen.doRender()`'s
+  differential line-diff renderer, its four named `fullRender` triggers
+  (first render, width change, non-Termux height change, `clearOnShrink`),
+  and the synchronized-output (`\x1b[?2026h`/`l`) wrapper both `pi-tui`
+  renderers share; covers §4.5.
+- `packages/coding-agent/CHANGELOG.md` (5,625-line file at time of fetch,
+  fetched via `gh api repos/earendil-works/pi/contents/packages/
+  coding-agent/CHANGELOG.md`, grepped for `stream|render|flicker|shrink|
+  coalesc|mermaid|partial|fence` and read in version-dated context) --
+  every versioned claim across §4.1-§4.6 (v0.73.0/#4145, v0.79.0, v0.79.9/
+  #5846, v0.80.3/#6026, v0.81.0-era RPC bash streaming, v0.82.0/#7624,
+  v0.84.0/#7290 and its Mermaid/LaTeX and Windows-keyboard-latency entries,
+  v0.84.2/#7982).
+- A repo-wide `gh search code` for `typewriter`, `pace`, and `reveal` against
+  `earendil-works/pi`, returning zero results -- the negative finding named
+  in §4.6.

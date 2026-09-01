@@ -398,9 +398,240 @@ missing feature as "not found this session" rather than "does not exist," since 
 ships new CLI surface area quickly and a `dev`-branch-only feature could exist without
 yet appearing in the published docs.
 
-## 4. Synthesis: instrumenting a from-scratch harness for observability
+## 4. pi
 
-Read across all three harnesses, a from-scratch harness builder should treat
+VERIFIED (`gh api repos/earendil-works/pi/contents/...`, fetched this session, `main`
+branch): before this section's own findings, a naming point this book's other pi
+sections leave implicit is worth settling directly, since the task that produced this
+section was asked to check it. The harness lives in one monorepo, `github.com/
+earendil-works/pi`, containing (at minimum) the packages `coding-agent`, `ai`, `agent`,
+`telemetry`, `client`, `protocol`, `tui`, `server`, `session-backends`, and `evals`, each
+its own separately-published npm package -- confirmed by fetching each package's own
+`package.json` directly rather than inferring names from prose. The CLI harness this
+book's other pi sections document (permissions-and-sandboxing.md, hooks-lifecycle-
+extensibility.md, session-persistence.md, configuration.md, auth-and-usage-
+accounting.md, built-in-skills.md, context-compression.md, model-routing-and-
+selection.md) -- the `pi` binary itself -- publishes as `@earendil-works/pi-coding-agent`
+(`packages/coding-agent/package.json`: `"name": "@earendil-works/pi-coding-agent"`,
+`"bin": {"pi": "dist/bundle/cli.js"}`). `@earendil-works/pi-ai`, the name
+[llm-api-contract.md](llm-api-contract.md) §3.5 cites, is a real, separate, correctly-
+named sibling package too -- the multi-provider LLM client library that
+`pi-coding-agent` itself depends on (`"@earendil-works/pi-ai": "^0.84.4"` appears
+directly in `coding-agent`'s own `dependencies`) -- so the two spellings this book uses
+across its pi sections are not actually an inconsistency to fix: they name two
+different, both-real packages in the same monorepo, and a citation should specify which
+one it means (the harness product vs. the LLM-client layer underneath it) rather than
+treating "pi-ai" as a loose synonym for the harness as a whole. This section's own
+subject pulls in two more packages from that same monorepo by name: `@earendil-works/
+pi-telemetry` (§4.2's vendor-neutral span contract) and `@earendil-works/pi-agent-core`
+(which owns the actual telemetry schemas built on that contract).
+
+### 4.1 Debug flags, log files, and an internal render-invariant crash log
+
+VERIFIED (`packages/coding-agent/src/cli/args.ts`'s own `printHelp()` function and
+`packages/coding-agent/README.md`, both fetched this session): pi's one documented,
+public CLI verbosity flag is `--verbose`, described in the CLI's own help text as
+"Force verbose startup (overrides quietStartup setting)" -- narrower in scope than
+Claude Code's `--debug` or OpenCode's `--log-level`, since the changelog itself
+(`packages/coding-agent/CHANGELOG.md`, fetched via `gh api`, PR #3147/#906) documents its
+effect precisely as showing "expanded startup help and loaded resource listings" rather
+than raising ongoing runtime log verbosity.
+
+VERIFIED (source-read this session, not inferred from docs): pi's real interactive
+diagnostic surface is the hidden `/debug` slash command, implemented in
+`packages/coding-agent/src/modes/interactive/interactive-mode.ts`'s
+`handleDebugCommand()`. It renders the current TUI frame, writes every rendered line
+(escaped raw content plus a computed visible-width annotation per line) to a debug log,
+then appends the entire in-session message history serialized as JSONL to the same
+file, and prints the confirmation `"✓ Debug log written"` with the file's path back into
+the chat. The destination path comes from `packages/coding-agent/src/config.ts`'s
+`getDebugLogPath()`, which resolves to `join(getAgentDir(), "pi-debug.log")` -- i.e.
+`~/.pi/agent/pi-debug.log` by default, under whatever directory `PI_CODING_AGENT_DIR`
+(or a rebuild's own `piConfig.configDir`, per `development.md`'s forking instructions)
+overrides it to. This matches and sharpens `packages/coding-agent/docs/development.md`'s
+own one-line claim ("`/debug` (hidden) writes to `~/.pi/agent/pi-debug.log`: Rendered TUI
+lines with ANSI codes, Last messages sent to the LLM") with the exact source
+implementation: a state dump of *right now* (what the screen looks like, what the model
+has actually seen), not a retroactive log of what already happened.
+
+VERIFIED (source-read this session, `packages/tui/src/tui-main-screen.ts`): pi's TUI
+renderer performs its own internal render-invariant check independently of `/debug` --
+if any rendered line's visible width (via the same `visibleWidth()` helper) exceeds the
+detected terminal width, the renderer treats this as an unrecoverable rendering bug, not
+a recoverable state: it writes every currently rendered line, each annotated with its
+own visible width, to `pi-crash.log` (same `getAgentDir()`-relative path pattern as
+`pi-debug.log`), calls `this.stop()` to clean up raw terminal state, and throws an error
+whose message names the crash-log path directly and attributes the likely cause to "a
+custom TUI component not truncating its output," pointing the reader at `visibleWidth()`
+and `truncateToWidth()` by name as the fix. VERIFIED (changelog, PR #6958 by
+@davidbrai): a dated fix specifically corrected both `pi-debug.log` and `pi-crash.log`
+to respect `PI_CODING_AGENT_DIR`/rebrand-configDir overrides "instead of always writing
+under `~/.pi/agent`" -- i.e. both log destinations were hardcoded at one point and are
+documented as fixed to follow the same config-dir override every other pi state file
+follows (per configuration.md's own account of `PI_CODING_AGENT_DIR`).
+
+BEST CURRENT UNDERSTANDING, UNCONFIRMED in the sense that it is source-read but absent
+from every docs page examined this session (`environment-variables.md`, `README.md`,
+`development.md`): two additional debug environment variables exist directly in
+`tui-main-screen.ts`'s own source and are not named in pi's own published environment-
+variable tables, so they should be treated as real-but-unstable internal switches, not
+part of pi's stated public interface. `PI_DEBUG_REDRAW=1` gates a `logRedraw()` helper
+that appends one line per redraw decision (`"first render"`, a terminal-width-changed
+event with old/new widths, a terminal-height-changed event) to the same `pi-debug.log`
+path `getAgentDir()` resolves. `PI_TUI_DEBUG=1` gates a separate, more verbose dump --
+`firstChanged`, `viewportTop`, `cursorRow`, `hardwareCursorRow`, `renderEnd`, and the
+full JSON of both the new and previous rendered-line arrays -- to a fixed path under
+`/tmp/tui/render-<timestamp>-<random>.log`, notably *not* under `getAgentDir()` and so
+not subject to the same `PI_CODING_AGENT_DIR` override the fix above applied to the
+other two logs.
+
+VERIFIED (changelog, PR #2508 by @mrexodia): a third, independently documented (in the
+changelog, not in `environment-variables.md`) logging mechanism, `PI_TUI_WRITE_LOG`,
+takes a directory path and creates one uniquely-named log file per pi instance
+(`tui-<timestamp>-<pid>.log`) inside it -- described in the changelog itself as "for
+easier debugging of multiple pi sessions," i.e. a disambiguation mechanism for a
+developer running several concurrent pi processes against the same terminal
+multiplexer, distinct in both purpose and path convention from the fixed-name
+`pi-debug.log`/`pi-crash.log` pair above.
+
+```mermaid
+flowchart TD
+    A["Something isn't behaving\nas expected"] --> B{"Which surface?"}
+    B -->|"garbled render or\nwrong model context\nright now"| C["/debug (hidden command)\n-> pi-debug.log\n(TUI frame + JSONL messages)"]
+    B -->|"TUI hard-crashed on\na render-width invariant"| D["pi-crash.log\n(written automatically by\nthe renderer before throwing)"]
+    B -->|"redraw/render internals,\nundocumented"| E["PI_DEBUG_REDRAW=1 -> pi-debug.log\nPI_TUI_DEBUG=1 -> /tmp/tui/render-*.log"]
+    B -->|"multiple concurrent\npi processes"| F["PI_TUI_WRITE_LOG=<dir>\n-> one tui-<ts>-<pid>.log per instance"]
+    B -->|"provider auth/\nreadiness"| G["pi auth <command>\n(print credentials or\ncheck provider readiness)"]
+    C --> H{"Still unresolved?"}
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+```
+
+VERIFIED (`packages/coding-agent/src/cli/args.ts`'s `printHelp()`, fetched this
+session): the CLI's own `pi auth <command>` subcommand -- "Print credentials or check
+provider readiness" -- is the closest analogue this session found to Claude Code's
+`claude doctor` or Copilot CLI's `--print-debug-info`, but it is scoped narrowly to
+provider authentication/readiness, not a general installation or configuration health
+checkup. This session found no broader `pi doctor`-equivalent command in the CLI's own
+`--help` output, `environment-variables.md`, or `settings.md` -- an absence found this
+session, not proven absent outright, the same caveat this book already applies to
+OpenCode's comparable gap (§3.3).
+
+VERIFIED (changelog, dated entry): "Hook errors now display full stack traces for easier
+debugging" -- cross-referenced against
+[hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md)'s own pi section
+for the hook lifecycle stage names themselves (`before_run`, `before_request`,
+`before_tool`, `after_tool`, `before_compaction`, `before_navigation`, and others), which
+are the same stage-name vocabulary §4.2's `pi.harness.hook` telemetry schema below fires
+spans for -- the debugging surface and the tracing surface name the same lifecycle
+points independently, a consistency this book's other harness sections do not get to
+observe as directly since Claude Code's and Copilot CLI's hook-tracing and hook-
+debugging vocabularies are not generated from one shared source file the way pi's
+appear to be.
+
+### 4.2 No default OpenTelemetry export -- a vendor-neutral, adapter-only telemetry substrate
+
+VERIFIED (`packages/telemetry/README.md`, fetched this session in full): pi ships a
+dedicated package, `@earendil-works/pi-telemetry`, described in its own README as
+providing "vendor-neutral telemetry contracts and typed schema utilities for pi
+packages" -- an explicit, callback-based `TelemetryContext`/`TelemetrySpan` contract
+modeling spans, parent/child nesting, attributes, events, and a two-valued `ok`/`error`
+status, plus a shared `NOOP_TELEMETRY_CONTEXT` and a reference `InMemoryTelemetryContext`
+implementation for tests and local process-local capture. The README states its own
+scope boundary in as many words: the package provides "no exporter, global current-span
+state, or dependency on a telemetry backend" -- "Applications can use the in-memory
+reference or provide an adapter for OpenTelemetry, Sentry, logs, or another backend."
+Package ownership inside the monorepo is split deliberately, per the same README:
+`pi-telemetry` owns the vendor-neutral contract and adapter-conformance test suite;
+`@earendil-works/pi-ai` accepts and propagates a `telemetryContext` through provider
+request options but "owns no telemetry schema" of its own; `@earendil-works/
+pi-agent-core` owns and exports the actual pi AI-request and harness schemas built on
+top of the contract, using pi-owned `pi.ai.*`, `pi.harness.*`, and `pi.session.*` span
+names that "adapters may translate... to backend conventions without changing the
+emitted pi vocabulary."
+
+VERIFIED (`packages/agent/docs/telemetry-schema.md`, fetched in full this session -- a
+file whose own header states it is machine-"Generated by generate-telemetry-docs.ts",
+not hand-written prose): the schema this substrate carries is genuinely rich and
+directly comparable in shape to Claude Code's beta trace spans (§1.3) and Copilot CLI's
+OTel spans (§2.2) -- a `pi.ai.request` span (provider/model/API-id/streaming attributes,
+plus stop-reason and full token/cost end-attributes) sitting alongside a `pi.harness.*`
+family rooted at `pi.harness.run` (one admitted in-process run, carrying session id,
+lane name, and a durable operation id) with child spans for `pi.harness.turn` (one
+assistant response and its tool batch), `pi.harness.checkpoint`, `pi.harness.compaction`,
+and `pi.harness.navigation`, each of which in turn parents `pi.harness.step` (one
+durable retry attempt, with outcomes `succeeded`/`retry`/`failed`/`aborted`/`deferred`/
+`overflow`), which itself parents `pi.harness.tool` (one raw tool execution, with
+`pi.tool.replay` values `never`/`safe` recording the tool's declared replay policy) and
+`pi.harness.sleep` (one retry delay). `pi.harness.hook` (one registered hook-handler
+invocation, enumerating the same `before_run`/`before_request`/`before_tool`/`after_tool`
+stage vocabulary §4.1 cross-references) and `pi.harness.event_handler` (one passive
+event-listener invocation, enumerating a 25-plus-value closed set of harness event types
+such as `tool_start`, `compaction_start`, `lane_created`, and `usage`) both parent from
+"root or any caller span" rather than from the run tree specifically, and
+`pi.session.write` records one committed session mutation (`entry`, `record`, `lane`, or
+`fact`) with its committed sequence number as an end attribute.
+
+```mermaid
+flowchart TD
+    RUN["pi.harness.run\n(session id, lane, operation id)"]
+    RUN --> TURN["pi.harness.turn\n(one assistant response + tool batch)"]
+    RUN --> CKPT["pi.harness.checkpoint"]
+    RUN --> COMPACT["pi.harness.compaction"]
+    RUN --> NAV["pi.harness.navigation"]
+    TURN --> STEP["pi.harness.step\n(one durable retry attempt)"]
+    CKPT --> STEP
+    COMPACT --> STEP
+    NAV --> STEP
+    STEP --> TOOL["pi.harness.tool\n(replay: never/safe)"]
+    STEP --> SLEEP["pi.harness.sleep\n(retry delay)"]
+    ROOT["root / any caller span"] --> AIREQ["pi.ai.request\n(provider, model, api,\ntoken/cost end-attrs)"]
+    ROOT --> HOOK["pi.harness.hook\n(before_run..after_tool stages)"]
+    ROOT --> EVT["pi.harness.event_handler\n(tool_start, compaction_start,\nlane_created, usage, ...)"]
+    ROOT --> SWRITE["pi.session.write\n(entry/record/lane/fact)"]
+```
+
+VERIFIED (this session, checked directly): none of the ten packages in the
+`earendil-works/pi` monorepo -- including `coding-agent`, `agent`, `ai`, and
+`telemetry` itself -- lists any `@opentelemetry/*` or Sentry package as a dependency in
+its own `package.json`. Combined with the CLI's own `--help` output, `environment-
+variables.md`, `settings.md`, and `README.md` all showing no OTLP-endpoint flag,
+environment variable, or settings key anywhere in the surface this session examined,
+this is a real, structural difference from Claude Code (§1.3) and Copilot CLI (§2.2):
+both of those harnesses ship a built-in OTLP exporter behind env-var opt-in gates,
+whereas pi ships the *schema and the plumbing to carry a `TelemetryContext` through the
+agent loop* and stops there -- turning the spans above into an actual OTel/Sentry/other
+export is left entirely to whatever application embeds `@earendil-works/pi-agent-core`
+and `@earendil-works/pi-coding-agent` as libraries and supplies its own adapter.
+BEST CURRENT UNDERSTANDING, UNCONFIRMED: the `pi` CLI binary run standalone (rather than
+embedded as an SDK) most plausibly wires these schemas to the package's own
+`NOOP_TELEMETRY_CONTEXT` by default, since no CLI flag or settings key this session
+found selects any other adapter -- but this session did not locate the specific call
+site in `packages/coding-agent/src` that decides that default for the CLI entry point,
+so that particular default-wiring claim is held to this weaker tag rather than asserted
+as source-verified.
+
+VERIFIED (`packages/coding-agent/README.md` and `docs/environment-variables.md`, both
+fetched this session): a genuine terminology collision is worth naming plainly for a
+reader of this page, since pi's own docs use the word "telemetry" for something
+unrelated to either of the above. `PI_TELEMETRY` (env var) and `enableInstallTelemetry`
+(settings key) gate only an anonymous install/update version ping to
+`https://pi.dev/api/report-install`, plus optional provider-attribution headers for
+OpenRouter/Cloudflare/NVIDIA-NIM requests -- a Layer-4-shaped, vendor-facing signal in
+this page's own §5 taxonomy (below), unrelated to execution tracing. A reader of this
+book's pi sections should keep three same-area, similarly-named things straight: (1) the
+install/update ping (`PI_TELEMETRY`, product-usage-shaped, phones home to pi.dev), (2)
+the vendor-neutral span/attribute *contract* package (`@earendil-works/pi-telemetry`)
+and the `pi.ai.*`/`pi.harness.*`/`pi.session.*` schemas built on it (execution-structure-
+shaped, phones home to nowhere by default), and (3) the local-file debug/crash logging
+this section's §4.1 documents (`pi-debug.log`, `pi-crash.log`), which never leaves the
+machine at all.
+
+## 5. Synthesis: instrumenting a from-scratch harness for observability
+
+Read across all four harnesses, a from-scratch harness builder should treat
 observability not as one feature but as (at least) four separable layers, each with a
 different question it answers, a different default posture, and a different consumer --
 conflating them, as an early design might, produces exactly the kind of ambiguity this
@@ -471,9 +702,38 @@ such layer at all -- the state this session found for OpenCode's core, where the
 observability surface beyond flat debug logs is either absent or delegated to
 third-party plugins (§3.2) -- trades that separation for simplicity, at the cost of the
 maintainers themselves having no first-party signal of how their own software behaves
-in the field short of what users choose to report manually.
+in the field short of what users choose to report manually. pi (§4) lands in a third,
+distinct position worth naming as its own design point rather than folding into either
+extreme: its own `PI_TELEMETRY`/`enableInstallTelemetry` Layer-4-shaped signal (§4.2)
+reports only an anonymous version ping, never a crash or a stack trace, to pi.dev --
+every genuine crash artifact this section found (`pi-crash.log`, §4.1) is written to a
+local file only and is never itself transmitted anywhere, so pi's own maintainers have
+strictly less first-party visibility into field failures than Claude Code's default-on
+(for qualifying sessions) error reporting gives Anthropic, while simultaneously giving
+an embedding *application* strictly more structural detail than either Claude Code or
+Copilot CLI expose by default, via §4.2's adapter-optional Layer 2 schema -- richness of
+the schema and richness of the vendor's own default visibility are not the same
+variable, and pi is the clearest evidence in this page that a harness can maximize one
+while minimizing the other.
 
-## 5. Sources
+pi's Layer 2 story (§4.2) is itself the sharpest illustration in this page of a fourth
+lesson beyond the three drawn above: a from-scratch harness does not have to choose
+between "ship a built-in exporter" and "ship nothing." `@earendil-works/pi-telemetry`'s
+own README states its design principle directly -- provide the span/attribute/event
+*contract* and a no-op/in-memory reference implementation, but no exporter and no
+dependency on any specific backend, leaving the choice of OTel, Sentry, or plain logs to
+whichever application embeds the schema-bearing packages as a library. This is a strictly
+more decoupled position than Claude Code's or Copilot CLI's own beta/GA OTel exporters
+(§1.3, §2.2), which are real and useful for a customer who already runs an OTLP
+collector, but which also make "add tracing" and "pick an exporter" the same decision;
+pi's split lets a harness ship a fully-specified, versioned span vocabulary
+(`pi.harness.run` down through `pi.harness.tool`/`pi.harness.hook`/`pi.harness.sleep`,
+§4.2's own hierarchy) years before committing to any particular backend, at the
+documented cost that the CLI binary run standalone has, as far as this session could
+verify, no path to seeing any of those spans exported anywhere without an embedder
+supplying the missing adapter.
+
+## 6. Sources
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `code.claude.com/docs/en/cli-reference`, fetched this session -- `--debug`,
@@ -538,3 +798,51 @@ applies to any source-code claim):**
 - [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) (this book's own
   prior, source-verified page), cross-referenced for the plugin event-bus mechanism a
   third-party OTel plugin would plausibly use.
+
+**pi (authoritative for pi's own repository content only, `github.com/earendil-works/
+pi`, `main` branch -- fetched via `gh api repos/earendil-works/pi/contents/...` this
+session unless noted):**
+- `packages/coding-agent/package.json` and every other package's own `package.json`
+  (`agent`, `ai`, `telemetry`, `client`, `protocol`, `tui`, `server`,
+  `session-backends`, `evals`), fetched this session -- confirmed `@earendil-works/
+  pi-coding-agent`'s exact name/`bin` field and confirmed zero `@opentelemetry/*` or
+  Sentry dependency anywhere in the monorepo, resolving this section's own opening
+  package/repo-naming question.
+- `packages/coding-agent/src/cli/args.ts`, fetched and read in full this session --
+  the real `parseArgs()`/`printHelp()` implementation: the `--verbose` flag, the
+  `pi auth <command>` subcommand description, and confirmation of no CLI-level OTel
+  endpoint flag.
+- `packages/coding-agent/README.md`, `docs/environment-variables.md`, and
+  `docs/settings.md`, all fetched in full this session -- the complete documented
+  environment-variable and settings surface, confirmed to contain no OTLP/exporter
+  configuration and to use "telemetry" only for the install/update ping
+  (`PI_TELEMETRY`, `enableInstallTelemetry`).
+- `packages/coding-agent/docs/development.md`, fetched this session -- the one-line
+  `/debug` documentation this section's source-read sharpens.
+- `packages/coding-agent/src/modes/interactive/interactive-mode.ts` and
+  `packages/coding-agent/src/config.ts`, both fetched and read in full this session --
+  `handleDebugCommand()`'s exact TUI-frame-plus-JSONL-messages dump and
+  `getDebugLogPath()`'s exact `pi-debug.log` path resolution.
+- `packages/tui/src/tui-main-screen.ts`, fetched and read in full this session -- the
+  render-invariant `pi-crash.log` write path, and the undocumented `PI_DEBUG_REDRAW`/
+  `PI_TUI_DEBUG` environment variables (source-verified, absent from all docs pages
+  examined -- held to that caveat explicitly in §4.1).
+- `packages/coding-agent/CHANGELOG.md`, fetched in full (5,625 lines) via `gh api
+  repos/earendil-works/pi/contents/packages/coding-agent/CHANGELOG.md` this session --
+  the `PI_TUI_WRITE_LOG` addition (#2508), the `pi-debug.log`/`pi-crash.log`
+  config-dir-override fix (#6958), the `--verbose` flag's own addition and later fix
+  (#906, #3147), and the "Hook errors now display full stack traces" entry.
+- `packages/telemetry/README.md`, fetched and read in full this session -- the
+  `@earendil-works/pi-telemetry` package's own stated no-exporter/no-backend-dependency
+  design, its `TelemetryContext`/`TelemetrySpan`/`NOOP_TELEMETRY_CONTEXT`/
+  `InMemoryTelemetryContext` API, and its Pi Package Integration section naming exactly
+  how `pi-ai` and `pi-agent-core` divide schema ownership.
+- `packages/agent/docs/telemetry-schema.md`, fetched and read in full this session -- a
+  machine-generated reference naming every `pi.ai.*`/`pi.harness.*`/`pi.session.*` span,
+  its parent rule, and its start/end attributes, underlying §4.2's span-hierarchy
+  diagram in full.
+- [llm-api-contract.md](llm-api-contract.md) §3.5,
+  [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md), and
+  [configuration.md](configuration.md) (this book's own prior pages), cross-referenced
+  for `@earendil-works/pi-ai`'s own scope, the hook lifecycle-stage vocabulary, and
+  `PI_CODING_AGENT_DIR`'s override semantics, respectively -- not re-derived here.

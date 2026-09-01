@@ -37,9 +37,15 @@ flowchart TD
     E --> F["claude / copilot / opencode entrypoint\ninvokes the native binary directly --\nNode is not used at runtime"]
 ```
 
-All three harnesses arrived at the diagram above independently -- see
-§4's synthesis for exactly how each one's own docs, changelog, or source
-confirms its own piece of it.
+Claude Code, Copilot CLI, and OpenCode arrived at the diagram above
+independently -- see §5's synthesis for exactly how each one's own docs,
+changelog, or source confirms its own piece of it. pi (§4) is the one
+harness in this book that does **not** fit this diagram for its primary
+npm package -- its own docs describe it as "distributed as an npm
+package" outright, with no per-platform `optionalDependencies` binary
+swap in the main package at all; §4.2 and §5's synthesis both return to
+exactly where pi's own distribution shape diverges from the other
+three's.
 
 ---
 
@@ -804,48 +810,457 @@ flowchart TD
 
 ---
 
-## 4. Cross-harness synthesis
+## 4. pi
 
-Five real, independently-arrived-at convergences and one open gap, none
-of them re-derived past what §1-§3 actually sourced:
+Primary sources this session: the npm registry API for
+`@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, and
+`@mariozechner/pi-coding-agent` (fetched directly via `curl` against
+`registry.npmjs.org`); `github.com/earendil-works/pi`'s own repository
+metadata, `README.md`, `CHANGELOG.md`, `docs/quickstart.md`,
+`docs/packages.md`, `docs/windows.md`, its Releases and Tags (all via
+`gh api`); `packages/coding-agent/package.json`,
+`scripts/build-binaries.sh`, `.github/workflows/build-binaries.yml`,
+`src/utils/windows-self-update.ts`, and `src/package-manager-cli.ts`
+(raw file fetches from the `main` branch -- pi's `main` is the
+equivalent of Claude Code's and Copilot CLI's own tagged-release
+branches, not a `dev`/preview branch the way OpenCode's is, so no
+branch caveat applies the way it does in §3); the installer script
+itself, fetched live from `https://pi.dev/install.sh`; and Mario
+Zechner's own blog post on the project's move to Earendil, fetched
+directly this session.
 
-1. **All three harnesses independently converged on the identical npm
-   distribution shape**: a thin, mostly-metadata main package with a
-   per-platform `optionalDependencies` map and a postinstall script that
-   resolves and links the correct native binary, such that `npm install
-   -g` never actually depends on Node.js at runtime for any of the
-   three. Claude Code's docs state this outright ("the package downloads
-   a native binary that doesn't use your Node.js at runtime"); OpenCode's
-   `publish.ts` builds the identical structure programmatically from its
-   own `dist/*/package.json` outputs; Copilot CLI's changelog shows the
-   same shape being introduced mid-lifecycle ("Use platform-specific
-   executable from npm install when available," "Native binary crash...
-   falls through to the JavaScript fallback"). See the flowchart at the
-   top of this page.
-2. **All three demote npm to a secondary install path and lead with a
-   curl/`irm`-piped native installer or a platform package manager
-   instead.** Claude Code's docs literally label the native installer
-   "(Recommended)" and its own changelog shows a multi-release campaign
-   pushing npm users toward `claude install`; Copilot CLI's README lists
-   the curl script before npm; OpenCode's docs do the same. None of the
-   three's own docs recommend npm as the primary path today, even though
-   all three still support and maintain it.
+### 4.1 One repo, two real npm packages -- resolving this book's own inconsistent citation
+
+This book's own pages disagree on pi's package name because they are
+each correctly describing a *different* package inside the same
+monorepo, not because either citation is wrong. `github.com/earendil-works/pi`'s
+`packages/` directory (VERIFIED, listed directly this session) contains
+eleven workspace packages, of which two matter for this page:
+`packages/ai`, published to npm as **`@earendil-works/pi-ai`**
+("Unified LLM API with automatic model discovery and provider
+configuration," per its own registry metadata) and already the correct
+subject of [llm-api-contract.md](llm-api-contract.md) §3.5's own
+citation there -- and `packages/coding-agent`, published to npm as
+**`@earendil-works/pi-coding-agent`**, whose own `package.json`
+(VERIFIED, fetched directly this session) declares
+`"bin": { "pi": "dist/bundle/cli.js" }` and the description "Coding
+agent CLI with read, bash, edit, write tools and session management."
+`@earendil-works/pi-coding-agent` -- the thing a user actually
+`npm install -g`s to get the `pi` command -- is this page's subject; it
+depends on `@earendil-works/pi-ai` (pinned as `^0.84.4` in the fetched
+`package.json`, alongside sibling internal packages
+`@earendil-works/pi-agent-core`, `-client`, `-protocol`, and `-tui`, all
+version-locked to the same release number) rather than being a
+different spelling of the same thing. Where this book has previously
+written `@earendil-works/pi-coding-agent` (session-persistence.md,
+deterministic-orchestration.md) it named the CLI correctly; where it
+has written `@earendil-works/pi-ai` for the LLM-API-layer discussion
+specifically (llm-api-contract.md §3.5) it also named its subject
+correctly. No correction to either prior page is needed on this point;
+this section exists so a reader landing on either citation understands
+they are both right about two different, real, sibling packages.
+
+### 4.2 Distribution mechanisms
+
+VERIFIED, fetched directly this session from `docs/quickstart.md`,
+`README.md`, and `docs/windows.md` at `github.com/earendil-works/pi`,
+main branch, and cross-checked against the live `pi.dev/install.sh`
+script and the GitHub Releases API. pi's own docs state its primary
+channel in one sentence very different from any of the other three
+harnesses' own framing: "Pi is distributed as an npm package."
+
+- **npm (the documented primary channel, not a secondary one).**
+  `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`.
+  The README explains the flag directly: "`--ignore-scripts` disables
+  dependency lifecycle scripts during install. Pi does not require
+  install scripts for normal npm installs" -- a structural tell that,
+  unlike Claude Code's, Copilot CLI's, and OpenCode's own npm packages
+  (§1.1, §2.1, §3.3), pi's main package has no postinstall step
+  resolving a per-platform native binary, because there is no such
+  binary in this package: `package.json`'s only `optionalDependencies`
+  entry is `@mariozechner/clipboard` (a small native clipboard addon),
+  not a platform-specific build of pi itself. `pnpm`, `yarn global`,
+  and `bun` are documented as equally valid install/uninstall
+  managers for the same package (`docs/quickstart.md`'s Uninstall
+  section lists all four side by side).
+- **A hard, not advisory, Node.js floor.** `package.json`'s
+  `"engines": { "node": ">=22.19.0" }` is enforced, not merely
+  warned about: `install.sh`'s own preflight check
+  (`run_preflight_checks`, read directly from source this session)
+  parses `process.versions.node` and refuses to proceed --
+  "error: Pi requires Node.js 22.19.0 or newer" -- rather than letting
+  an old Node continue with a warning the way Claude Code's own npm
+  package does past its own 22+ engine declaration (§1.1). If Node or
+  npm is missing or too old, the installer offers an *interactive*
+  fix, detecting the platform's own Node install method (Homebrew,
+  `apt`, `apk`, or a standalone download) and asking to install a
+  fresh Node before continuing -- a genuinely more opinionated
+  preflight step than any of the other three harnesses' own installers
+  document.
+- **The curl installer wraps npm; it does not replace it.**
+  `curl -fsSL https://pi.dev/install.sh | sh` is documented as "an
+  installer alternative" to the direct `npm install -g` command, and
+  `docs/quickstart.md`'s own uninstall instructions state this
+  outright: "The curl installer uses npm globally, so curl and npm
+  installs are removed with npm." Reading the live script this session
+  confirms this precisely: by default (`run_npm_install_pi`, gated
+  behind `pi_managed_install_enabled() { [ "${PI_EXPERIMENTAL:-}" = 1 ];
+  }`) the script's actual install step is
+  `npm install -g --ignore-scripts --min-release-age=0 [--prefix <dir>]
+  --no-fund --no-audit @earendil-works/pi-coding-agent` -- i.e. the
+  same npm package as above, invoked on the user's behalf after the
+  preflight checks, not a separately-built standalone binary the way
+  `claude.ai/install.sh`, `gh.io/copilot-install`, or
+  `opencode.ai/install` each independently are (§1.1, §2.1, §3.1). The
+  one flag worth noting on its own -- `--min-release-age=0` -- exists
+  specifically so the installer can bypass npm's release-age-based
+  install gate (a supply-chain-hardening npm feature that otherwise
+  refuses very recently published versions by default), and the
+  script's own comment names the reason: "Pi publishes
+  npm-shrinkwrap.json, so the explicit installer/reinstaller can bypass
+  npm's release-age gate without reopening transitive dependency
+  ranges" -- i.e. the shrinkwrap's fully pinned transitive dependency
+  tree is treated as the safety net that makes bypassing the age gate
+  acceptable for this one, controlled install path.
+- **A separate, opt-in "managed install" mode exists behind
+  `PI_EXPERIMENTAL=1`**, changing the shape of the install entirely; it
+  is covered in full in §4.5 because it is really an update-lifecycle
+  mechanism (stage, verify, atomically activate) rather than a
+  distinct *distribution* channel -- the artifacts it fetches still
+  come from the same npm registry, just via a pinned manifest instead
+  of a floating `npm install -g` resolution.
+- **No Homebrew, WinGet, or Linux system-package-repository channel at
+  all.** Unlike all three other harnesses in this book, pi's own
+  README and docs describe exactly two ways to get `pi` onto a machine
+  (npm-family package manager, or the curl script that itself calls
+  npm) plus one more, undocumented in prose, described next.
+- **GitHub Release binary archives exist, but are not a documented
+  install path.** A direct fetch of the v0.84.4 release via the GitHub
+  API (VERIFIED this session) shows ten real assets attached:
+  `pi-darwin-arm64.tar.gz`, `pi-darwin-x64.tar.gz`,
+  `pi-linux-arm64.tar.gz`, `pi-linux-x64.tar.gz`,
+  `pi-windows-arm64.zip`, `pi-windows-x64.zip`, a
+  `pi-0.84.4-source.tar.gz` source archive, a `SHA256SUMS` checksum
+  file, and `pi-coding-agent-install-package.json`/
+  `-package-lock.json` (the exact pinned-manifest pair the managed
+  install flow in §4.5 downloads). Neither `README.md` nor
+  `docs/quickstart.md` mentions manually downloading these archives as
+  a user-facing install option anywhere fetched this session; that
+  their real purpose is backing the managed-install flow and the
+  `pi.dev/api/installer/releases` endpoint it calls (rather than being
+  an advertised sixth channel) is BEST CURRENT UNDERSTANDING,
+  UNCONFIRMED, reasoned from the exact filename match against §4.5's
+  own findings rather than a docs statement saying so directly.
+
+### 4.3 Cross-platform build considerations
+
+Directly source-read this session from `scripts/build-binaries.sh`,
+`.github/workflows/build-binaries.yml`, and
+`packages/coding-agent/src/utils/windows-self-update.ts` on the `main`
+branch.
+
+- **Six binary targets, built with `bun build --compile` from a single
+  Linux CI runner, not per-platform native runners.** `build-binaries.sh`
+  (its own header comment quoted directly) builds
+  `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`,
+  `windows-x64`, and `windows-arm64` -- six targets, not the eight (with
+  musl variants) Claude Code's npm matrix covers (§1.2) or the twelve
+  (with musl and AVX2-baseline variants) OpenCode's build script
+  produces (§3.2) -- and `package.json`'s own `build:binary` script
+  (quoted directly: `bun build --compile --no-compile-autoload-bunfig
+  ./src/bun/cli.ts ...`) confirms Bun's own cross-compilation feature is
+  the mechanism, matching OpenCode's own choice of build tool (§3.2)
+  rather than Claude Code's or Copilot CLI's undisclosed closed-source
+  toolchains. `.github/workflows/build-binaries.yml` (read directly)
+  runs this entire six-platform build on a single `ubuntu-latest`
+  runner via cross-compilation, unlike OpenCode's own CI matrix, which
+  spins up dedicated macOS and Windows runners for at least some of its
+  targets and code-signs/notarizes on them (§3.2).
+- **No code-signing or notarization step found in the publish
+  workflow.** A direct read of `build-binaries.yml` this session shows
+  no macOS codesigning/notarization step and no Windows
+  Authenticode/Trusted-Signing step anywhere in the job that produces
+  these six archives -- only a final `sha256sum` pass writing
+  `SHA256SUMS`. This is VERIFIED as true of *this specific workflow
+  file, read this session*; it is not proof no signing happens anywhere
+  else in pi's release process, but it is a real, sourced point of
+  contrast against Claude Code's dual manifest-signature-plus-native-
+  code-signing scheme (§1.3) and OpenCode's Apple-notarization-plus-
+  Azure-Trusted-Signing CI steps (§3.2) -- pi's own binary-integrity
+  story rests on the published checksum file alone.
+- **Windows: Git Bash by default, an optional native PowerShell tool,
+  and a source-level workaround for a Windows-specific self-update
+  failure mode.** `docs/windows.md` (VERIFIED, fetched directly) states
+  pi checks for Git Bash at `C:\Program Files\Git\bin\bash.exe` first,
+  then any `bash.exe` on `PATH` (Cygwin, MSYS2, WSL), the same
+  Git-for-Windows dependency Claude Code's own native-Windows Bash tool
+  has (§1.2); a `powershell` tool exists as an opt-in `defaultTools`
+  replacement, launched with `-NoProfile -NonInteractive
+  -ExecutionPolicy Bypass`. Separately,
+  `src/utils/windows-self-update.ts` (read directly from source this
+  session) implements a **native-dependency quarantine** specifically
+  to make `npm install -g` succeed as a self-update on Windows: because
+  Windows keeps a loaded `.node` native-addon file locked while pi (or
+  a loaded dependency like the clipboard addon) is running, npm cannot
+  simply overwrite it in place. `quarantineWindowsNativeDependencies()`
+  walks the currently-loaded shared objects reported by
+  `process.report.getReport().sharedObjects`, and for each one living
+  inside the package's own `node_modules` tree, renames it into a
+  `.pi-native-quarantine` directory next to `node_modules` and copies a
+  fresh, unlocked file back into its original path -- freeing the
+  original filename for npm to overwrite while the just-quarantined
+  copy keeps satisfying the *currently running* process's already-open
+  file handle. `cleanupWindowsSelfUpdateQuarantine()` sweeps that
+  directory clean on a later run once the old handle is no longer
+  needed. `package-manager-cli.ts` (also read directly) calls this pair
+  from `prepareWindowsNpmSelfUpdate()` only on `process.platform ===
+  "win32"`, immediately before spawning the actual update command, and
+  a second guard in the same file restricts *which* Windows installs
+  this self-update path even covers: a quoted error string reads
+  "`${APP_NAME} self-update on Windows is only supported for npm and
+  pnpm installs`" -- Windows installs made via `yarn` or `bun` are
+  refused an automatic self-update and pointed at a manual command
+  instead (`printSelfUpdateFallback`). This is a real, source-verified
+  Windows-native-module-locking workaround, arrived at independently
+  from Claude Code's own Windows launcher-preservation fixes (§1.4) and
+  Copilot CLI's own Windows package-extraction-race fixes (§2.2) --
+  three different closed- and open-source teams, three structurally
+  different fixes, for three variations on the same underlying
+  Windows-file-locking-during-update problem class.
+
+### 4.4 Version-number history and the two-hop rename off `@mariozechner/pi-coding-agent`
+
+- **One shared version number across the whole monorepo, going back
+  further than pi's own public history.** `packages/coding-agent/scripts/sync-versions.js`'s
+  existence and `package.json`'s own version-locked sibling dependencies
+  (§4.1) both point at a single, monorepo-wide version counter; a
+  direct paginated fetch of `github.com/earendil-works/pi`'s own git
+  tags this session (313 tags total) shows that counter running from
+  `v0.0.1`/`v0.0.2` up through pre-public `v0.5.x`-`v0.8.x` releases,
+  crossing into `v0.10.0` -- which `CHANGELOG.md` itself labels
+  "Initial public release," dated 2025-11-25 -- and continuing
+  unbroken to today's `v0.84.4` (2026-08-28). The version number was
+  never reset at any of the rename events below.
+- **A real, verified npm-package rename, not merely a citation
+  inconsistency.** A direct fetch of `registry.npmjs.org
+  /@mariozechner/pi-coding-agent` this session returns a real,
+  still-resolvable package: 270 published versions, `0.6.2` through a
+  `"latest"` dist-tag of `0.73.1`, and that latest version's own
+  `deprecated` field reads, quoted verbatim from the registry response:
+  **"please use @earendil-works/pi-coding-agent instead going
+  forward."** A parallel fetch of `registry.npmjs.org
+  /@earendil-works/pi-coding-agent` shows the successor package
+  beginning at `0.74.0`, published 2026-05-07, with a `"legacy-node20"`
+  dist-tag pinned at `0.74.2` alongside `"latest"` at `0.84.4` --
+  independent, direct evidence that a Node-20-compatible line was
+  maintained separately for at least one version after the Node 22.19+
+  floor (§4.2) became the mainline requirement.
+- **The rename is tied to the project's move from an individual
+  maintainer to a company, confirmed from the maintainer's own words.**
+  Mario Zechner's blog post announcing this (fetched directly this
+  session, `mariozechner.at/posts/2026-04-08-ive-sold-out/`) states the
+  GitHub repository would move from `badlogic/pi-mono` to
+  `earendil-works/pi` and that the npm package would be renamed
+  correspondingly, adding "We're hoping GitHub will set up a redirect
+  so existing links and clones don't break" for the repo move and a
+  similar promise of "a sort of redirect" for the package rename; the
+  post also states plainly that `pi.dev` "remains pi's home" throughout
+  the move. One concrete detail is worth flagging as a real
+  planned-vs-shipped discrepancy: the post names the *target* npm
+  package as `@earendil/pi`, but the package that actually shipped and
+  is live on the registry today is `@earendil-works/pi-coding-agent` --
+  a different scope and a different base name from what was announced.
+  This page cannot confirm from this session's sources why the shipped
+  name differs from the announced one; that gap is recorded rather than
+  guessed at. That the acquiring company is named "Earendil" is
+  VERIFIED directly from this fetched post; any further detail about
+  Earendil's own location or founders was not independently fetched
+  from a primary source this session and is not asserted here.
+- **The rename is a distribution-history event this book has not
+  documented for any other harness on this page.** Claude Code,
+  Copilot CLI, and OpenCode's own package names and repository
+  ownership have been stable across every changelog and doc this book
+  has fetched for them; pi is the one harness on this page with a
+  live, registry-confirmed "install the old name and get told to
+  install the new one" deprecation message still resolvable today.
+
+### 4.5 Self-update: a single `pi update` command family, plus an experimental staged/managed install
+
+```mermaid
+flowchart TD
+    Start["pi update [target] [flags]"] --> Plan["getSelfUpdatePlan():\nfetch latest release info"]
+    Plan --> Managed{"PI_EXPERIMENTAL=1?"}
+    Managed -->|"no (default)"| Detect["Detect install's own\npackage manager (npm/pnpm/yarn/bun)"]
+    Detect --> WinCheck{"win32 AND\nnpm-or-pnpm install?"}
+    WinCheck -->|yes| Quarantine["quarantineWindowsNativeDependencies()\n-- free locked .node files"]
+    WinCheck -->|"no (non-Windows,\nor yarn/bun on Windows)"| Spawn
+    Quarantine --> Spawn["spawn [manager] install -g\n@earendil-works/pi-coding-agent@latest"]
+    Spawn --> Done1["Updated pi from X to Y"]
+
+    Managed -->|"yes (experimental,\nmacOS/Linux only)"| Fetch["Download pinned package.json +\npackage-lock.json from\npi.dev/api/installer/releases"]
+    Fetch --> Stage["npm ci --omit=dev --include=optional\nin a fresh staging dir"]
+    Stage --> Verify["Smoke test: staged pi --version\nmatches expected version"]
+    Verify -->|"mismatch/fail"| Abort["Abort; current release\nleft untouched"]
+    Verify -->|"match"| Activate["Atomically mv staging dir to\nreleases/&lt;version&gt;/; write marker\n+ launcher + symlink"]
+    Activate --> Done2["Managed Pi install complete"]
+```
+
+- **One command family, deliberately covering both binary self-update
+  and package/extension updates, not two separate subsystems.** This is
+  the one clear structural departure from Claude Code, Copilot CLI, and
+  OpenCode, each of which keeps "the harness updates itself" and "the
+  plugin/skill/extension layer updates its own content" as two
+  distinct mechanisms that merely happen to share the word
+  "auto-update" in their own changelogs (§1.4, §2.3, §3.4, and this
+  page's own closing synthesis point 5 below). pi's docs (`README.md`,
+  `docs/packages.md`, both fetched directly this session) instead
+  define a single `pi update` verb with flags selecting scope:
+  `pi update` bare or `pi update --self` (update pi only, the default
+  when no target is given), `pi update --self --force` (reinstall even
+  if already current), `pi update --extensions` (packages only),
+  `pi update --models` (refresh provider model catalogs only --
+  cross-referenced from [model-routing-and-selection.md](model-routing-and-selection.md),
+  not re-derived here), `pi update --all` (pi, packages, and pinned-git-ref
+  reconciliation together), and `pi update npm:@foo/pi-tools` (one named
+  package). `docs/packages.md` states directly that `pi update` "can
+  update the pi CLI installation" in the same breath as documenting
+  package updates -- one verb, one mental model, flag-scoped rather than
+  command-family-scoped.
+- **Startup update-check and install/update telemetry are named as two
+  separate features in pi's own docs, each independently disable-able.**
+  `README.md`'s own "Telemetry and update checks" section (quoted
+  directly): "**Update check:** fetches `https://pi.dev/api/latest-version`
+  to check whether a newer Pi version exists. Disable it with
+  `PI_SKIP_VERSION_CHECK=1`. Disabling update checks only turns off this
+  check." and "**Install/update telemetry:** after first install or a
+  changelog-detected update, sends an anonymous version ping to
+  `https://pi.dev/api/report-install`... Opt out by setting
+  `enableInstallTelemetry` to `false` in `settings.json`, or by setting
+  `PI_TELEMETRY=0`. This does not disable update checks." A single
+  `--offline`/`PI_OFFLINE=1` disables both plus package-update checks in
+  one step. `pi update` itself is documented to never prompt for
+  project trust, unlike `pi config` and other package commands
+  (`docs/packages.md`, quoted in §4.2's neighbor discussion of project
+  trust elsewhere in this book).
+- **Package-manager detection drives which self-update command actually
+  runs, source-confirmed.** `package-manager-cli.ts`'s
+  `getSelfUpdateCommand()`/`getSelfUpdatePlan()` (read directly this
+  session) resolve the installing package manager and construct the
+  matching `[manager] install -g @earendil-works/pi-coding-agent@<version>`
+  invocation, printing a manager-specific fallback command
+  (`printSelfUpdateFallback`) if the spawned update itself fails, and a
+  pnpm-specific hint (`printPnpmSelfUpdateMetadataHint`, quoted
+  directly: "If pnpm reports missing package versions, its cached
+  registry metadata may be stale. Run `pnpm store prune` and retry...")
+  distinct from anything documented for the other three harnesses'
+  own package-manager-specific update paths.
+- **A renamed-package escape hatch is already wired into the self-update
+  planner.** `getSelfUpdatePlan()`'s own logic (read directly) checks
+  `packageName !== PACKAGE_NAME` against the fetched latest-release
+  metadata and, if the *name* itself has changed server-side, plans an
+  update that installs the new package name rather than the old one.
+  Whether this exact code path is what handled the
+  `@mariozechner/pi-coding-agent` -> `@earendil-works/pi-coding-agent`
+  rename in §4.4 for existing installs is BEST CURRENT UNDERSTANDING,
+  UNCONFIRMED -- the structural match is strong (this is precisely the
+  kind of migration such a check would exist to handle) but this
+  session did not find a changelog entry or doc sentence stating the
+  historical rename was carried out through this specific mechanism.
+- **The experimental "managed install" is a stage-verify-atomically-
+  activate update mechanism, explicitly named as such in pi's own
+  CHANGELOG.** `CHANGELOG.md`'s `[0.84.3]` entry (VERIFIED, quoted
+  directly) lists "**Safer managed updates** — Stage, verify, and
+  atomically activate updates for installer-managed installations," and
+  `docs/packages.md` restates the mechanism in prose: "For experimental
+  installer-managed installations, `pi update` installs the exact
+  checked version into a staged, lockfile-backed release and activates
+  it only after verification, leaving the current release intact if the
+  update fails." Reading `install.sh` and
+  `run_managed_install_pi()` directly this session confirms the
+  mechanics behind that sentence: gated behind `PI_EXPERIMENTAL=1` and
+  restricted to macOS/Linux (`ensure_managed_install_supported`
+  rejects any other `uname -s`), the installer downloads a pinned
+  `package.json`/`package-lock.json` pair for one specific version from
+  `https://pi.dev/api/installer/releases/<version>/...` (validated
+  node-side to actually describe that exact version and dependency
+  tree before use), runs `npm ci --ignore-scripts --omit=dev
+  --include=optional` inside a fresh staging directory, smoke-tests the
+  staged binary's own `--version` output against the expected version,
+  and only then atomically `mv`s the staging directory into
+  `releases/<version>/` and rewrites a marker file, launcher script, and
+  symlink to point at it -- a version that fails its own smoke test is
+  simply discarded, leaving whatever release was previously active
+  untouched. This is the one design in this section that reads like a
+  genuine forward-update safety net beyond simple version pinning
+  (§5's closing synthesis returns to this point), though its
+  `PI_EXPERIMENTAL=1` gate and macOS/Linux-only scope mean it is not
+  (yet, as of this session's fetch) pi's default install/update
+  behavior for most users.
+
+---
+
+## 5. Cross-harness synthesis
+
+Six real, independently-arrived-at convergences-or-divergences and one
+open gap, none of them re-derived past what §1-§4 actually sourced:
+
+1. **Claude Code, Copilot CLI, and OpenCode independently converged on
+   the identical npm distribution shape; pi's own main npm package does
+   not follow it at all.** For the first three: a thin, mostly-metadata
+   main package with a per-platform `optionalDependencies` map and a
+   postinstall script that resolves and links the correct native
+   binary, such that `npm install -g` never actually depends on Node.js
+   at runtime. Claude Code's docs state this outright ("the package
+   downloads a native binary that doesn't use your Node.js at
+   runtime"); OpenCode's `publish.ts` builds the identical structure
+   programmatically from its own `dist/*/package.json` outputs; Copilot
+   CLI's changelog shows the same shape being introduced mid-lifecycle
+   ("Use platform-specific executable from npm install when available,"
+   "Native binary crash...falls through to the JavaScript fallback").
+   See the flowchart at the top of this page. pi's own
+   `@earendil-works/pi-coding-agent` package (§4.1-§4.2) is a genuine
+   outlier here: it is a real, Node-runtime-dependent JavaScript
+   package with a hard `>=22.19.0` engine floor enforced at
+   install time, and its only `optionalDependencies` entry is a small
+   native clipboard addon, not a platform build of pi itself. pi does
+   publish per-platform compiled binaries (§4.3, via `bun build
+   --compile`), but they ship as GitHub Release archives outside npm
+   entirely, not folded into the main package the way all three other
+   harnesses fold theirs in.
+2. **Claude Code, Copilot CLI, and OpenCode all demote npm to a
+   secondary install path and lead with a curl/`irm`-piped native
+   installer or a platform package manager instead; pi's own docs do
+   the opposite.** Claude Code's docs literally label the native
+   installer "(Recommended)" and its own changelog shows a
+   multi-release campaign pushing npm users toward `claude install`;
+   Copilot CLI's README lists the curl script before npm; OpenCode's
+   docs do the same. pi's own `docs/quickstart.md`, by contrast, states
+   plainly "Pi is distributed as an npm package" and its curl installer
+   is documented as "an installer alternative" that itself calls
+   `npm install -g` under the hood (§4.2) -- rather than a fourth
+   independently-arrived-at data point for this convergence, pi is a
+   genuine counter-example to it.
 3. **A stable-vs-latest/prerelease channel concept exists in some form
-   in all three, but the mechanics differ structurally.** Claude Code's
-   is a persisted `settings.json` key (`autoUpdatesChannel`) plus
-   separately-named Homebrew casks per channel; Copilot CLI's is a
+   in Claude Code, Copilot CLI, and OpenCode, but the mechanics differ
+   structurally; pi documents no such channel concept at all.** Claude
+   Code's is a persisted `settings.json` key (`autoUpdatesChannel`)
+   plus separately-named Homebrew casks per channel; Copilot CLI's is a
    channel argument to explicit `copilot update`/`/update` invocations
    plus separately-named prerelease npm dist-tags/brew casks/WinGet
    package IDs; OpenCode documents no persisted channel concept at all
    -- only an explicit version argument or `--method` override to a
-   user-invoked `opencode upgrade`.
+   user-invoked `opencode upgrade`. pi (§4.5) sits closest to OpenCode
+   here: no stable/latest channel setting was found in any source
+   fetched this session, only an explicit version (`@<version>`) target
+   to `pi update` and the `--force` flag to reinstall the current
+   version.
 4. **The install method a user chose determines who owns auto-update,
-   consistently across all three.** Whichever channel is the harness's
-   own "native"/curl-based installer gets real, silent, background
-   self-update in Claude Code (§1.4) and is the one channel OpenCode's
-   own docs credit with "stay[ing] up to date automatically" (§3.4,
-   caveat noted); package-manager-based installs (Homebrew, WinGet,
-   apt/dnf/apk, choco, scoop) are consistently treated as
+   consistently across Claude Code and OpenCode.** Whichever channel is
+   the harness's own "native"/curl-based installer gets real, silent,
+   background self-update in Claude Code (§1.4) and is the one channel
+   OpenCode's own docs credit with "stay[ing] up to date automatically"
+   (§3.4, caveat noted); package-manager-based installs (Homebrew,
+   WinGet, apt/dnf/apk, choco, scoop) are consistently treated as
    manual-upgrade-by-default across Claude Code (explicit in its docs)
    and OpenCode (each method's `upgrade()` implementation in §3.4 simply
    shells out to that package manager's own upgrade command, rather than
@@ -856,22 +1271,45 @@ of them re-derived past what §1-§3 actually sourced:
    this same split this session, so that part of the claim is narrower
    for Copilot CLI specifically (its curl/npm paths are documented as
    auto-updating; whether its Homebrew/WinGet casks auto-update the same
-   way was not confirmed either way this session).
+   way was not confirmed either way this session). pi does not fit this
+   pattern either way: there is only one real channel underneath both
+   its curl installer and its direct npm install (the npm registry
+   itself, §4.2), so there is no "installer-I-own vs. package-manager-
+   you-brought" split left to draw -- `pi update --self` is the same
+   mechanism (§4.5) regardless of which of npm/pnpm/yarn/bun originally
+   installed it, only the specific spawned command differs.
 5. **Every harness treats "plugin/marketplace content auto-update" as a
-   distinct subsystem from "the harness binary auto-updates itself,"
-   and every harness's own changelog or docs uses the bare word
-   "auto-update" for both** -- Claude Code's `extraKnownMarketplaces`
-   `autoUpdate` policy and `FORCE_AUTOUPDATE_PLUGINS` (§1.4), Copilot
-   CLI's per-marketplace `autoUpdate` setting and first-party-plugin
-   session-start auto-update (§2.3), and OpenCode's plugin-dependency
-   gap documented in a live GitHub Issue against the very same
-   `opencode upgrade` command that updates the binary (§3.4). This is a
-   real, repeated naming collision worth carrying forward as a reading
-   caution for anyone grepping any of these three changelogs for
-   "auto-update" and expecting every hit to be about the binary itself.
+   distinct subsystem from "the harness binary auto-updates itself" --
+   except pi, which deliberately unifies both under one command family
+   instead.** Claude Code's `extraKnownMarketplaces` `autoUpdate` policy
+   and `FORCE_AUTOUPDATE_PLUGINS` (§1.4), Copilot CLI's per-marketplace
+   `autoUpdate` setting and first-party-plugin session-start
+   auto-update (§2.3), and OpenCode's plugin-dependency gap documented
+   in a live GitHub Issue against the very same `opencode upgrade`
+   command that updates the binary (§3.4) are all real, repeated
+   instances of the same naming collision -- one bare word,
+   "auto-update," covering two genuinely different subsystems, worth
+   carrying forward as a reading caution for anyone grepping any of
+   those three changelogs and expecting every "auto-update" hit to be
+   about the binary itself. pi's own `pi update` (§4.5) is the one
+   design in this book that does not have this naming collision,
+   because it was never two subsystems to begin with: `--self`,
+   `--extensions`, `--models`, and `--all` are documented flags on one
+   verb, not two verbs that happen to share a word.
+6. **A harness's own npm package name is not assumed stable across this
+   book's whole research history -- pi is the first, and so far only,
+   harness on this page with a real, live, registry-confirmed rename
+   mid-lifecycle.** §4.4's `@mariozechner/pi-coding-agent` ->
+   `@earendil-works/pi-coding-agent` migration, tied to the project's
+   move from an individual maintainer to the company Earendil, is a
+   distribution-history event with no analogue found this session for
+   Claude Code, Copilot CLI, or OpenCode, whose own package names and
+   repository ownership have been stable across every source this book
+   has fetched for them.
 
-**The one clear negative finding.** None of the three harnesses'
-own docs or changelog describe an automatic rollback-on-failed-update
+**The one clear negative finding, now nuanced by pi's own experimental
+mechanism.** None of Claude Code's, Copilot CLI's, or OpenCode's own
+docs or changelog describe an automatic rollback-on-failed-update
 safety net as a *general* policy -- the closest documented example is
 Claude Code's narrow, Windows-specific fix ("failed updates now restore
 the preserved executable automatically"), which reads as a targeted bug
@@ -887,7 +1325,14 @@ gathered in §1.4 and §2.2-2.3, has gone overwhelmingly into making the
 *forward* update path more reliable (retry-on-transient-failure,
 streamed-not-buffered downloads, launcher-preservation, Windows-lock-
 race fixes) rather than into building a documented, general-purpose
-undo.
+undo. pi's own experimental managed install (§4.5) is the one mechanism
+across all four harnesses that reads like an actual designed-in
+forward-then-abort safety net beyond simple version pinning -- stage,
+smoke-test, and only then atomically activate, leaving a failed
+candidate release un-activated rather than needing a rollback at all --
+but it is gated behind `PI_EXPERIMENTAL=1`, restricted to macOS/Linux,
+and not (as of this session's fetch) pi's default update behavior, so
+it nuances this finding rather than overturning it.
 
 ---
 
@@ -999,7 +1444,57 @@ applies to every source-code citation below):**
   to exist as a live issue title via a targeted web search this session
   -- the source for §3.4's plugin-vs-binary-update-scope finding.
 
+**pi (authoritative for its own documented behavior and its own real
+implementation; `main`-branch citations below are pi's equivalent of a
+tagged-release branch, not a preview/`dev` branch, so no branch caveat
+applies the way it does for OpenCode above):**
+- `https://registry.npmjs.org/@earendil-works/pi-coding-agent`,
+  `https://registry.npmjs.org/@earendil-works/pi-ai`, and
+  `https://registry.npmjs.org/@mariozechner/pi-coding-agent`, fetched
+  directly via `curl` this session -- the source for §4.1's package-name
+  resolution and §4.4's full version-history and rename findings,
+  including the verbatim `@mariozechner/pi-coding-agent` deprecation
+  message and the `"legacy-node20"` dist-tag.
+- `github.com/earendil-works/pi` repository metadata, `README.md`,
+  `docs/quickstart.md`, `docs/packages.md`, `docs/windows.md`,
+  `packages/coding-agent/package.json`, `packages/coding-agent/CHANGELOG.md`
+  (raw content, 5,625 lines), its Releases (`v0.84.4` asset listing),
+  and its Tags (313 tags, paginated), all fetched via `gh api`/`gh`-raw
+  fetch this session -- the source for §4.1's `package.json` `bin`/
+  `dependencies` fields, §4.2's install-command text and GitHub-Release-
+  asset list, §4.4's tag range and "Initial public release" changelog
+  entry, and §4.5's `pi update` flag list and "Safer managed updates"
+  changelog entry.
+- `https://raw.githubusercontent.com/earendil-works/pi/main/scripts/build-binaries.sh`
+  and
+  `https://raw.githubusercontent.com/earendil-works/pi/main/.github/workflows/build-binaries.yml` --
+  the source for §4.3's six-target `bun build --compile` matrix, the
+  single-`ubuntu-latest`-runner cross-compilation finding, and the
+  no-code-signing-step finding.
+- `https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/utils/windows-self-update.ts`
+  and
+  `https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/package-manager-cli.ts` --
+  the source for §4.3's Windows native-dependency-quarantine mechanism
+  and §4.5's `getSelfUpdatePlan()`/`getSelfUpdateCommand()` mechanics,
+  package-manager-specific fallback messaging, and the
+  `packageName !== PACKAGE_NAME` renamed-package-handling code path.
+- `https://pi.dev/install.sh`, fetched live this session -- the source
+  for §4.2's preflight-check/interactive-Node-install behavior and
+  §4.5's `run_managed_install_pi()`/staging/verification/atomic-activation
+  mechanics for the experimental managed install.
+- Mario Zechner, `https://mariozechner.at/posts/2026-04-08-ive-sold-out/`,
+  fetched directly this session -- the source for §4.4's
+  `badlogic/pi-mono` -> `earendil-works/pi` repository-move account, the
+  announced-vs-shipped npm package name discrepancy, and the
+  confirmation that `pi.dev` remained the project's home through the
+  move. Authoritative for the maintainer's own stated intent only, not
+  independently cross-checked against a second primary source this
+  session.
+
 **Cross-references within this book, not re-derived:**
+[llm-api-contract.md](llm-api-contract.md) (§3.5's own, independently
+correct citation of `@earendil-works/pi-ai`, confirmed rather than
+corrected by §4.1's research this session),
 [retries.md](retries.md) (corrected, this session, to cite v2.1.147
 rather than v2.1.144 for Claude Code's auto-updater retry hardening, and
 to point back to this page for the full mechanism; also the source of

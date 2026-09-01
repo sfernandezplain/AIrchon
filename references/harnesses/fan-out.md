@@ -669,18 +669,218 @@ GUI-only feature bolted on separately.
 
 ---
 
-## 6. Synthesis
+## 6. pi
 
-| Dimension | Claude Code (in-conversation subagents) | Claude Code (background agents) | Claude Code (Workflow `pipeline()`) | Copilot CLI (custom-agent + `/fleet`) | OpenCode (`Task` fan-out) | DeepSeek Harness (`SubagentRuntime`) | Hermes Agent (`delegate_task` + Bot Mode) |
-|---|---|---|---|---|---|---|---|
-| Launch unit | Several `Agent`-tool calls, model-issued | One prompt per dispatch, user/script-issued | One `pipeline()` call in a script, runtime-driven | Several tool calls in one turn (mandatory since GA); `/fleet` decomposes further | Several `task` tool calls batched into one assistant message (prompted convention) | `SubagentRuntime.start()` (one-shot) or `.startContinuable()` (weak-completion-guarantee dispatch), per call | One `delegate_task` tool call per child; Bot Mode's own group-chat participation is a per-turn, per-bot voluntary decision, not a launch call at all |
-| Concurrency ceiling | 20 running (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`), documented default | None documented -- bounded by subscription/rate-limit quota | 16 concurrent, runtime-enforced, hard cap | Configurable via `/settings`, no documented default number found | None found; `FiberSet` dispatch appears architecturally unbounded | None documented; only a qualitative guard ("a shared capacity controller may delay... but must not couple... to a sibling") | 3 concurrent, configurable -- a stated numeric default, unlike OpenCode's and DeepSeek's own undocumented ceilings |
-| Total-count ceiling | 200 per session (`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`) | None documented | 1,000 agents per run, hard cap | `subagents.maxDepth` bounds nesting (128 max for usage-based billing), not total count | None found | None found | None found on pages fetched |
-| Actual dispatch mechanism | Background execution by default (v2.1.198+); each Agent-tool call proceeds without blocking the turn | One-at-a-time manual/scripted dispatch, no batch API | Runtime executes script's `pipeline()` loop directly, throttled by the runtime itself | Parallel tool execution at the assistant-turn level (mandatory since 0.0.418); `/fleet`'s own parallel dispatch mechanics undocumented beyond "the orchestrator will run subagents in parallel" | Provider stream's `tool-call` events each forked as an independent Effect fiber via `FiberSet.run(..., startImmediately: true)` -- source-verified, not just documented | Provider validates capability, resolves a durable descriptor, publishes the child; `startContinuable()` resolves on inbox-accept, not on completion | `delegate_task` spawns a child with its own terminal session (one of Hermes' seven backends); Bot Mode dispatch is a per-turn broadcast to all profiles in the group, each independently deciding whether to respond |
-| Join / barrier semantics | Results return individually as background-completion notifications; no single "wait for all" primitive documented | Independent sessions, each polled/attached separately; no cross-session join | Runtime tracks each agent's result as the run progresses; script's own `await`s determine ordering | Undocumented beyond "output... incorporated into the parent agent's response" | `FiberSet.awaitEmpty(settlements)` is an explicit, source-verified barrier: the turn's tool-execution phase does not end until every forked call settles | `SubagentRun` handle settles independently per one-shot call; no cross-agent join primitive documented | `delegate_task` returns its result as an ordinary tool result to the parent; Bot Mode caps group turns at "up to three serial rounds" rather than a join barrier |
-| Context inheritance at spawn | Documented separately in [handoff-mechanism.md](handoff-mechanism.md) (forks vs. named subagents) | N/A | N/A | Undocumented on the pages fetched | Per-call, source-verified (§3.2-3.3 above) | Explicit per-provider `inheritsParentContext` descriptor: `true` for fork providers (parent-log seed), `false` for spawn/ACP providers -- context inheritance explicitly decoupled from authority/tool-grant inheritance | Isolated context per `delegate_task` child (stated directly, not itemized into a descriptor); model/provider/credentials inherit automatically from the parent when set to `"auto"` (cross-referenced, not repeated, against [model-routing-and-selection.md](model-routing-and-selection.md) §5) |
-| Per-call depth/permission re-check | Depth limit checked at spawn time per call; concurrent-slot check per call | N/A -- independent sessions | N/A -- workflow agents run in a fixed `acceptEdits` posture set once per run | Depth/concurrency limits configurable, but whether checked per-call or per-batch is undocumented | Source-verified: depth chain walk and permission derivation both re-run independently per fiber, not shared across the batch | Every child gets "a new flat scope rather than inheriting parent registrations" -- authority is never inherited regardless of the context-inheritance descriptor | `delegate_task` children get a "restricted toolset" per spawn, per the Features Overview quote; the exact re-check granularity is not itemized beyond that in the one docs page fetched |
-| Verifiability | Docs-only (closed source) | Docs-only | Docs-only, but unusually mechanistic (concrete numeric caps) | Changelog-traced version history (real, dated, but implementation itself unpublished) | Docs **and** live `dev`-branch source for the actual concurrency primitive, cross-checked this session | Docs-only (`docs/subsystems/subagent.md`), but unusually mechanistic and explicit about what is deliberately left unstated | Docs-only; a named implementation module (`delegate_tool.py`) is pointed to but not independently source-read this session |
+Sources for this section: VERIFIED, fetched 1 September 2026 directly from
+`github.com/earendil-works/pi`, `main` branch. This book's existing pi
+sections ([The LLM API contract](llm-api-contract.md) §3.5,
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §5,
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md) §5,
+[Session & transcript persistence](session-persistence.md) §5,
+[Configuration](configuration.md), [Auth & usage accounting](auth-and-usage-accounting.md),
+[Built-in skills](built-in-skills.md), [Context compression](context-compression.md), and
+[Model routing & selection](model-routing-and-selection.md)) already establish the repo and
+package names this section relies on; checked again directly this session against
+`packages/coding-agent/package.json` and `packages/ai/package.json`, both confirm the
+current names are `@earendil-works/pi-coding-agent` (the harness itself) and
+`@earendil-works/pi-ai` (the LLM-request layer §3.5 documents), at repo
+`github.com/earendil-works/pi` -- resolving this book's own inconsistent citation of
+"`pi-ai`" vs. "`pi-coding-agent`" as **both correct, naming two different packages in the
+same monorepo**, not an error to fix. The `CHANGELOG.md` history read for this section
+(below) additionally surfaces the repo's own prior identity: issue/PR links through
+version 0.24.0 point at `badlogic/pi-mono` and an `@mariozechner/pi-coding-agent` package
+name -- Mario Zechner's own handle, consistent with the blog post
+(`mariozechner.at/posts/2025-11-30-pi-coding-agent/`) already cited in
+[permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5 -- confirming the project
+was renamed/moved to the `earendil-works` organization at some point after that version,
+not merely cited inconsistently by this book.
+
+### 6.1 The real finding: no subagent/fan-out mechanism ships in pi's core at all
+
+This is a genuine negative finding, checked directly rather than assumed. pi's own
+built-in tool set -- read directly from `packages/coding-agent/src/core/tools/`
+(`bash.ts`, `edit.ts`, `find.ts`, `grep.ts`, `ls.ts`, `read.ts`, `write.ts`, plus
+supporting modules for diffing, file-mutation queuing, and output truncation) -- contains
+no task/subagent/delegate tool of any kind. A direct text search of
+`packages/coding-agent/docs/extensions.md` (the single largest page in pi's docs tree,
+already this book's primary source for pi's extension mechanism in
+[hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §5) for "subagent"
+turns up exactly one hit in the entire ~3,000-line document: a single row in that page's
+own examples catalogue table, `| subagent/ | Spawn sub-agents | registerTool, exec |`,
+listed alongside roughly seventy other named examples (`tic-tac-toe.ts`,
+`space-invaders.ts`, `snake.ts` among them) that ship in
+`packages/coding-agent/examples/extensions/`. Every other narrative docs page checked
+this session -- `settings.md`, `models.md`, `providers.md`, `sessions.md`, `index.md` --
+returns zero matches for "subagent" as well. **pi's answer to "does it support spawning
+subagents at all" is: not as a built-in harness capability -- only as something a user
+opts into by installing one specific example extension**, a structurally different
+answer from every other harness this page documents, all five of which ship fan-out as a
+first-class, always-available capability of the harness itself.
+
+### 6.2 The `subagent` example: a first-party reference implementation, not a toy
+
+That said, the example is not a stub -- it is a substantial, actively maintained,
+first-party-authored implementation living in pi's own repository, and its own README
+documents installation, security model, and usage in the same depth this book expects of
+a built-in mechanism. VERIFIED, `CHANGELOG.md`: it first shipped in **v0.24.0
+(2025-12-19)** as "Subagent orchestration example: Added comprehensive custom tool
+example for spawning and orchestrating sub-agents with isolated context windows.
+Includes scout/planner/reviewer/worker agents and workflow commands for multi-agent
+pipelines" (contributed by `@nicobailon`, `badlogic/pi-mono#215`) and has been revised in
+at least eight further dated releases since: streaming updates for parallel/chain modes
+(v0.24.0's own "Changed" entry, same release); a fix for dropped parent-session
+model/thinking/tool configuration (`#7897`); a fix for leaking Bun's virtual-filesystem
+script path into subagent prompts (`badlogic/pi-mono#3002`); a fix resolving user agents
+from the configured agent directory rather than a hardcoded path (`#1559`); a fix
+improving unknown-agent error messages to list available agents (`#1414`); a fix
+returning full per-task output and failure diagnostics to the parent model instead of
+100-character previews in parallel mode (`#4710`); a fix accepting YAML array syntax for
+the `tools` frontmatter field (`#7598`); and, in the current `0.84.4` release
+(2026-08-28, the latest checked this session), a fix for the example repeatedly
+re-prompting before running project-local agents in already-trusted repositories
+(`#8261`). This version-spanning maintenance trail is itself evidence the pi team
+treats this example as a serious reference implementation of the pattern, not a demo they
+stopped touching after the initial commit.
+
+**Installation is manual and explicit**, unlike every built-in tool this book documents
+for the other four/five harnesses: the README instructs symlinking `index.ts` and
+`agents.ts` into `~/.pi/agent/extensions/subagent/`, sample agent definitions into
+`~/.pi/agent/agents/`, and workflow prompt templates into `~/.pi/agent/prompts/`, from a
+checkout of the `pi` repository itself -- there is no `pi extension install subagent` or
+equivalent package-manager step documented; a user wires this in by hand or via their own
+dotfiles-management tooling.
+
+```mermaid
+sequenceDiagram
+    participant LLM as Model, one turn
+    participant Tool as subagent tool.execute
+    participant Pool as worker pool, size 4
+    participant ProcA as pi subprocess A, mode json no-session
+    participant ProcB as pi subprocess B, 2nd task
+
+    LLM->>Tool: subagent tasks t1..t8
+    Tool->>Pool: dispatch tasks, concurrency 4
+    Pool->>ProcA: runSingleAgent task 1
+    Pool->>ProcB: runSingleAgent task 2
+    Note over ProcA,ProcB: each is a SEPARATE OS process,<br/>own stdout/stderr, own --no-session context
+    ProcA-->>Tool: stdout JSON lines: message_end, tool_result_end
+    ProcB-->>Tool: stdout JSON lines (streamed independently)
+    Tool->>Tool: onUpdate() re-emits combined status<br/>after every parsed line, per task
+    Note over Pool: worker slot frees on process "close";<br/>next queued task (5-8) claims it
+    Pool-->>Tool: Promise.all(workers) resolves once all settle
+    Tool-->>LLM: aggregated result, per-task output<br/>capped at 50 KB (parallel mode only)
+```
+
+### 6.3 Dispatch mechanics: three modes, one OS process per call, a worker-pool limiter
+
+VERIFIED, read directly from `examples/extensions/subagent/index.ts`. The tool exposes
+exactly one JSON-Schema parameter surface (Typebox `SubagentParams`) accepting exactly
+one of three shapes, checked with `modeCount !== 1` guard logic that refuses the call
+outright if the model supplies zero or more than one mode at once:
+
+- **Single** -- `{ agent, task, cwd? }`: one agent, one task, dispatched directly through
+  `runSingleAgent()`.
+- **Parallel** -- `{ tasks: [{ agent, task, cwd? }, ...] }`: dispatched through
+  `mapWithConcurrencyLimit(params.tasks, MAX_CONCURRENCY, ...)`, a hand-rolled worker-pool
+  function (not a library) that spins up exactly `Math.min(MAX_CONCURRENCY, items.length)`
+  async workers, each pulling the next unclaimed index off a shared counter in a `while
+  (true)` loop until the list is exhausted -- the classic bounded-worker-pool pattern,
+  implemented directly in the tool rather than deferred to a runtime primitive.
+  `MAX_CONCURRENCY = 4` and `MAX_PARALLEL_TASKS = 8` are both plain in-file constants
+  (`packages/coding-agent/examples/extensions/subagent/index.ts`), rejecting the call
+  outright with `Too many parallel tasks (N). Max is 8.` if the model requests more than
+  eight, with no config-file or environment-variable override for either number found in
+  the source read this session.
+- **Chain** -- `{ chain: [{ agent, task, cwd? }, ...] }`: a plain sequential `for` loop,
+  substituting each step's own `{previous}` placeholder in its `task` string with the
+  prior step's final assistant text before dispatching the next step; the loop halts
+  immediately at the first failing step and reports which step and agent failed, never
+  attempting the remaining steps.
+
+**Each dispatched call -- single, parallel, or chain -- spawns a genuinely separate OS
+process,** not an in-process session object the way OpenCode's `Task` tool (§3.2 above)
+or DeepSeek's `SubagentRuntime` (§4 above) create child sessions inside the same runtime.
+`runSingleAgent()` calls Node's `child_process.spawn()` with a resolved `pi` invocation
+(`getPiInvocation()` prefers re-invoking the exact same interpreter/script pair the
+parent process was launched with, falling back to a bare `pi` on `PATH` when the current
+process is a bundled Bun single-executable), passing `--mode json -p --no-session` plus,
+conditionally, `--model <name>` (only when the agent's own frontmatter or the dispatching
+session supplies one), `--thinking <level>`, `--tools <comma-list>`, and
+`--append-system-prompt <tmp-file-path>` when the agent definition has its own system
+prompt (written to a per-invocation temp file via `withFileMutationQueue()` -- the same
+serialized-file-write primitive [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md)
+documents elsewhere -- and deleted in a `finally` block regardless of outcome). The
+subprocess's own `stdout` is parsed line-by-line as newline-delimited JSON, watching
+specifically for `message_end` (accumulating usage stats -- input/output/cache
+read/write/cost/turns -- and the message's own `stopReason`) and `tool_result_end`
+events; every parsed line triggers an `onUpdate()` callback so the parent tool call's own
+UI can re-render mid-flight, which is how the collapsed view's "3/5 done, 2 running"
+status and the expanded per-agent tool-call trace both stay live during a long parallel
+run. Abort propagates by killing the subprocess directly: the tool wires the model
+turn's own `AbortSignal` to send `SIGTERM` immediately and a follow-up `SIGKILL` after a
+hardcoded five-second grace period if the process has not exited by then.
+
+### 6.4 Context inheritance: none by default -- `--no-session` means a genuinely fresh process
+
+This is where pi's own design differs most sharply from every other harness on this page.
+Every dispatched subprocess is launched with `--no-session`, meaning **no prior
+conversation history is passed to a subagent at all**, regardless of mode -- not
+OpenCode's per-provider fork-vs-spawn choice (§3 above), not DeepSeek's per-provider
+`inheritsParentContext` descriptor (§4.2 above): pi's `subagent` example has exactly one
+context-inheritance policy, "none," because each call is a brand-new `pi` process reading
+no session file. What *does* carry over, and only when the target agent's own frontmatter
+omits the field, are two narrower, single-value defaults read from the dispatching
+session's own live state at call time: `model` (`ctx.model.provider/ctx.model.id`) and
+`thinkingLevel` (`ctx.thinkingLevel`) -- both plain scalar passthroughs, not a context
+window or message history. An agent definition's own `tools` frontmatter field (a
+comma-or-array list of tool names, both spellings accepted per `parseToolList()`) is
+translated directly into the subprocess's own `--tools` flag; when a definition omits
+`tools` entirely, no `--tools` flag is passed at all, and the spawned process falls back
+to whatever tool set the `pi` binary enables by default for a session with no other
+restriction -- **a real, checked-this-session absence of an enforced default deny list**,
+distinct from OpenCode's documented default of denying `todowrite`/`task` to a subagent
+unless its own definition explicitly grants them ([handoff-mechanism.md](handoff-mechanism.md)
+§3.2).
+
+### 6.5 What is absent: no documented recursion-depth guard
+
+Checked directly against the full `index.ts` source read this session: **no depth
+counter, no environment variable, and no config key bounding how many layers deep a
+`subagent`-spawned process can itself spawn further `subagent` calls** was found anywhere
+in the tool's implementation. Because each subprocess is a full, independent `pi`
+invocation on the same machine, and because an agent definition that omits its own
+`tools` list inherits whatever the ambient default tool set is (§6.4 above), a subagent
+whose definition does not explicitly restrict tools could in principle discover and call
+the very same `subagent` tool itself, recursively, with nothing in the source read this
+session stopping it beyond the per-call `MAX_PARALLEL_TASKS`/`MAX_CONCURRENCY` ceiling on
+that one call's own fan-out width. **BEST CURRENT UNDERSTANDING, UNCONFIRMED:** whether
+this recursive path is actually reachable in practice depends on whether a freshly
+spawned `pi --no-session` process auto-discovers the same `~/.pi/agent/extensions/`
+directory the parent process did (plausible, since both are the same `pi` binary on the
+same machine reading the same global config paths documented in
+[hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §5.1, but not
+independently traced through the CLI's own startup/extension-discovery code this
+session) -- this is flagged as an open, source-groundable follow-up rather than treated
+as a confirmed gap. Either way, this stands in real contrast to every other fan-out
+mechanism on this page: Claude Code (§1.1), Copilot CLI (§2.2), OpenCode (§3.3), and
+DeepSeek Harness (§4.3, implicitly, via its per-provider authority model) all document or
+source-verify *some* explicit nesting-depth control; pi's example, as read this session,
+does not.
+
+---
+
+## 7. Synthesis
+
+| Dimension | Claude Code (in-conversation subagents) | Claude Code (background agents) | Claude Code (Workflow `pipeline()`) | Copilot CLI (custom-agent + `/fleet`) | OpenCode (`Task` fan-out) | DeepSeek Harness (`SubagentRuntime`) | Hermes Agent (`delegate_task` + Bot Mode) | pi (`subagent` example extension) |
+|---|---|---|---|---|---|---|---|---|
+| Launch unit | Several `Agent`-tool calls, model-issued | One prompt per dispatch, user/script-issued | One `pipeline()` call in a script, runtime-driven | Several tool calls in one turn (mandatory since GA); `/fleet` decomposes further | Several `task` tool calls batched into one assistant message (prompted convention) | `SubagentRuntime.start()` (one-shot) or `.startContinuable()` (weak-completion-guarantee dispatch), per call | One `delegate_task` tool call per child; Bot Mode's own group-chat participation is a per-turn, per-bot voluntary decision, not a launch call at all | One `subagent` tool call, in single/parallel/chain mode, from an opt-in example -- not a core harness capability at all (§6.1) |
+| Concurrency ceiling | 20 running (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`), documented default | None documented -- bounded by subscription/rate-limit quota | 16 concurrent, runtime-enforced, hard cap | Configurable via `/settings`, no documented default number found | None found; `FiberSet` dispatch appears architecturally unbounded | None documented; only a qualitative guard ("a shared capacity controller may delay... but must not couple... to a sibling") | 3 concurrent, configurable -- a stated numeric default, unlike OpenCode's and DeepSeek's own undocumented ceilings | 4 concurrent (`MAX_CONCURRENCY`), a hardcoded in-file constant, source-verified, no config override found |
+| Total-count ceiling | 200 per session (`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`) | None documented | 1,000 agents per run, hard cap | `subagents.maxDepth` bounds nesting (128 max for usage-based billing), not total count | None found | None found | None found on pages fetched | 8 tasks per single `subagent` call (`MAX_PARALLEL_TASKS`); no cross-call or per-session total found |
+| Actual dispatch mechanism | Background execution by default (v2.1.198+); each Agent-tool call proceeds without blocking the turn | One-at-a-time manual/scripted dispatch, no batch API | Runtime executes script's `pipeline()` loop directly, throttled by the runtime itself | Parallel tool execution at the assistant-turn level (mandatory since 0.0.418); `/fleet`'s own parallel dispatch mechanics undocumented beyond "the orchestrator will run subagents in parallel" | Provider stream's `tool-call` events each forked as an independent Effect fiber via `FiberSet.run(..., startImmediately: true)` -- source-verified, not just documented | Provider validates capability, resolves a durable descriptor, publishes the child; `startContinuable()` resolves on inbox-accept, not on completion | `delegate_task` spawns a child with its own terminal session (one of Hermes' seven backends); Bot Mode dispatch is a per-turn broadcast to all profiles in the group, each independently deciding whether to respond | Hand-rolled worker-pool function (`mapWithConcurrencyLimit`) spawns a genuinely separate OS process (`child_process.spawn("pi", ["--mode","json","-p","--no-session",...])`) per task -- source-verified, the only harness on this page dispatching via a real subprocess rather than an in-runtime session/fiber |
+| Join / barrier semantics | Results return individually as background-completion notifications; no single "wait for all" primitive documented | Independent sessions, each polled/attached separately; no cross-session join | Runtime tracks each agent's result as the run progresses; script's own `await`s determine ordering | Undocumented beyond "output... incorporated into the parent agent's response" | `FiberSet.awaitEmpty(settlements)` is an explicit, source-verified barrier: the turn's tool-execution phase does not end until every forked call settles | `SubagentRun` handle settles independently per one-shot call; no cross-agent join primitive documented | `delegate_task` returns its result as an ordinary tool result to the parent; Bot Mode caps group turns at "up to three serial rounds" rather than a join barrier | `Promise.all(workers)` over the worker pool is an explicit, source-verified barrier -- the tool call itself does not return until every dispatched process has exited or been killed |
+| Context inheritance at spawn | Documented separately in [handoff-mechanism.md](handoff-mechanism.md) (forks vs. named subagents) | N/A | N/A | Undocumented on the pages fetched | Per-call, source-verified (§3.2-3.3 above) | Explicit per-provider `inheritsParentContext` descriptor: `true` for fork providers (parent-log seed), `false` for spawn/ACP providers -- context inheritance explicitly decoupled from authority/tool-grant inheritance | Isolated context per `delegate_task` child (stated directly, not itemized into a descriptor); model/provider/credentials inherit automatically from the parent when set to `"auto"` (cross-referenced, not repeated, against [model-routing-and-selection.md](model-routing-and-selection.md) §5) | None, unconditionally -- every call passes `--no-session`, source-verified; only `model` and `thinkingLevel` scalars pass through as defaults when the target agent's own frontmatter omits them (§6.4) |
+| Per-call depth/permission re-check | Depth limit checked at spawn time per call; concurrent-slot check per call | N/A -- independent sessions | N/A -- workflow agents run in a fixed `acceptEdits` posture set once per run | Depth/concurrency limits configurable, but whether checked per-call or per-batch is undocumented | Source-verified: depth chain walk and permission derivation both re-run independently per fiber, not shared across the batch | Every child gets "a new flat scope rather than inheriting parent registrations" -- authority is never inherited regardless of the context-inheritance descriptor | `delegate_task` children get a "restricted toolset" per spawn, per the Features Overview quote; the exact re-check granularity is not itemized beyond that in the one docs page fetched | No depth check found anywhere in the source read this session (§6.5) -- a real, checked-this-session absence, not merely undocumented; tool restriction is per-agent-definition only (`--tools` flag), with no enforced default deny list when a definition omits `tools` |
+| Verifiability | Docs-only (closed source) | Docs-only | Docs-only, but unusually mechanistic (concrete numeric caps) | Changelog-traced version history (real, dated, but implementation itself unpublished) | Docs **and** live `dev`-branch source for the actual concurrency primitive, cross-checked this session | Docs-only (`docs/subsystems/subagent.md`), but unusually mechanistic and explicit about what is deliberately left unstated | Docs-only; a named implementation module (`delegate_tool.py`) is pointed to but not independently source-read this session | Full first-party TypeScript source read in full (`main` branch, current release) -- the entire mechanism, not just one primitive, is directly inspectable, but it is an opt-in example, not a shipped core feature |
 
 **The design lesson.** All five products let a single turn request
 several independent workers, but only OpenCode's mechanism is checkable
@@ -748,6 +948,40 @@ structurally unrelated multi-agent pattern that this page's own
 dimension-by-dimension table cannot cleanly score, because the questions
 the table asks ("what's the launch unit," "what's the join barrier")
 presuppose a shape Bot Mode does not have.
+
+**pi is the one product on this page where the honest answer to "does the
+harness fan out subagents" is "not by default, and the reader should know
+that plainly rather than have a section forced to fit."** Every other row
+in the table above describes a capability the harness ships and enables
+out of the box; pi's own equivalent row describes a first-party example
+extension a user must manually symlink into place before the `subagent`
+tool exists at all (§6.1-§6.2). Once installed, though, its mechanics are
+the most directly verifiable of any entry in this table -- full
+first-party TypeScript source, not docs describing a closed
+implementation or a changelog inferring one -- and they reveal a genuinely
+different dispatch substrate from the other six columns: every other
+harness's fan-out mechanism creates a new *session* or *fiber* inside the
+same running process (Claude Code's Agent tool, OpenCode's `Task` tool,
+DeepSeek's `SubagentRuntime`, Hermes' `delegate_task`), while pi's example
+spawns a wholly separate OS process per subagent, communicating back to
+the parent only through parsed newline-delimited JSON on a pipe. That
+process boundary is also why pi's context-inheritance story is the
+starkest on this page: not a spectrum from "full fork" to "flat scope"
+the way DeepSeek's `inheritsParentContext` descriptor or OpenCode's
+deny-only permission inheritance describe, but an unconditional zero --
+`--no-session` on every dispatched call, full stop -- because there is no
+in-process object left to selectively inherit from once the child is a
+different process entirely. And where every other entry in this table's
+depth-check row points at *some* documented or source-verified guard
+(Claude Code's and Copilot CLI's numeric nesting limits, OpenCode's
+per-fiber depth-chain walk, DeepSeek's flat-scope-by-default authority
+model), pi's example is the one place this page found no such guard in
+the source at all (§6.5) -- not because the harness declines to state a
+number the way DeepSeek does for concurrency, but because the question of
+recursive subagent-spawning depth appears not to have been addressed in
+the example's own design, a materially different kind of absence worth
+distinguishing from a stated "no cap, provider-owned backpressure
+instead" design choice.
 
 ---
 
@@ -852,3 +1086,52 @@ repository-metadata citation, not repeated here):**
   fields, and the "everything has a terminal equivalent" closing statement,
   alongside its explicit non-coverage of `delegate_task`/parallel
   workstreams.
+
+**pi (authoritative for its own documented behavior and its own real
+implementation; all fetched 1 September 2026 via `gh api` from
+`github.com/earendil-works/pi`, `main` branch):**
+- `packages/coding-agent/src/core/tools/` (directory listing) -- confirmed
+  no task/subagent/delegate tool exists among pi's own built-in tools
+  (§6.1).
+- `packages/coding-agent/docs/extensions.md` -- searched directly for
+  "subagent"; the only hit in the entire document is the examples-catalogue
+  table row naming the `subagent/` example (§6.1); also the source for the
+  in-process, same-runtime extension mechanism this section presupposes
+  (already [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md)
+  §5's primary source, not re-fetched in full here).
+- `packages/coding-agent/docs/settings.md`, `models.md`, `providers.md`,
+  `sessions.md`, `index.md` -- each searched directly for "subagent"; zero
+  matches in any, supporting §6.1's finding that pi's narrative docs never
+  discuss subagent dispatch as a harness feature.
+- `packages/coding-agent/examples/extensions/subagent/README.md` -- the
+  example's own usage modes (single/parallel/chain), installation
+  instructions (manual symlinking, no package-manager step), security
+  model (project-agent trust confirmation, `agentScope`), numeric limits
+  (8 tasks max, 4 concurrent), and stated limitations, quoted directly
+  throughout §6.2-§6.4.
+- `packages/coding-agent/examples/extensions/subagent/index.ts` -- read in
+  full; the actual implementation behind every mechanism this section
+  documents: `SubagentParams`'s three-mode schema and `modeCount` guard,
+  `mapWithConcurrencyLimit`'s worker-pool implementation, `MAX_CONCURRENCY`/
+  `MAX_PARALLEL_TASKS`/`PER_TASK_OUTPUT_CAP` constants, `runSingleAgent`'s
+  `child_process.spawn()` call and its `--mode json -p --no-session` argument
+  construction, `getPiInvocation`'s interpreter-resolution fallback, the
+  `message_end`/`tool_result_end` JSON-stream parsing loop, `AbortSignal`-to-
+  `SIGTERM`/`SIGKILL` wiring, and the absence of any depth-counter or
+  recursion guard (§6.5).
+- `packages/coding-agent/examples/extensions/subagent/agents.ts` -- agent
+  discovery and frontmatter parsing (`parseToolList`'s dual comma-string/
+  array acceptance), cited in §6.4.
+- `packages/coding-agent/CHANGELOG.md` -- read for every dated mention of
+  "subagent"; the introduction in v0.24.0 (2025-12-19, `badlogic/pi-mono#215`
+  by `@nicobailon`) and the eight further fix/feature entries traced through
+  the current `0.84.4` (2026-08-28) release, cited in full in §6.2; also the
+  source for this section's own provenance note (`badlogic/pi-mono` /
+  `@mariozechner/pi-coding-agent` as the project's prior identity before its
+  move to `earendil-works`).
+- `packages/coding-agent/package.json` and `packages/ai/package.json` --
+  each read directly for their own `name` field, confirming
+  `@earendil-works/pi-coding-agent` and `@earendil-works/pi-ai` as the
+  current, correct package names this book's own prior pi sections already
+  cite (this section's own opening note resolves the apparent inconsistency
+  as two distinct, correctly-named packages, not an error).

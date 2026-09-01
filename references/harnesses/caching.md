@@ -660,24 +660,307 @@ way from what was searched this session.
 
 ---
 
-## 4. Synthesis
+## 4. pi (`@earendil-works/pi-ai`)
 
-| Dimension | Claude Code | Copilot CLI | OpenCode |
-|---|---|---|---|
-| Verifiability | Docs-only; no public implementation | Docs + changelog only; no public implementation | Source-verified (`packages/llm`), `dev` branch (caveat applies) |
-| Underlying provider(s) | Anthropic API exclusively (+ Bedrock/Vertex/Foundry as hosting, not model-family, variants) | Multi-provider (GPT, Claude, Gemini, BYOK/BYOM) | Multi-provider, explicit branch per protocol (Anthropic/Bedrock explicit breakpoints; OpenAI/Gemini implicit no-op) |
-| Cache-key inputs named | Model, effort level, tool-definition set, plugin/MCP state, request-header flags (fast mode) | Model, reasoning effort, "context size," enabled tools/MCP servers | Model route id (gates whether the policy pass runs at all); breakpoint placement itself is prefix-based, not a separate key |
-| Default breakpoint placement | Not client-controlled -- Anthropic API applies its own default policy; Claude Code's contribution is *request ordering* (layer table, §1.1) so a stable prefix exists to cache | Undocumented at this granularity | Explicit, source-defined: last tool def + last system part + latest user message (`cache-policy.ts`) |
-| Breakpoint cap | Inherited from the Anthropic API (4, §1.9); not itself re-stated as a Claude-Code-specific number | Not documented | Explicit, enforced client-side before the request is sent (`ANTHROPIC_BREAKPOINT_CAP`/`BEDROCK_BREAKPOINT_CAP = 4`), matching the API cap |
-| TTL options | 5m / 1h, chosen automatically by auth path, overridable via env vars | 1h (most models) / 24h (OpenAI models specifically) | 5m default / 1h via `ttlSeconds >= 3600` bucket, per explicit `CacheHint.ttlSeconds` |
-| Cache-write cost multiplier (Anthropic) | 1.25x (5m) / 2x (1h) of base input -- cited from the API docs, not restated as Claude-Code-specific | Not stated | Cited identically in the package's own README as the design rationale for defaulting caching on |
-| Cache-read cost multiplier | ~10% of standard input rate (both Claude Code docs and Anthropic API docs state this) | "~10% of the normal input price" | Not independently re-stated as a fixed multiplier in source; consistent with the same underlying API |
-| Observability fields | `cache_creation_input_tokens` / `cache_read_input_tokens`, surfaced in `/usage`, `/cost`, OTel | OTel `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens`, `/usage` cache write+read display | `cacheReadInputTokens` / `cacheWriteInputTokens` normalized into the shared internal `Usage` type across every provider |
-| Compaction/cache interaction | Compaction's own summarization request itself reads the live prefix from cache while warm (§1.2) | Not documented at this level of mechanism | Compaction's overflow-detection formula consumes the same normalized cache-read/cache-write token fields (§3.4/context-compression.md §3.2) |
-| User-facing config lever | Five `DISABLE_PROMPT_CACHING*` env vars + two TTL env vars, settable in managed settings org-wide | Not documented (no equivalent env-var table found) | None found on the docs config page; appears to be a programmatic `LLMRequest.cache` field only (§3.5) |
-| Subagent/fork cache behavior | Subagent: separate cache, 5m TTL even on subscription. Fork: inherits and reads parent's cache | Not documented | Not investigated this session (out of scope of `packages/llm`; would require `packages/opencode`'s subagent/session-forking call sites) |
+VERIFIED, fetched 1 September 2026 directly from `github.com/earendil-works/pi`, `main`
+branch. **A naming clarification this section resolves rather than repeats.** This
+repository is a monorepo publishing (at minimum) two separate npm packages under the
+`@earendil-works` scope, confirmed from each package's own `package.json` fetched this
+session: `packages/ai` publishes `@earendil-works/pi-ai` ("Unified LLM API with automatic
+model discovery and provider configuration") -- the provider-abstraction layer this page's
+caching mechanics live in, and the same package [llm-api-contract.md](llm-api-contract.md)
+§3.5 and [auth-and-usage-accounting.md](auth-and-usage-accounting.md) document from their
+own angles -- while `packages/coding-agent` publishes `@earendil-works/pi-coding-agent`
+("Coding agent CLI with read, bash, edit, write tools and session management"), the harness
+itself, which declares `@earendil-works/pi-ai` as an ordinary version-pinned dependency
+(`"@earendil-works/pi-ai": "^0.84.4"` in `packages/coding-agent/package.json`, read this
+session). Both spellings this book uses elsewhere (`pi-ai` in
+[llm-api-contract.md](llm-api-contract.md)/[auth-and-usage-accounting.md](auth-and-usage-accounting.md)
+and `pi-coding-agent` in
+[deterministic-orchestration.md](deterministic-orchestration.md)/[session-persistence.md](session-persistence.md))
+are independently correct package names for two different, real npm packages in this one
+repository -- not an inconsistency to fix, since each citing page names the package
+actually relevant to its own topic. This section's own subject -- caching mechanics -- is
+`@earendil-works/pi-ai`'s, read directly from `packages/ai/src/api/anthropic-messages.ts`,
+`openai-responses.ts`, `openai-completions.ts`, `bedrock-converse-stream.ts`,
+`google-generative-ai.ts`, `google-vertex.ts`, `google-shared.ts`, `types.ts`, and
+`openai-prompt-cache.ts` (full files, read this session), cross-referenced against
+`packages/ai/README.md` and, for the CLI-facing configuration surface,
+`packages/coding-agent/docs/models.md`, `providers.md`, `environment-variables.md`,
+`settings.md`, `compaction.md`, and `packages/coding-agent/src/core/compaction/compaction.ts`.
 
-**The design lesson.** All three harnesses converge on the same
+### 4.1 `CachePolicy`: one `CacheRetention` enum, one resolver function, copied into four protocols
+
+VERIFIED, `packages/ai/src/types.ts` line 108: `export type CacheRetention = "none" | "short"
+| "long"`, documented inline as "Prompt cache retention preference. Providers map this to
+their supported values. Default: `short`." Every `StreamOptions`/`SimpleStreamOptions` call
+accepts an optional `cacheRetention` field of this type, resolved by a `resolveCacheRetention()`
+function that is -- confirmed by reading all four occurrences directly -- byte-for-byte
+identical logic, independently copy-pasted (not shared via an import) into
+`anthropic-messages.ts`, `openai-responses.ts`, `openai-completions.ts`, and
+`bedrock-converse-stream.ts`:
+
+```mermaid
+flowchart TD
+    Call["models.stream/complete(model, context, options)"] --> Opt{"options.cacheRetention set?"}
+    Opt -->|yes| Use["use it directly"]
+    Opt -->|no| Env{"PI_CACHE_RETENTION env == 'long'?"}
+    Env -->|yes| Long["'long'"]
+    Env -->|no| Short["'short' (default)"]
+    Use --> Retention["resolved CacheRetention"]
+    Long --> Retention
+    Short --> Retention
+    Retention --> SessId{"retention === 'none'?"}
+    SessId -->|yes| NoSess["cacheSessionId = undefined"]
+    SessId -->|no| Sess["cacheSessionId = options.sessionId"]
+    Retention --> Proto["per-protocol lowering (S4.2-S4.6)"]
+```
+
+The inline comment on the `PI_CACHE_RETENTION` branch -- "Defaults to `short` and uses
+`PI_CACHE_RETENTION` for backward compatibility" -- indicates the environment variable
+predates the per-request `cacheRetention` option and is kept as a persistent,
+non-per-call override rather than the primary mechanism. Every one of the four protocols
+also derives a `cacheSessionId` from the same resolved value with the identical one-line
+rule -- `const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId`
+-- which then threads into whatever provider-specific session/cache-key mechanism that
+protocol uses (an Anthropic `x-session-affinity` header, an OpenAI `prompt_cache_key` body
+field, or nothing at all for Bedrock, which has no session-scoped cache key of its own).
+One `sessionId` option, one `cacheRetention` option, and up to four independently-lowered
+wire mechanisms is the architectural shape this whole section documents.
+
+### 4.2 Anthropic Messages: three placement sites, `"stealth mode"` system-prompt duplication, and a cap respected by construction
+
+VERIFIED, `packages/ai/src/api/anthropic-messages.ts`. `getCacheControl(model, cacheRetention,
+env)` returns no marker at all when the resolved retention is `"none"`; otherwise it returns
+`{ type: "ephemeral", ...(ttl && { ttl }) }`, where `ttl` is set to `"1h"` only when retention
+is `"long"` **and** the model's own `compat.supportsLongCacheRetention` is true (default
+`true` -- some Anthropic-compatible providers set it `false`). The resulting `cacheControl`
+object is placed at exactly three sites in `buildParams()`:
+
+1. **The system prompt.** For an OAuth (Claude subscription) token, the source under a
+   comment literally reading `"Stealth mode: Mimic Claude Code's tool naming exactly"`
+   constructs **two** system blocks -- a hardcoded `"You are Claude Code, Anthropic's
+   official CLI for Claude."` identity string, followed by the caller's own
+   `context.systemPrompt` -- and marks **both** with `cache_control`. For a plain API key,
+   only the caller's own system prompt is sent, with one `cache_control` marker. This is a
+   real, source-confirmed instance of pi's own OAuth path deliberately impersonating Claude
+   Code's own system-prompt identity (also renaming tool calls via `toClaudeCodeName()` in
+   the same code path) -- flagged here specifically because it means the *number* of
+   system-level cache breakpoints pi emits (one or two) depends on which auth mode is active,
+   not just on whether caching is enabled.
+2. **The last tool definition** (`index === tools.length - 1` inside `convertTools()`),
+   gated by `compat.supportsCacheControlOnTools` (default `true`; the source names Fireworks
+   as a provider where this is set `false` because it "does not support this field on tools
+   and may reject or ignore it").
+3. **The last cacheable content block of the last message in the array**, if that message's
+   `role` is `"user"` -- specifically the trailing `text`, `image`, or `tool_result` block,
+   per a dedicated post-pass in `convertMessages()` under the comment "Add `cache_control` to
+   the last user message to cache conversation history."
+
+Because pi places **at most one** breakpoint at each of these three sites regardless of how
+many tools or how much conversation history exists, the total emitted `cache_control` count
+is bounded at exactly two (OAuth) or one (API key) system-prompt markers plus one tool marker
+plus one message marker -- **at most four**, landing exactly on the Anthropic API's own
+4-breakpoint cap ([llm-api-contract.md](llm-api-contract.md) §1.9,
+[caching.md](caching.md) §1.9) by construction, not by an explicit runtime counter the way
+OpenCode's `Breakpoints` object enforces the same cap defensively (§3.2). No source read this
+session shows pi counting or dropping breakpoints -- the placement logic itself simply never
+produces more than four.
+
+### 4.3 TTL is a caller-declared toggle, not an auth-path inference -- the sharpest contrast with Claude Code
+
+Claude Code (§1.3) infers its TTL automatically from *how the session authenticates*
+(subscription -> 1h by default, API key/Bedrock/Vertex/Foundry -> 5m by default). pi instead
+exposes `cacheRetention` as an explicit, caller- or environment-declared choice that is
+**orthogonal to authentication mode**: an OAuth-authenticated pi session with
+`cacheRetention: "short"` (the default) gets the plain 5-minute ephemeral cache with no `ttl`
+field at all, and an API-key-authenticated session with `cacheRetention: "long"` gets the
+same `ttl: "1h"` marker an OAuth session would. The only persistent, non-per-call way to opt
+every request into the long tier is the `PI_CACHE_RETENTION=long` environment variable,
+documented in `packages/coding-agent/docs/environment-variables.md`: "Set to `long` for
+extended provider prompt caching where supported." A provider- or model-level override in
+`models.json` (`compat.supportsLongCacheRetention: false`, documented in
+`packages/coding-agent/docs/models.md`) can also refuse the long tier outright regardless of
+what the caller or environment variable requests.
+
+### 4.4 OpenAI Responses and Chat Completions: `prompt_cache_key`/`prompt_cache_retention`, an explicit opt-out for GPT-5.6+, and a second, independent Anthropic-flavored path for hybrid providers
+
+VERIFIED, `packages/ai/src/api/openai-responses.ts` and `openai-completions.ts`. Both
+protocols build a `prompt_cache_key` body field from `options.sessionId`, clamped to 64
+characters by `clampOpenAIPromptCacheKey()` (`packages/ai/src/api/openai-prompt-cache.ts`,
+`OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH = 64`) -- OpenAI's own key-based mechanism for routing
+repeat requests toward the same cached prefix, distinct from Anthropic's breakpoint-marker
+approach. Responses always sends the key whenever retention is not `"none"`; Completions
+sends it whenever retention is not `"none"` **and** the endpoint is native OpenAI
+(`model.baseUrl.includes("api.openai.com")`), or, for non-native OpenAI-compatible
+endpoints, only when retention is `"long"` **and** `compat.supportsLongCacheRetention` --
+a narrower condition than the Responses path. Both protocols additionally send
+`prompt_cache_retention: "24h"` when retention is `"long"` and the model's
+`compat.supportsLongCacheRetention` allows it -- the 24-hour figure matching, independently,
+the same OpenAI-model TTL figure Copilot CLI's own docs state (§2.2), here confirmed from a
+different vantage point (pi's own request-construction source rather than a Microsoft/GitHub
+tutorial page).
+
+A capability found nowhere else in this page: Responses additionally sends
+`prompt_cache_options: { mode: "explicit" }` specifically when retention is `"none"` **and**
+`compat.supportsExplicitPromptCacheMode` is true -- a flag the source and
+`packages/coding-agent/docs/models.md` both describe as gating "`prompt_cache_options`
+(OpenAI GPT-5.6+ explicit prompt caching); older OpenAI models reject the parameter." This
+means pi can, on capable models, **affirmatively suppress OpenAI's own implicit automatic
+caching** when the caller asks for `cacheRetention: "none"` -- a materially different lever
+than anything else this page documents: Claude Code and Copilot CLI never address turning off
+the underlying provider's own caching at all, and OpenCode's own OpenAI path (§3.3) is a pure
+no-op that neither engages nor disables the provider default.
+
+Orthogonally, `openai-completions.ts` implements a **second, independent** caching strategy
+gated by a distinct compat flag: when `compat.cacheControlFormat === "anthropic"` (an explicit
+per-provider opt-in, documented in `models.md` as "for OpenAI-compatible providers that
+expose Anthropic-style prompt caching through `cache_control` markers on text content and
+tool definitions"), `applyAnthropicCacheControl()` places `cache_control` markers on the
+system/developer message, the last tool definition, and the last user/assistant/tool
+message's trailing text block -- the same three-site placement heuristic §4.2 documents for
+the real Anthropic Messages protocol, reimplemented against an OpenAI-Chat-Completions-shaped
+request body for providers that speak the OpenAI wire format but expose Anthropic-style cache
+semantics underneath it. `cacheControlFormat` and the `prompt_cache_key`/
+`prompt_cache_retention` mechanism are independent, non-exclusive levers on the same
+`OpenAICompletionsCompat` object -- a provider can plausibly need either, both, or neither
+depending on which underlying caching model it actually implements.
+
+### 4.5 Amazon Bedrock Converse: eligibility inferred from the model catalog, not requested by the caller
+
+VERIFIED, `packages/ai/src/api/bedrock-converse-stream.ts`. `supportsPromptCaching(model, env)`
+returns `true` only when the model's `id`/`name` contains a recognizable Claude reference
+(matched against `"claude"`, `"anthropic.claude"`, `"anthropic/claude"` substrings), naming
+the concretely supported families in a source comment: "Claude 3.5 Haiku, Claude 3.7 Sonnet,
+Claude 4.x models, Claude 5 models." For application inference profiles -- whose ARN does not
+embed the model name, making this local detection impossible -- the environment variable
+`AWS_BEDROCK_FORCE_CACHE=1` forces eligibility on, documented identically in
+`packages/coding-agent/docs/providers.md`. The same source comment separately notes "Amazon
+Nova models have automatic caching and don't need explicit cache points" -- an
+implicit-vs-explicit split drawn *within* a single cloud provider's own model catalog, echoing
+(without being identical to) the cross-vendor Anthropic-explicit/OpenAI-Gemini-implicit split
+OpenCode's architecture draws across providers (§3.3). When eligible and retention is not
+`"none"`, a `{ cachePoint: { type: CachePointType.DEFAULT, ...(long && { ttl:
+CacheTTL.ONE_HOUR }) } }` block is appended after the system-prompt content and again after
+the last user message's content -- the same two of §4.2's three Anthropic placement sites
+(system, last user message), but **not** the tool-definition site: this session's read of
+`convertToolConfig()` (the function building Bedrock's `toolConfig` block) found no
+`cachePoint` reference anywhere in it, so Bedrock Converse tool definitions do not receive a
+cache breakpoint through this code path -- a confirmed structural omission relative to the
+Anthropic Messages protocol's own three-site placement, not merely an unconfirmed gap.
+
+### 4.6 Google Generative AI and Vertex: read-only accounting, zero request-side markers
+
+VERIFIED (checked negative result), `packages/ai/src/api/google-generative-ai.ts`,
+`google-vertex.ts`, and `google-shared.ts` (all read in full). None of the three files
+constructs any cache-related request field -- the only `cache`-related code in either
+provider file is on the **response** side: `cacheRead: chunk.usageMetadata.cachedContentTokenCount
+|| 0` and a hardcoded `cacheWrite: 0` (Gemini's API never reports a cache-write count back).
+The non-cached input token count is explicitly computed as `promptTokenCount -
+cachedContentTokenCount`, meaning a cache hit is visible only as a reduced non-cached-input
+figure plus a populated `cacheRead` count in the response usage object -- never as anything
+the client sends. This independently confirms, from pi's own source, the same implicit,
+automatic, no-client-marker Gemini caching model OpenCode's own source establishes at §3.3
+and its README states as a provider-behavior fact ("implicit caching on 2.5+").
+
+### 4.7 Session-affinity headers: a caching-adjacent mechanism, not the cache marker itself
+
+VERIFIED, `types.ts` and `models.md`. Distinct from any `cache_control`/`cachePoint`/
+`prompt_cache_key` marker, pi separately supports **session-affinity headers** -- a
+routing-level mechanism ensuring repeated requests from the same logical session land on the
+same backend replica or shard, which is a precondition for that replica's own server-side
+cache to actually be reachable on providers whose caching is tied to a specific served
+instance rather than a globally shared cache tier. The source names Fireworks explicitly:
+"session affinity for prompt cache routing (requests to the same replica maximize cache
+hits)." Three documented header formats, selected by `compat.sessionAffinityFormat`:
+`"openai"` (`session_id` + `x-client-request-id`, plus `x-session-affinity` on Chat
+Completions specifically), `"openai-nosession"` (omits the underscore-bearing `session_id`
+header for servers that reject it), and `"openrouter"` (`x-session-id`). `models.md` states
+plainly that none of these header formats affects the `prompt_cache_key` body parameter
+itself, which remains governed purely by `cacheRetention` -- the header and the body-level
+cache key are two independent levers both threaded from the same underlying `sessionId`
+value, not one mechanism wearing two names.
+
+### 4.8 Compaction and branch summaries: an explicit cache opt-out -- the opposite policy from Claude Code
+
+VERIFIED, `packages/coding-agent/src/core/compaction/compaction.ts` (function building the
+summarization request options): `cacheRetention: "none"` is set explicitly for every
+compaction and branch-summary call, alongside a fresh routing session ID
+(`options.sessionId ?? uuidv7()`) when the caller did not already supply one, under the
+inline comment "Avoid cache writes for one-off summaries. Reuse caller-supplied routing when
+available; callers without a session ID, including branch summaries, receive a fresh routing
+ID." `packages/coding-agent/docs/compaction.md` restates this from the user-facing side:
+"Compaction and branch-summary requests use fresh routing session IDs and, where supported by
+the provider, disable prompt-cache writes because these one-off prompts are unlikely to be
+reused." This is a direct, source-confirmed point of contrast with Claude Code's own
+documented stance on the identical operation (§1.2): Claude Code's docs describe its own
+compaction summarization request as an ordinary API call that **benefits from** reading the
+live, still-warm prefix from cache, treating summarization as cache-favorable. pi's
+coding-agent takes the opposite design position for the same kind of request -- treating a
+summarization prompt as inherently cache-averse because the summary text itself is judged
+unlikely to recur -- and deliberately declines to write it into the cache at all. Both are
+VERIFIED, for their own harness only; the difference is a genuine design divergence between
+two independent engineering teams solving the same problem (what to do with a one-off
+summarization call's cache footprint), not an error in either.
+
+### 4.9 Observability: per-model cache-rate metadata, a cost-tier interaction, the Anthropic-only `cacheWrite1h` split, and an opt-in transcript notice
+
+VERIFIED, `types.ts`, `models.md`. Every model's `cost` object carries four required
+per-million-token rates -- `input`, `output`, `cacheRead`, `cacheWrite` -- and `models.md`
+documents a cost-**tier** mechanism (an alternate full rate set that applies once usage
+crosses a threshold) triggering "when total input usage (`input + cacheRead + cacheWrite`)
+exceeds `inputTokensAbove`" -- meaning cache-read and cache-write tokens, despite being billed
+at a fraction of the base input rate, still count toward the raw token volume that can push a
+request into a costlier tier. A `cacheWrite1h` field on the `Usage` type is documented inline
+as a "Subset of `cacheWrite` written with 1h retention. Only Anthropic reports this split" --
+sourced in `anthropic-messages.ts` from the API's own nested `event.message.usage.cache_creation
+?.ephemeral_1h_input_tokens` field, the identical nested breakdown object Claude Code's own
+changelog separately records a reporting bug against (§1.6) -- pi's own accounting already
+reads this nested field directly rather than only the flat `cache_creation_input_tokens`
+count, though no source read this session states pi and Claude Code share any code or ever
+compared notes on this; the parallel is this page's own observation from two independent
+implementations reading the same upstream API field. On the CLI side,
+`packages/coding-agent/docs/settings.md` documents `showCacheMissNotices` (boolean, default
+`false`): "Show transcript notices for significant prompt-cache misses and compaction or
+branch-summary usage" -- an opt-in visibility feature functionally adjacent to Claude Code's
+own `/usage` cache-miss flagging (§1.6), but off by default rather than always-on, and the TUI
+footer documented in `usage.md` folds "token/cache usage, cost, context usage" into one
+per-session summary line.
+
+### 4.10 The configuration surface, summarized
+
+Taken together: a persistent `PI_CACHE_RETENTION` environment variable, a per-request
+`cacheRetention` option (`"none" | "short" | "long"`, default `"short"`), a per-provider or
+per-model `compat` override block in `models.json` (`supportsLongCacheRetention`,
+`supportsCacheControlOnTools`, `cacheControlFormat`, `sendSessionAffinityHeaders`,
+`sessionAffinityFormat`, `supportsExplicitPromptCacheMode`), a Bedrock-specific
+`AWS_BEDROCK_FORCE_CACHE` escape hatch, and an opt-in `showCacheMissNotices` UI setting. This
+is a documented, user-facing configuration surface that is materially larger and more
+explicit than OpenCode's (§3.5, which found none beyond an unlisted `providerOptions` escape
+hatch) and shaped differently from both Claude Code's (§1.8: entirely disable-toggle-plus-
+TTL-override env vars, no explicit retention enum exposed to the caller) and Copilot CLI's
+(§2: no documented configuration surface found at all).
+
+---
+
+## 5. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi |
+|---|---|---|---|---|
+| Verifiability | Docs-only; no public implementation | Docs + changelog only; no public implementation | Source-verified (`packages/llm`), `dev` branch (caveat applies) | Source-verified (`packages/ai`), `main` branch |
+| Underlying provider(s) | Anthropic API exclusively (+ Bedrock/Vertex/Foundry as hosting, not model-family, variants) | Multi-provider (GPT, Claude, Gemini, BYOK/BYOM) | Multi-provider, explicit branch per protocol (Anthropic/Bedrock explicit breakpoints; OpenAI/Gemini implicit no-op) | Multi-provider (Anthropic, OpenAI Responses/Completions, Google, Bedrock, plus OpenAI-compatible third parties); explicit per-protocol branch, same shape as OpenCode |
+| Cache-key inputs named | Model, effort level, tool-definition set, plugin/MCP state, request-header flags (fast mode) | Model, reasoning effort, "context size," enabled tools/MCP servers | Model route id (gates whether the policy pass runs at all); breakpoint placement itself is prefix-based, not a separate key | `cacheRetention` (explicit enum, not inferred from auth), `sessionId` (feeds both session-affinity headers and OpenAI's `prompt_cache_key`) |
+| Default breakpoint placement | Not client-controlled -- Anthropic API applies its own default policy; Claude Code's contribution is *request ordering* (layer table, §1.1) so a stable prefix exists to cache | Undocumented at this granularity | Explicit, source-defined: last tool def + last system part + latest user message (`cache-policy.ts`) | Explicit, source-defined: system prompt (one or two blocks depending on OAuth "stealth mode") + last tool def + last user message's last block (§4.2) |
+| Breakpoint cap | Inherited from the Anthropic API (4, §1.9); not itself re-stated as a Claude-Code-specific number | Not documented | Explicit, enforced client-side before the request is sent (`ANTHROPIC_BREAKPOINT_CAP`/`BEDROCK_BREAKPOINT_CAP = 4`), matching the API cap | Respected by construction (at most 4 breakpoints ever placed: 1-2 system + 1 tool + 1 message), not by an explicit runtime counter |
+| TTL options | 5m / 1h, chosen automatically by auth path, overridable via env vars | 1h (most models) / 24h (OpenAI models specifically) | 5m default / 1h via `ttlSeconds >= 3600` bucket, per explicit `CacheHint.ttlSeconds` | 5m ("short", default) / 1h (Anthropic/Bedrock "long") or 24h (OpenAI "long"), an explicit `cacheRetention` value orthogonal to auth mode |
+| Cache-write cost multiplier (Anthropic) | 1.25x (5m) / 2x (1h) of base input -- cited from the API docs, not restated as Claude-Code-specific | Not stated | Cited identically in the package's own README as the design rationale for defaulting caching on | Not independently re-stated as a multiplier in source; `cost.cacheWrite` is a per-model $/M-token rate, not a multiplier formula |
+| Cache-read cost multiplier | ~10% of standard input rate (both Claude Code docs and Anthropic API docs state this) | "~10% of the normal input price" | Not independently re-stated as a fixed multiplier in source; consistent with the same underlying API | Not independently re-stated as a fixed multiplier; `cost.cacheRead` is a per-model $/M-token rate |
+| Observability fields | `cache_creation_input_tokens` / `cache_read_input_tokens`, surfaced in `/usage`, `/cost`, OTel | OTel `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens`, `/usage` cache write+read display | `cacheReadInputTokens` / `cacheWriteInputTokens` normalized into the shared internal `Usage` type across every provider | `usage.cacheRead` / `usage.cacheWrite` / Anthropic-only `usage.cacheWrite1h`, plus opt-in `showCacheMissNotices` transcript notices and a TUI footer line |
+| Compaction/cache interaction | Compaction's own summarization request itself reads the live prefix from cache while warm (§1.2) | Not documented at this level of mechanism | Compaction's overflow-detection formula consumes the same normalized cache-read/cache-write token fields (§3.4/context-compression.md §3.2) | Compaction/branch-summary requests explicitly set `cacheRetention: "none"` to avoid a cache write for a one-off prompt (§4.8) -- the opposite policy from Claude Code's |
+| User-facing config lever | Five `DISABLE_PROMPT_CACHING*` env vars + two TTL env vars, settable in managed settings org-wide | Not documented (no equivalent env-var table found) | None found on the docs config page; appears to be a programmatic `LLMRequest.cache` field only (§3.5) | `PI_CACHE_RETENTION` env var, per-request `cacheRetention` option, and per-provider/model `compat` fields in `models.json` (§4.10) -- the most explicit documented surface of the four |
+| Subagent/fork cache behavior | Subagent: separate cache, 5m TTL even on subscription. Fork: inherits and reads parent's cache | Not documented | Not investigated this session (out of scope of `packages/llm`; would require `packages/opencode`'s subagent/session-forking call sites) | Not investigated this session (out of scope of `packages/ai`; would require `packages/coding-agent`'s own subagent/handoff call sites) |
+
+**The design lesson.** All four harnesses converge on the same
 underlying economic argument -- a cache read costs roughly a tenth of a
 fresh input token, so any request that shares a meaningful prefix with a
 prior one is worth caching by default -- but they diverge sharply in how
@@ -699,7 +982,25 @@ notable that OpenCode's own breakpoint-placement heuristic (anchor on the
 latest user message specifically to cover an entire tool-use loop's
 intra-turn round-trips) is a more granular, source-stated optimization
 than anything Claude Code's or Copilot CLI's own docs state about *where*
-within a request their own default breakpoint lands.
+within a request their own default breakpoint lands. pi is the harness that
+pushes the *caller's* control furthest: rather than inferring a TTL from
+authentication (Claude Code) or leaving the whole mechanism to a
+provider-neutral no-op/breakpoint split with no exposed configuration
+(OpenCode), pi exposes `cacheRetention` as an explicit three-value enum a
+caller or a persistent environment variable can set independently of how
+the session authenticates, and reaches further than any of the other three
+by actually toggling a provider's own *implicit* caching off
+(`prompt_cache_options: { mode: "explicit" }` on capable OpenAI models when
+the caller opts out) rather than only ever adding markers on top of it.
+pi's own compaction/branch-summary opt-out (§4.8) is also the one place in
+this page's whole four-harness comparison where two harnesses take
+*opposite* stances on the identical mechanism -- Claude Code treats its
+compaction call as cache-favorable and lets it ride the warm prefix, pi's
+coding-agent treats the same kind of call as cache-averse and deliberately
+declines to write it -- which is itself evidence that "should a one-off
+summarization request touch the cache" is a genuine, unresolved design
+choice rather than a fact about the underlying API that all correct
+implementations must converge on.
 
 ---
 
@@ -772,3 +1073,38 @@ stable release tag):**
   5-minute/1-hour TTL pricing multipliers, per-model minimum cacheable
   prompt lengths, the tools -> system -> messages invalidation hierarchy,
   and the 20-block cache-read lookback window.
+
+**pi (authoritative for its own documented behavior; fetched 1 September 2026 from
+`github.com/earendil-works/pi`, `main` branch):**
+- `packages/ai/package.json` and `packages/coding-agent/package.json` (via `gh api
+  repos/earendil-works/pi/contents/...`) -- confirming the two distinct npm package names
+  (`@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`) and their dependency
+  relationship, resolving §4's opening naming clarification.
+- `packages/ai/src/types.ts` (full file) -- the `CacheRetention` type definition, the
+  `Usage`/`Model.cost` cache fields (`cacheRead`, `cacheWrite`, `cacheWrite1h`), and the
+  `AnthropicMessagesCompat`/`OpenAICompletionsCompat`/`OpenAIResponsesCompat`
+  cache-related field documentation; covers §4.1, §4.9.
+- `packages/ai/src/api/anthropic-messages.ts` (full file) -- `resolveCacheRetention()`,
+  `getCacheControl()`, the OAuth "stealth mode" system-prompt duplication, and the three
+  `cache_control` placement sites (system, last tool, last user-message block); covers
+  §4.2, §4.3.
+- `packages/ai/src/api/openai-responses.ts`, `openai-completions.ts`, and
+  `openai-prompt-cache.ts` (full files) -- `prompt_cache_key`/`prompt_cache_retention`/
+  `prompt_cache_options` construction, the `clampOpenAIPromptCacheKey()` 64-character clamp,
+  and the `cacheControlFormat: "anthropic"` Anthropic-style fallback path
+  (`applyAnthropicCacheControl()`); covers §4.4.
+- `packages/ai/src/api/bedrock-converse-stream.ts` (full file) -- `supportsPromptCaching()`'s
+  Claude-family detection and `AWS_BEDROCK_FORCE_CACHE` override, the two `cachePoint`
+  placement sites, and the confirmed absence of a `cachePoint` in `convertToolConfig()`;
+  covers §4.5.
+- `packages/ai/src/api/google-generative-ai.ts`, `google-vertex.ts`, and `google-shared.ts`
+  (full files) -- confirmed, as a checked negative result, that no request-side cache field
+  is ever constructed for either Google API family; covers §4.6.
+- `packages/ai/README.md` (full file, 513+ lines) -- cross-referenced for the session-affinity
+  header-format table and the `cacheRetention`/`sessionId` faux-provider example; covers §4.7.
+- `packages/coding-agent/docs/models.md`, `providers.md`, `environment-variables.md`,
+  `settings.md`, and `compaction.md`, plus `packages/coding-agent/src/core/compaction/
+  compaction.ts` (all fetched via `gh api`) -- the `PI_CACHE_RETENTION` environment variable,
+  the `compat` field documentation table, the Bedrock prompt-caching provider note, the
+  `showCacheMissNotices` setting, and the compaction/branch-summary `cacheRetention: "none"`
+  opt-out and its accompanying doc-page prose; covers §4.3, §4.5, §4.8, §4.9, §4.10.

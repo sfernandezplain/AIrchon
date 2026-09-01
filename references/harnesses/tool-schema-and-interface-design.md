@@ -37,10 +37,12 @@ source independently rather than borrowing the other's fetch.
 
 Every claim below is tagged VERIFIED (fetched fresh this session from a
 named, authoritative source) or BEST CURRENT UNDERSTANDING,
-UNCONFIRMED. Claude Code, Copilot CLI, and OpenCode are three separate
-products from three separate organizations; a mechanism confirmed for
-one is never assumed for another without its own citation. Sources and
-fetch dates are listed in full at the bottom.
+UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, and (added in a later
+session, §1.5/§2.4/§3.4/§4.5) pi are four separate products from four
+separate organizations; a mechanism confirmed for one is never assumed
+for another without its own citation. This page's Copilot CLI coverage
+is out of scope for this pass and remains a known gap, tracked
+separately. Sources and fetch dates are listed in full at the bottom.
 
 ---
 
@@ -188,6 +190,113 @@ error a schema redesign -- splitting into multiple simpler fields,
 using an `enum`, moving to a structured sub-object -- can eliminate
 structurally rather than by instruction).
 
+### 1.5 pi: TypeBox schemas, per-field descriptions, an experimental-only strict-sampling switch, and a model-quirk input-coercion shim
+
+VERIFIED by direct source read this session, `github.com/earendil-works/pi`, `main` branch, fetched via
+`gh api repos/earendil-works/pi/contents/...` -- `packages/coding-agent/src/core/tools/{index,edit,edit-diff,bash,write,find,grep,ls}.ts`,
+`packages/coding-agent/src/core/extensions/types.ts`, and `packages/coding-agent/src/core/experimental.ts`, all read in full.
+
+**Two package names for one repo, resolved directly from source rather than left inconsistent.** This
+book's own prior pi coverage cites both `@earendil-works/pi-ai` ([llm-api-contract.md](llm-api-contract.md)
+§3.5's own subject, the multi-provider LLM wire-abstraction package living under `packages/ai/`) and
+`@earendil-works/pi-coding-agent` ([deterministic-orchestration.md](deterministic-orchestration.md),
+[session-persistence.md](session-persistence.md)), and it is fair to read that as an unresolved
+inconsistency worth checking rather than assuming either is a typo for the other. It is not one:
+`packages/coding-agent/package.json`, read directly this session, names the published package
+`@earendil-works/pi-coding-agent`, gives its own `description` field as "Coding agent CLI with read, bash,
+edit, write tools and session management" (quoted verbatim -- note the description names four of this
+page's eight tools by name), and lists `@earendil-works/pi-ai` among its own runtime `dependencies`. The
+question this page asks -- how a harness names, describes, and shapes the tools a model actually calls --
+is squarely `pi-coding-agent`'s own concern (`packages/coding-agent/src/core/tools/`), not `pi-ai`'s (a
+provider-wire-format abstraction with no tool-calling surface of its own, per its own README already read
+for [llm-api-contract.md](llm-api-contract.md) §3.5). So both spellings already in this book are each
+independently correct for the distinct package they name -- `pi-ai` for the wire-contract pages,
+`pi-coding-agent` here and wherever the CLI's own tool-calling/session/UI behavior is the subject -- not an
+error to reconcile.
+
+**Schemas are authored in TypeBox, not raw JSON Schema or Zod, with per-field descriptions on every
+parameter this session inspected.** Every built-in tool's `parameters` field is a `Type.Object({...})`
+construction from the `typebox` package (which compiles to a JSON Schema `input_schema` at the wire level,
+per the library's own purpose, though this session did not additionally trace pi's own JSON-Schema
+serialization step). The pattern is consistent across all eight tools read this session: `bash`'s schema
+carries `command: Type.String({ description: "Shell command to execute" })` and an optional
+`timeout: Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })`; `edit`'s
+schema nests a `Type.Array` of `Type.Object({ oldText, newText })` pairs, each carrying its own
+`description` naming the field's exact contract (`oldText`'s: "Exact text for one targeted replacement. It
+must be unique in the original file and must not overlap with any other edits[].oldText in the same
+call."); `grep`, `find`, and `ls` all carry a `description` on every optional parameter that states its own
+default inline (`limit`'s on `grep`: "Maximum number of matches to return (default: 100)"). This is the
+same tool-level-plus-parameter-level description discipline §1.1 documents Anthropic's own docs
+recommending and §4.3 documents OpenCode's `edit.ts` independently converging on -- a third,
+independently-implemented harness reaching the same authoring practice.
+
+**A genuinely distinctive convention this session found nowhere else in this page's other harness
+coverage: tool-level descriptions that embed their own runtime defaults and limits as live template
+literals, not hand-copied prose.** `find.ts`'s tool-level `description` is not a static string but a
+template literal: `` `Search for files by glob pattern. Returns matching file paths relative to the search
+directory. Respects .gitignore. Output is truncated to ${DEFAULT_LIMIT} results or ${DEFAULT_MAX_BYTES /
+1024}KB (whichever is hit first).` `` -- `DEFAULT_LIMIT` and `DEFAULT_MAX_BYTES` are the same constants
+`find.ts`'s own truncation logic consumes at execution time, so the model-facing text describing the
+tool's limits cannot silently drift out of sync with the tool's actual enforced behavior the way a
+hand-written sentence restating the same number in prose could. `grep.ts` and `ls.ts` follow the identical
+pattern for their own truncation limits and match-count caps. This is a poka-yoke move one level removed
+from the ones [system-prompt-design-as-craft.md](system-prompt-design-as-craft.md) §1.5 and this page's
+own §1.2 document (making a wrong model *action* structurally impossible) -- here the thing made
+structurally impossible is a wrong model-facing *description*, by sourcing the description's numbers from
+the same code path that enforces them rather than letting the two independently drift.
+
+**A model-quirk-specific input-coercion shim runs before schema validation, named directly in source
+comments as a named-model compatibility fix rather than generic defensive coding.** `edit.ts` exposes a
+`prepareArguments` hook (part of the `ToolDefinition<TParams, ...>` interface itself, read in full from
+`extensions/types.ts`: "Optional compatibility shim to prepare raw tool call arguments before schema
+validation. Must return an object conforming to TParams.") whose own implementation comment states its
+target directly: `"Some models (Opus 4.6, GLM-5.1) send edits as a JSON string instead of an array. Others
+send a single edit object instead of a one-element edits array."` The function attempts a `JSON.parse` on
+a string-typed `edits` field and re-wraps a bare single-edit object into a one-element array before the
+declared schema ever validates the input, and separately migrates a legacy flat `{oldText, newText}` call
+shape (from an older tool-call convention the docs read this session do not date) into the current
+`edits[]` array shape. This is a concrete, source-verified instance of a design point Gorilla's own
+hallucinated-argument framing ([system-prompt-design-as-craft.md](system-prompt-design-as-craft.md) §2.4,
+this page's own §2.3) predicts in the abstract -- models genuinely do emit argument shapes that are
+*wrong* relative to a tool's declared schema, in specific and apparently model-family-correlated ways --
+and pi's own authoring response is a named, targeted normalization layer sitting structurally between the
+model's raw output and schema validation, rather than either tightening the schema to reject the malformed
+shape outright or leaving the caller to retry blind.
+
+**Grammar-constrained ("strict") schema sampling exists in pi's own tool-definition interface but is
+opt-in, experimental, and phrased as a preference rather than a guarantee -- a materially weaker posture
+than Anthropic's own stated default-off/hard-guarantee-when-on design (§1.2).** Every `ToolDefinition`
+carries an optional `constrainedSampling?: false | ConstrainedSamplingConfig` field (read directly from
+`extensions/types.ts`), and every built-in tool this session read sets it via a shared helper,
+`getExperimentalToolSampling()` (`packages/coding-agent/src/core/experimental.ts`, read in full):
+
+```
+const PREFER_STRICT_TOOL_SAMPLING = { type: "json_schema", strict: "prefer" } as const;
+export function areExperimentalFeaturesEnabled(): boolean {
+    return process.env.PI_EXPERIMENTAL === "1";
+}
+export function getExperimentalToolSampling() {
+    return areExperimentalFeaturesEnabled() ? PREFER_STRICT_TOOL_SAMPLING : undefined;
+}
+```
+
+Two things follow directly from this source read, both worth setting explicitly against §1.2's Anthropic
+citation rather than left implicit: first, constrained sampling is off by default for every built-in tool
+in pi -- it activates only when the operator sets the `PI_EXPERIMENTAL=1` environment variable, unlike
+Anthropic's own `strict: true`, which a tool author sets per-tool-definition as a stable, production-facing
+choice; second, even when enabled, the value pi requests is `strict: "prefer"` (an OpenAI-Chat-Completions-
+shaped `{type: "json_schema", strict: ...}` request object, per the field's own naming, distinct from
+Anthropic's plain boolean), which -- read at face value against the field's own name -- asks the provider
+to *prefer* grammar-constrained sampling rather than asserting Anthropic's own documented guarantee
+("Functions receive correctly-typed arguments every time," §1.2). *BEST CURRENT UNDERSTANDING, UNCONFIRMED*
+beyond what this literal source excerpt states: this session did not additionally trace how each of pi's
+own four wire-protocol adapters ([llm-api-contract.md](llm-api-contract.md) §3.5's
+`anthropic-messages`/`openai-completions`/`openai-responses`/`google-generative-ai` protocol modules)
+actually maps this one `constrainedSampling` value onto each provider's own strict/grammar-constrained
+request shape, so whether `"prefer"` is honored, silently ignored, or translated into a provider-specific
+hard guarantee on any one of those four backends is not established here -- only that pi's own tool-
+definition surface treats the feature as experimental and preference-phrased at the point tools declare it.
+
 ---
 
 ## 2. Naming and description conventions that measurably affect tool-selection accuracy
@@ -280,6 +389,62 @@ a schema-validation problem, which is why §2.1's namespacing and
 negative-boundary guidance and §2.2's BFCL relevance-detection
 category are the more directly relevant grounding for it than strict
 mode is.
+
+### 2.4 pi: flat, un-namespaced tool names, and a second, dedicated prompt-guidance channel distinct from `description`
+
+VERIFIED, same source read as §1.5 (`packages/coding-agent/src/core/tools/*.ts` and
+`packages/coding-agent/src/core/extensions/types.ts`, `github.com/earendil-works/pi`, `main` branch, this
+session).
+
+**Naming: eight flat, single-word tool names, with no namespacing prefix of the kind §2.1 documents
+Anthropic recommending.** `packages/coding-agent/src/core/tools/index.ts`'s own `ToolName` union names the
+full built-in surface directly: `"read" | "bash" | "powershell" | "edit" | "write" | "grep" | "find" |
+"ls"`. None carries a service or vendor prefix, unlike the `github_list_prs`/`slack_send_message` pattern
+§2.1 documents Anthropic's own docs recommending "when your tools span multiple services or resources" --
+consistent with, not a violation of, that guidance's own stated condition, since none of pi's eight
+built-in tools spans an external service boundary the way an MCP-server-backed tool would; the namespacing
+question only becomes live for pi once a user or extension registers additional MCP-server-backed tools
+alongside these eight, which this session's source read did not additionally trace.
+
+**Descriptions vary sharply in length across pi's own built-in tools, in a way that does not uniformly
+match the "good" example's four-sentence density §1.1 documents from Anthropic's own worked pair.**
+`bash`'s tool-level description is a single terse sentence with no explicit stated boundary: `"Shell
+command to execute"` (matching, if anything, the *shape* of Anthropic's own "poor" `get_stock_price`
+example -- one line, no negative boundary, no explicit statement of what the tool will not do) even though
+its parameter-level description on `command` is likewise terse. `write`'s description, by contrast, runs to
+three clauses stating both a state-transition contract and a side effect: "Write content to a file. Creates
+the file if it doesn't exist, overwrites if it does. Automatically creates parent directories." `edit`'s
+description is denser still, stating the tool's matching-uniqueness contract and an explicit
+anti-overlap instruction in the same sentence (quoted in full at §1.5 above). This spread is worth naming
+plainly rather than smoothing over: within one harness's own built-in tool set, description density is not
+applied uniformly even to tools of comparable structural complexity, and `bash` in particular -- arguably
+the single highest-blast-radius tool in the set, since it can invoke arbitrary shell commands -- is also
+the one with the thinnest prose boundary describing what it should and should not be used for.
+
+**A second, dedicated tool-usage-guidance channel exists in pi's own `ToolDefinition` interface, distinct
+from `description` and not named as an equivalent mechanism on any other harness's own tool-definition
+surface this book has documented.** Every built-in tool additionally carries an optional `promptSnippet`
+(a one-line entry "for the Available tools section in the default system prompt") and an optional
+`promptGuidelines` array ("guideline bullets appended to the default system prompt Guidelines section when
+this tool is active"), both read directly from `extensions/types.ts`'s own `ToolDefinition` interface
+comments. `edit.ts`'s own `editToolSystemPromptContribution` object is the concrete worked instance: a
+`snippet` field ("Make precise file edits with exact text replacement, including multiple disjoint edits
+in one call") plus four `guidelines` bullets that restate and sharpen the schema's own `oldText`-uniqueness
+and no-overlap rules as imperative system-prompt instructions rather than schema-attached prose (e.g. "Keep
+edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged
+regions."). This is a structurally different mechanism from both halves of the tension §1.1's `input_schema
+description` field and [system-prompt-design-as-craft.md](system-prompt-design-as-craft.md) §2's system-prompt
+few-shot examples already establish: it is not schema-attached (the model does not read `promptGuidelines`
+inside the same JSON-Schema text `description` occupies, per §1.1's own framing of what the model literally
+reads), but it is also not a free-standing few-shot example the way that page's `<examples>` block is --
+it is a tool-scoped fragment of ordinary system-prompt prose, assembled into the system prompt's own
+"Available tools"/"Guidelines" sections specifically *because* that tool is currently active, giving a tool
+author a second, editorially separate place to put usage guidance that is verbose enough to feel
+system-prompt-shaped without bloating the `input_schema`'s own `description` field the model reads as part
+of its tool-definitions block. *BEST CURRENT UNDERSTANDING, UNCONFIRMED* whether Claude Code, Copilot CLI,
+or OpenCode's own tool-registration surfaces expose a comparable second channel -- no source fetched in this
+session or cross-referenced from this book's own prior research names an equivalent mechanism for any of
+the other three harnesses, so treat its apparent absence there as unconfirmed-as-absent, not proven absent.
 
 ---
 
@@ -440,6 +605,59 @@ descriptions were found bloating context badly enough to need an
 enforced ceiling -- a second, independently-documented data point that
 schema/description size at scale is a real, shipped engineering
 concern, not a hypothetical one.
+
+### 3.4 pi: eight flat, narrow tools -- including a platform-doubled shell pair -- plus in-call batching as a distinct, narrower form of consolidation
+
+VERIFIED, same source read as §1.5/§2.4 (`packages/coding-agent/src/core/tools/index.ts`,
+`github.com/earendil-works/pi`, `main` branch, this session).
+
+**pi's own built-in count sits close to OpenCode's, and its granularity choice on the read/write/search
+surface is unambiguously many-narrow, not consolidated.** `index.ts`'s `allToolNames` set names exactly
+eight built-in tools -- `read`, `bash`, `powershell`, `edit`, `write`, `grep`, `find`, `ls` -- putting pi
+between [built-in-tools.md](built-in-tools.md) §3.1's roughly-seventeen-entry OpenCode list and its §1.1
+thirty-entry Claude Code list, and, unlike OpenCode's own consolidated `edit` *permission* key (§3.2 above),
+pi keeps `grep`/`find`/`ls` as three fully separate tools rather than folding them under one
+parameterized `search`- or `action`-style tool the way Anthropic's own `writing-tools-for-agents` worked
+example (§3.1 above) recommends for a conceptually adjacent `read_logs` -> `search_logs` collapse. Each of
+pi's three read-only tools also carries its own independently-tuned default limit and truncation
+byte-cap baked into its own description (§1.5 above) rather than a shared, single search abstraction --
+consistent with, and a real concrete instance of, this section's own many-narrow pole rather than the
+consolidated pole.
+
+**A platform-driven doubling this book's other two harnesses' own tool inventories do not exhibit: `bash`
+and `powershell` exist as two separate, named tools rather than one shell-execution tool that dispatches
+internally by platform.** Both `createBashToolDefinition` and `createPowerShellToolDefinition` are
+separately exported, separately named (`name: "bash"` / a distinct `powershell` name, per `bash.ts`'s and
+`powershell.ts`'s own module exports read via `index.ts`), and separately included in `createAllTools`'s
+returned tool set. *BEST CURRENT UNDERSTANDING, UNCONFIRMED* as to why pi chose two named tools here rather
+than the single internally-dispatching tool its own `edit`/`write` design otherwise favors (§1.5, below) --
+no docs or comments fetched this session state the rationale directly -- but a plausible reading, given
+Anthropic's own consolidation guidance is explicitly framed around operations that are each individually
+*complex* judgment calls best hidden behind one dispatching tool (§3.1 above), is the reverse case: `bash`
+and `powershell` are not two branches of one underlying operation the way `create_pr`/`review_pr`/`merge_pr`
+are -- they are two genuinely different executables with different quoting, escaping, and command-syntax
+conventions the model must generate correct arguments for, so collapsing them into one tool would reintroduce
+exactly the single-free-text-field risk §1.4 documents Anthropic's own format-priority guidance warning
+against (the model would still have to know, and correctly encode, which shell dialect its command string
+targets) rather than removing an artificial distinction the way the `Task*`-vs-`TodoWrite` case this page's
+own §3.2 already flags as the opposite, unresolved tension for Claude Code.
+
+**A narrower, call-level form of consolidation exists inside the `edit` tool itself, distinct from -- and
+not a counterexample to -- this section's tool-*count* framing.** §1.5 above already documents `edit`'s
+schema accepting an `edits[]` array of `{oldText, newText}` pairs rather than a single pair per call, with
+its own `promptGuidelines` (§2.4) explicitly instructing the model to prefer "one edit call with multiple
+entries in edits[]" over "multiple edit calls" for several separate changes to one file. This is worth
+distinguishing precisely from Anthropic's own `action`-parameter consolidation (§3.1 above): Anthropic's
+pattern collapses several *distinct tool definitions* (`create_pr`/`review_pr`/`merge_pr`) into one tool
+choosing among *qualitatively different operations*; pi's `edits[]` batching instead collapses several
+*calls to the same tool*, each doing the *same kind* of operation (one exact-text replacement) against
+different locations in the same file, into one call. Both share the same underlying payoff Anthropic's own
+`writing-tools-for-agents` post states for its worked examples (§3.1) -- moving work that would otherwise
+cost the model several turns and several thousand tokens of intermediate reasoning into one call executed
+once, deterministically -- but they operate on different axes of the tool surface (which distinct tools
+exist, versus how much one tool call can accomplish), and a harness can adopt one without the other, exactly
+as pi does here: eight narrow, un-consolidated tools at the definition level, one of which is internally
+batchable at the call level.
 
 ---
 
@@ -703,6 +921,91 @@ best-effort-guess design, for the identical class of tool
 (exact-string-match file editing) where a wrong guess is much more
 costly than an explicit, actionable refusal.
 
+### 4.5 pi's own `edit` tool: fuzzy-match tolerance before failure, index-qualified batch errors, and a real write-vs-edit idempotency contrast
+
+VERIFIED by direct source read this session, `github.com/earendil-works/pi`, `main` branch --
+`packages/coding-agent/src/core/tools/edit.ts` and `edit-diff.ts`, read in full. This is the third
+independently-implemented harness this page can document at genuine source precision on the identical
+exact-string-replacement-tool design problem §4.3 (OpenCode) and §4.4 (Claude Code) already cover.
+
+```mermaid
+flowchart TD
+    A["edit tool call: {path, edits[]}"] --> B["prepareArguments:\ncoerce JSON-string edits,\nsingle-object edits,\nlegacy oldText/newText shape"]
+    B --> C{"file exists\nand readable?"}
+    C -->|No| E1["'Could not edit file: PATH. Error code: ENOENT.'"]
+    C -->|Yes| D["for each edits[i]:\noldText.length === 0?"]
+    D -->|Yes| E2["'edits[i].oldText must not be empty in PATH.'"]
+    D -->|No| F["exact match in file?"]
+    F -->|No| G["retry: fuzzy match\n(NFKC, smart quotes/dashes/spaces normalized)"]
+    G -->|No match either| E3["'Could not find edits[i] in PATH.\nThe oldText must match exactly...'"]
+    G -->|Match found| H["count occurrences\n(fuzzy-normalized space)"]
+    F -->|Match found| H
+    H -->|"> 1"| E4["'Found N occurrences of edits[i] in PATH.\nEach oldText must be unique...'"]
+    H -->|"== 1"| I["sort matches by position,\ncheck adjacent-pair overlap"]
+    I -->|Overlap| E5["'edits[i] and edits[j] overlap in PATH.\nMerge them...'"]
+    I -->|No overlap| J["apply all replacements"]
+    J --> K{"baseContent === newContent?"}
+    K -->|Yes| E6["'No changes made to PATH.\nThe replacement produced identical content...'"]
+    K -->|No| L["write file, return diff + patch"]
+```
+
+**Fuzzy-match tolerance runs silently before a match failure is ever reported, a step neither
+[built-in-tools.md](built-in-tools.md) §1.4's Claude Code `Edit` gate nor §4.3's OpenCode `edit.ts`
+description documents as part of its own no-match failure path.** `edit-diff.ts`'s `fuzzyFindText` tries an
+exact `indexOf` match first and, only on failure, retries against a `normalizeForFuzzyMatch`-transformed
+copy of both the file content and the model's own `oldText` -- a transformation that Unicode-NFKC-
+normalizes the text, strips trailing per-line whitespace, and folds three classes of visually-similar
+Unicode characters down to their plain-ASCII equivalents, per the source's own inline comments: smart
+single and double quotation marks to a plain `'`/`"`; several Unicode dash and hyphen code points
+(hyphen, non-breaking hyphen, figure dash, en dash, em dash, horizontal bar, minus sign) to a plain ASCII
+hyphen; and several Unicode space variants (non-breaking space, the U+2000-series spacing characters,
+narrow no-break space, medium mathematical space, ideographic space) to a plain space. Only
+if the *fuzzy*-normalized search still fails does the tool report the `"Could not find..."` error quoted in
+the diagram above. This is a genuine design choice with a real tradeoff, not a strictly better version of
+the stricter exact-match-or-refuse designs §4.3/§4.4 document for OpenCode and Claude Code: it recovers a
+whole class of near-miss `oldText` values (a model that reproduced a code block correctly but substituted a
+straight quote for a curly one, or a regular hyphen for an em-dash it copied from rendered markdown) that
+those two harnesses' own stricter designs would refuse outright, at the cost of pi's own edit tool silently
+accepting an `oldText` that is not, byte-for-byte, actually present in the file -- a real but narrower
+version of the risk §1.2 documents strict/grammar-constrained sampling closing off for malformed *arguments*
+generally, here applied specifically to a fuzzy *content*-matching tolerance rather than a schema-shape
+tolerance.
+
+**Every failure mode in the batch-edit pipeline gets its own named error function, and every one of those
+functions is itself index-aware -- singular phrasing for a one-edit call, `edits[i]`-qualified phrasing for
+a batched call -- rather than one generic message reused regardless of batch size.** Reading
+`edit-diff.ts`'s five dedicated error constructors directly (`getNotFoundError`, `getDuplicateError`,
+`getEmptyOldTextError`, `getNoChangeError`, plus an inline overlap-detection throw) shows each one branching
+on `totalEdits === 1` to choose between a plain, unindexed sentence ("Could not find the exact text in
+PATH...") and an indexed one naming exactly which array entry failed ("Could not find edits[2] in PATH...")
+-- directly the same "actionable... states what a corrected retry would need to satisfy" shape §4.2's MCP
+tool-execution-error taxonomy and §4.3's OpenCode error catalogue both converge on independently, but
+extended here to a batch-call shape neither of those two sources' own worked examples needed to solve,
+since neither Claude Code's `Edit` nor the version of OpenCode's `edit` tool §4.3 documents accepts more
+than one replacement per call. The overlap check specifically (`edits[${previous.editIndex}] and
+edits[${current.editIndex}] overlap in ${path}. Merge them into one edit or target disjoint regions.`) is a
+failure mode with no analogue in either single-replacement design at all, since overlap between two
+distinct edits is only a possible failure once a tool accepts more than one edit per call in the first
+place -- a direct consequence of §3.4's `edits[]`-batching design choice creating a new error surface that a
+single-replacement tool's own error catalogue never has to cover.
+
+**A real, source-verified idempotency contrast between pi's own `write` and `edit` tools, converging with
+§4.3's OpenCode finding on the identical underlying logic despite neither codebase referencing the other.**
+`write.ts`'s own description states its contract directly: "Creates the file if it doesn't exist,
+overwrites if it does" -- calling `write` twice with byte-identical `{path, content}` arguments produces the
+same end state both times, a genuinely, MCP-`idempotentHint`-sense-repeatable operation (§4.1's vocabulary,
+cross-referenced here rather than re-derived). `edit`, by the same logic §4.3 already establishes for
+OpenCode's own targeted-replacement tool, is not: a second identical call's `oldText` no longer matches the
+file's post-first-edit content (assuming the edit changed the matched span), so `getNotFoundError`'s branch
+fires on the retry rather than silently no-op'ing or re-applying -- and, per that same section's own
+generalization, a second call failing with "Could not find..." is itself positive evidence the first call
+already succeeded, the identical read this page already established for OpenCode's own `edit` tool, now
+independently confirmed true of a second, unrelated implementation of the same operation. No MCP-style
+`readOnlyHint`/`destructiveHint`/`idempotentHint` annotation vocabulary (§4.1) was found attached to any of
+pi's own `ToolDefinition` fields read this session -- treat that as this session's own negative search
+result (no such field appears in `extensions/types.ts`'s `ToolDefinition` interface), not as a confirmed,
+documented design decision by pi's own authors to omit the vocabulary deliberately.
+
 ---
 
 ## 5. Synthesis
@@ -761,11 +1064,35 @@ tool-execution-error split and Anthropic's "actionable... not opaque"
 guidance both name from the specification and API-guidance sides
 respectively.
 
+**pi, folded into this same picture as a fourth, independently-implemented data point rather than a
+repeat of Claude Code's or OpenCode's own findings.** On schema authoring (§1.5), pi corroborates the
+tool-level-plus-parameter-level description discipline §1.1 and §4.3 already establish, adds a genuinely
+new poka-yoke move (template-literal descriptions sourced from the same constants that enforce a tool's
+own limits) neither other harness's source exhibited, and treats grammar-constrained sampling as an
+experimental, preference-phrased opt-in rather than Anthropic's own stated default-off/hard-guarantee-
+when-on design -- a real, sourced point of *divergence*, not convergence, worth keeping distinct from this
+page's other cross-harness agreements. On naming (§2.4), pi adds a second tool-usage-guidance channel
+(`promptSnippet`/`promptGuidelines`) this page found no equivalent for elsewhere, while also showing that
+even one harness's own built-in tool set does not apply description-density discipline uniformly (`bash`'s
+one-line description against `edit`'s multi-clause one). On granularity (§3.4), pi sits many-narrow like
+OpenCode and Claude Code, but demonstrates that call-level batching (`edits[]`) and tool-definition-level
+consolidation (Anthropic's `action`-parameter pattern) are separable axes a harness can adopt independently.
+On idempotency and errors (§4.5), pi is the third independently-implemented harness (after Claude Code and
+OpenCode) to converge on refuse-with-a-specific-actionable-reason for ambiguous or non-matching string
+replacement, extends that catalogue with index-qualified batch errors neither single-replacement design
+needed, and reaches the identical write-is-idempotent/edit-is-not conclusion OpenCode's own source
+independently established -- while also being the one harness in this page's coverage whose edit tool
+silently *tolerates* a class of near-miss text (Unicode quote/dash/space variants) that the other two
+harnesses' stricter exact-match designs would refuse outright, a genuine three-way design split this page
+would not have surfaced without reading pi's own source directly.
+
 ---
 
 ## Sources
 
-All fetched fresh this session (2026-08-17) unless noted otherwise.
+All fetched fresh this session (2026-08-17) unless noted otherwise. The pi sections (§1.5, §2.4, §3.4,
+§4.5, and this page's synthesis paragraph on pi) were added in a later session, fetched fresh 1 September
+2026, and are dated separately in their own Sources entry below.
 
 **Anthropic (authoritative for Claude's documented tool-definition
 behavior and Anthropic's own recommended tool-design technique; not
@@ -834,6 +1161,37 @@ not a stable release tag):**
   `packages/opencode/src/tool/edit.ts` (the per-field schema
   descriptions, the nine-strategy fuzzy-match cascade, and the six
   distinct, quoted failure messages in §4.3).
+
+**pi (authoritative for its own real implementation, read directly from source; fetched fresh
+1 September 2026 from `github.com/earendil-works/pi`, `main` branch, via
+`gh api repos/earendil-works/pi/contents/...`):**
+- `packages/coding-agent/package.json` -- the published package name (`@earendil-works/pi-coding-agent`),
+  its own `description` field, and its `@earendil-works/pi-ai` runtime dependency, resolving §1.5's
+  two-package-name question directly from source.
+- `packages/coding-agent/src/core/tools/index.ts` -- the full eight-tool `ToolName` union (`read`, `bash`,
+  `powershell`, `edit`, `write`, `grep`, `find`, `ls`) and the `createAllTools`/`createCodingToolDefinitions`
+  grouping functions cited in §3.4.
+- `packages/coding-agent/src/core/tools/edit.ts` -- the `editSchema`/`replaceEditSchema` TypeBox
+  definitions, the `editToolSystemPromptContribution` snippet/guidelines object, the `prepareArguments`
+  model-quirk-coercion function and its Opus-4.6/GLM-5.1 source comment, and the tool's own `description`
+  and `constrainedSampling` wiring -- cited across §1.5, §2.4, §3.4, and §4.5.
+- `packages/coding-agent/src/core/tools/edit-diff.ts` -- `normalizeForFuzzyMatch`, `fuzzyFindText`,
+  `countOccurrences`, and the five named error constructors (`getNotFoundError`, `getDuplicateError`,
+  `getEmptyOldTextError`, `getNoChangeError`, plus the inline overlap-detection throw) cited in full in §4.5.
+- `packages/coding-agent/src/core/tools/bash.ts`, `write.ts`, `find.ts`, `grep.ts`, `ls.ts` -- each tool's
+  own TypeBox schema, tool-level `description` (including `find`/`grep`/`ls`'s template-literal descriptions
+  citing their own `DEFAULT_LIMIT`/`DEFAULT_MAX_BYTES` constants), and `write`'s overwrite-semantics
+  description underlying §4.5's idempotency contrast -- cited across §1.5, §2.4, and §3.4.
+- `packages/coding-agent/src/core/extensions/types.ts` -- the full `ToolDefinition` interface (`name`,
+  `label`, `description`, `promptSnippet`, `promptGuidelines`, `parameters`, `constrainedSampling`,
+  `prepareArguments`, `executionMode`, `execute`), read in full and cited across §1.5, §2.4, and §4.5's
+  negative search for an MCP-annotation-style field.
+- `packages/coding-agent/src/core/experimental.ts` -- the `PREFER_STRICT_TOOL_SAMPLING` constant,
+  `areExperimentalFeaturesEnabled()`'s `PI_EXPERIMENTAL` environment-variable gate, and
+  `getExperimentalToolSampling()`, quoted in full in §1.5.
+- Cross-referenced against [llm-api-contract.md](llm-api-contract.md) §3.5's own pi coverage (the
+  `packages/ai/README.md`-sourced multi-provider wire-protocol findings) only to establish the
+  two-package-name distinction in §1.5 -- not re-fetched or re-verified here.
 
 **This book's own prior, cross-referenced findings (not re-fetched or
 re-verified in this session; cited as already-established per this

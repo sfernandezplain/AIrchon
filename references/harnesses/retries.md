@@ -144,8 +144,8 @@ math after it initially undercounted or over-retried:
   found Claude Code applying a **small, hard-coded circuit breaker** (3
   attempts, no configurability) rather than the large-but-eventually-
   unbounded-via-watchdog policy the main request path uses. Worth flagging
-  as a contrast point for §4: the same product ships two philosophically
-  different retry postures for two different subsystems.
+  as a contrast point for §4.5 and §5: the same product ships two
+  philosophically different retry postures for two different subsystems.
 
 A related historical reversal, evidence Claude Code has previously
 over-corrected in the *other* direction (too little retrying) and had to
@@ -573,24 +573,302 @@ project to add one.
 
 ---
 
-## 4. Synthesis
+## 4. pi
 
-| Dimension | Claude Code | Copilot CLI | OpenCode |
+**A package-naming note this book owes itself.** This session fetched
+`github.com/earendil-works/pi`'s own `package.json` files directly (`gh api
+repos/earendil-works/pi/contents/packages/ai/package.json` and .../
+`packages/coding-agent/package.json`) to settle the spelling inconsistency
+flagged across this book's existing pi sections. Both spellings this book has
+used are correct -- they name two different sibling packages in the same
+monorepo, not one package under two names: `packages/ai` publishes as
+`@earendil-works/pi-ai` (`"description": "Unified LLM API with automatic model
+discovery and provider configuration"`, the wire-protocol/multi-provider layer
+[llm-api-contract.md](llm-api-contract.md) §3.5 and
+[auth-and-usage-accounting.md](auth-and-usage-accounting.md) §4 document), and
+`packages/coding-agent` publishes as `@earendil-works/pi-coding-agent`
+(`"description": "Coding agent CLI with read, bash, edit, write tools and
+session management"`, `"bin": {"pi": "dist/bundle/cli.js"}` -- the actual `pi`
+CLI product every other pi section in this book, and the retry-specific
+material below, is really about). A third sibling package this session's
+research also surfaced, relevant specifically to this page, is
+`packages/agent`, publishing as `@earendil-works/pi-agent-core`
+(`"description": "General-purpose agent with transport abstraction, state
+management, and attachment support"`) -- the durable execution engine
+`pi-coding-agent` is itself built on top of, source of §4.6 below. All three
+are versioned in lockstep (`0.84.4` at the time of this session's fetch) inside
+one repository; treat any future single-spelling citation elsewhere in this
+book as shorthand for whichever of the three the surrounding claim concerns,
+not evidence of one package renaming itself.
+
+### 4.1 Three layers, not one: transport retry, turn retry, and durable retry state
+
+```mermaid
+flowchart TD
+    Turn["Agent turn or compaction/summarization call\n(packages/coding-agent)"] --> Outer["retryAssistantCall()\npackages/ai/src/utils/retry.ts\nwraps the WHOLE assistant-producing call"]
+    Outer --> Classify1{"response.stopReason"}
+    Classify1 -->|"'aborted'"| Term1["Terminal -- never retried"]
+    Classify1 -->|"'error', isRetryableAssistantError()\ntrue (regex over errorMessage text)"| Bounded1["Retry: settings.retry.maxRetries\n(default 3), delay = baseDelayMs * 2^(attempt-1)\n(default 2000ms: 2s,4s,8s), no jitter"]
+    Classify1 -->|"'error', pattern says non-retryable\n(quota/billing/GoUsageLimit text)"| Term2["Terminal -- returned immediately"]
+    Bounded1 --> Inner["Each retried attempt calls down into:\nretryProviderRequest()\npackages/ai/src/utils/provider-retry.ts\nwraps ONE raw SDK/HTTP request"]
+    Inner --> Classify2{"HTTP status / x-should-retry header"}
+    Classify2 -->|"408, 409, 429, >=500,\nor x-should-retry: true"| Bounded2["Retry: settings.retry.provider.maxRetries\n(default 0 -- OFF), honors\nretry-after(-ms) header capped at\nmaxRetryDelayMs (default 60s),\nelse min(0.5*2^i, 8s) with -0..25% jitter"]
+    Classify2 -->|"other status, or maxRetryDelayMs\nexceeded"| Escalate["Throws -- message text ('retry delay'\netc.) re-enters the OUTER classifier\nas a retryable error"]
+    Escalate --> Classify1
+    Bounded1 --> Durable["pi-agent-core (packages/agent):\nRetryPolicy captured inline in durable\noperation state; retryable failure ->\n'retry_wait' state {nextAttempt, notBefore};\nsurvives process crash/resume"]
+```
+
+The critical fact this diagram makes explicit, source-verified across three
+distinct files this session read in full: pi does not have one retry
+mechanism, it has an **outer, turn-level policy wrapping an inner,
+request-level policy**, both independently configurable and independently
+capped, plus a third, structurally separate concern -- a durable,
+crash-recoverable representation of retry state inside `pi-agent-core`'s own
+operation state machine, covered in §4.6. This is architecturally closest to
+OpenCode's own two-layer split (§3.1), but pi's two layers classify
+retryability by genuinely different means from each other (regex/string
+matching on error text at the outer layer; HTTP status codes and an
+SDK-supplied header at the inner layer) rather than by two independent
+readings of the same structured error taxonomy the way OpenCode's inner and
+outer layers both do.
+
+### 4.2 The inner, request layer: `retryProviderRequest` -- reimplementing the SDKs' own policy, made abortable
+
+VERIFIED, `packages/ai/src/utils/provider-retry.ts`, full file read this
+session. The module's own doc comment states its purpose plainly: "Reproduce
+the retry behavior used by the OpenAI and Anthropic SDKs while making their
+backoff sleep interruptible. Their built-in retry timers ignore the request
+AbortSignal, so callers must invoke the SDK with `maxRetries: 0` and wrap the
+request with this helper." A second comment marks this as a maintenance
+liability pi's own authors flagged explicitly: `isRetryableProviderError`
+carries the note "Mirrors the pinned OpenAI/Anthropic SDK retry policy; review
+when either SDK is upgraded" -- i.e. this is a deliberately hand-copied
+reimplementation of a third party's retry logic, not a wrapper that delegates
+to it, and pi's own source acknowledges the resulting drift risk.
+
+Retryability: an `x-should-retry` response header, if present, wins outright
+(`"true"` retries, `"false"` does not); otherwise the function retries on HTTP
+408, 409, 429, or any status `>= 500`, or on any error with no status at all
+(a raw transport failure). Backoff: a `retry-after-ms` header value is used
+verbatim if present and parseable; failing that, a `retry-after` header is
+parsed as either a seconds count or an HTTP date and converted to a
+millisecond offset; failing both, the function falls back to `Math.min(0.5 *
+2 ** retryIndex, 8) * 1000` -- an exponential schedule capped at 8 seconds --
+multiplied by `(1 - Math.random() * 0.25)`, i.e. **negative-only jitter**: the
+computed delay is always shortened by 0-25%, never lengthened, a materially
+different jitter shape from OpenCode's symmetric ±20% band (§3.2) or Claude
+Code's floor-only treatment of a short server `Retry-After` (§1.4). Either
+header-derived or computed, the delay is passed through
+`validateServerRetryDelayMs()`, which **throws** rather than waits if the
+value exceeds `maxRetryDelayMs` (default 60,000ms): "Server requested Ns retry
+delay (max: Ms)." -- a fail-fast-on-an-excessive-server-requested-wait
+behavior distinct from every other harness this page examines, none of which
+document refusing to honor an oversized `Retry-After` outright.
+
+`maxRetries` at this layer defaults to `0` -- **off** -- per the function
+signature (`options.maxRetries ?? 0`) and confirmed independently by
+`settings.md`'s own default table in §4.4 below. A comment on the retry loop
+itself records a subtle correctness property: "Each retry is a fresh SDK
+request, so X-Stainless-Retry-Count remains zero" -- because pi disables the
+Stainless-generated OpenAI/Anthropic SDK client's own internal retry counter
+(`maxRetries: 0`) and re-issues a wholly new request object per attempt
+itself, the SDK's own telemetry header never reflects that a retry happened
+at all, a client-observable side effect of choosing to reimplement rather than
+delegate to the SDK's retry loop. Aborts are handled by an
+`AbortSignal`-aware `abortableSleep()` that rejects immediately if the signal
+is already aborted or fires mid-sleep, converting to a named `AbortError`.
+
+### 4.3 The outer, turn layer: `retryAssistantCall` and its string-pattern error classifier
+
+VERIFIED, `packages/ai/src/utils/retry.ts`, full file read this session,
+cross-checked against `packages/ai/test/retry.test.ts`'s 20+ classification
+cases. `retryAssistantCall()` wraps `produce(): Promise<AssistantMessage>` --
+a whole assistant-message-producing call, which in practice is either one
+agent turn or (per §4.5) one compaction/summarization call, not a single HTTP
+request. Its own doc comment states the full behavior: "A successful response
+is returned immediately. Aborts are terminal and never retried... A
+non-retryable error... is returned immediately so deterministic errors fail
+fast. Otherwise retries up to `maxRetries` times with exponential backoff."
+The policy shape is the same `{enabled, maxRetries, baseDelayMs}` triple
+`settings.md` documents (§4.4); the per-attempt delay is `baseDelayMs * 2 **
+(attempt - 1)` with **no jitter at all** at this layer -- jitter here exists
+only one layer down, inside §4.2's inner retry.
+
+Classification (`isRetryableAssistantError`) is deliberately **not**
+status-code-based -- it is two large, named, hand-maintained regular
+expressions matched against the plain-text `errorMessage` string, source-read
+in full: `NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN` (checked first, wins on
+a tie) matches OpenCode's own `GoUsageLimitError`/`FreeUsageLimitError` JSON
+error-type names, subscription-limit wording ("Monthly usage limit reached,"
+"available balance"), and generic quota/billing exhaustion text
+(`insufficient_quota`, "out of budget," "quota exceeded," "billing");
+`RETRYABLE_PROVIDER_ERROR_PATTERN` matches generic overload/rate-limit/HTTP
+5xx wording, wrapper text for upstream failures (including an OpenRouter
+"Provider returned error" pattern and an "exceeded request buffer limit while
+retrying upstream" pattern, both tagged to specific pi GitHub issue numbers in
+source comments, `#2264` and unlabeled respectively), a long list of
+network/transport-failure substrings (`ENOTFOUND`, `EAI_AGAIN`, "socket hang
+up," "connection refused," generic `timeout`), WebSocket-specific close/error
+text, SDK-specific premature-stream-ending messages (Anthropic's "stream ended
+before message_stop," tagged `#4433`; a Bedrock/Smithy HTTP/2 no-response
+error, tagged `#3594`), explicit retry-guidance phrases some providers emit
+mid-stream ("you can retry your request," "try your request again," tagged
+`#6019`), gRPC's `ResourceExhausted` (for NVIDIA NIM), and -- the one pattern
+that exists purely to couple this layer to §4.2 -- the literal substring
+`"retry delay"`, with a source comment explaining why: "Provider-requested
+retry delay cap failures should flow through the outer retry policy so
+callers can surface/abort the backoff (`#1123`)." This is a **deliberate,
+named cross-layer coupling**: when §4.2's inner layer throws its
+`maxRetryDelayMs`-exceeded error, that thrown error's own message text is
+worded so it matches this outer layer's retryable pattern, meaning an
+inner-layer cap violation does not simply fail the turn outright -- it
+re-enters the outer, turn-level retry budget and backoff instead, exactly as
+the flowchart in §4.1 shows.
+
+Callback hooks (`onRetryScheduled`, `onRetryAttemptStart`, `onRetryFinished`)
+fire around each attempt; `onRetryScheduled` is what the coding-agent product
+uses to drive user-facing retry countdown UI, and (per §4.5) the identical
+mechanism is reused, under a different event name, for compaction's own
+summarization retries. An abort that lands **during** the backoff sleep is
+normalized to the same `stopReason: "aborted"` `AssistantMessage` shape a
+provider-level abort would produce, "so callers do not need to care when
+cancellation happened" -- the same don't-make-the-caller-distinguish-abort-
+timing design goal §3.3 found, independently, in OpenCode's own
+`SessionRetry`.
+
+### 4.4 Settings surface, and the documented reason to keep the inner layer off
+
+VERIFIED, `packages/coding-agent/docs/settings.md`, "Retry" section, fetched
+in full this session.
+
+| Setting | Type | Default | Effect |
 |---|---|---|---|
-| Verifiability | Docs + changelog; no public implementation | Changelog only; docs page found is generic platform guidance, not CLI-specific | Source-verified (`packages/llm`, `packages/opencode`), `dev` branch (caveat applies) |
-| Architecture | One documented, named policy ("Automatic Retries") | Not documented as one named mechanism; changelog implies per-subsystem fixes (MCP, streaming, HTTP/2) rather than one shared module (BEST CURRENT UNDERSTANDING, UNCONFIRMED) | Two explicit, source-verified layers: bounded transport retry (`RequestExecutor`) wrapped by a separately-classified, effectively unbounded session-turn retry (`SessionRetry`) |
-| Default attempt cap | 10 (`CLAUDE_CODE_MAX_RETRIES`), capped at 15 unless `CLAUDE_CODE_RETRY_WATCHDOG` is set (then ~300 or unlimited for capacity errors) | Not documented | Inner layer: 2 retries (3 attempts). Outer layer: **no cap** in the `Schedule` itself |
-| Backoff formula | Exponential, with the client-computed value enforced as a *minimum* even against a small server `Retry-After` (v2.1.98 fix) | Not documented for the CLI's own requests (cookbook page shows only example client code) | Inner: exponential with ±20% jitter, capped at 10s. Outer: `retry-after(-ms)` header if present (capped only by ~24.8-day 32-bit ceiling), else 2s×2^(attempt-1) capped at 30s if no headers at all |
-| Non-retryable carve-outs | TLS cert validation, Bedrock content-type mismatch, mid-response partial failures (kept, not retried) | Not documented at this granularity | Auth (401/403), quota-exceeded, content-policy, invalid-request/context-overflow, transport errors -- all `retryable: false` at the inner layer; context-overflow additionally hard-excluded at the outer layer |
-| User-visible retry UX | Spinner countdown `Retrying in Ns · attempt x/y`; reason label revealed at attempt 3 (v2.1.198); stall banner at 20s (90s during advisor calls) | Not documented in mechanism-level detail; changelog confirms "user-friendly" rate-limit timing messages exist (0.0.389) | Session-status object (`{type:"retry", attempt, message, action, next}`) rendered by the TUI's/app's own `SessionRetry` component |
-| Alternative-to-retry mitigation | `fallbackModel`: up to 3 ordered fallback models, retried once on an unexpected non-retryable error (auth/rate-limit/request-size/transport excluded) | `continueOnAutoMode`: auto-switches to auto model-selection on rate limit instead of pausing | Free-tier/Go-usage-limit responses surface a subscribe/upgrade action link rather than only backing off |
-| User-facing config lever | `CLAUDE_CODE_MAX_RETRIES`, `CLAUDE_CODE_RETRY_WATCHDOG`, `API_TIMEOUT_MS` | None found | None found on the docs config page; two open feature requests ask for exactly this (§3.4) |
-| Known failure mode, self-reported | Historical: v2.1.110's retry cap had to be reverted one version later for trading hangs for outright failures; voice-mode retry loop was unbounded until fixed (v2.1.204) | A remote-session heartbeat loop retried a rejected request "every few seconds forever" until fixed in 1.0.66 | Live, open issue (#17648, fetched this session): 173 consecutive retries over 2.5 hours, backoff growing past 7 minutes with no circuit breaker, corroborated by several further open issues/feature requests found (not independently fetched) |
+| `retry.enabled` | boolean | `true` | Enables the outer, §4.3 turn-level retry |
+| `retry.maxRetries` | number | `3` | Outer-layer attempt cap |
+| `retry.baseDelayMs` | number | `2000` | Outer-layer backoff base (2s, 4s, 8s at attempts 1-3) |
+| `retry.provider.timeoutMs` | number | SDK default | Per-request timeout passed to the underlying SDK client |
+| `retry.provider.maxRetries` | number | `0` | Inner, §4.2-layer attempt cap -- **off** by default |
+| `retry.provider.maxRetryDelayMs` | number | `60000` | Inner-layer cap beyond which a server-requested delay fails fast instead of waiting (§4.2); `0` disables the cap entirely |
 
-**The design lesson.** All three harnesses draw the same basic
+The docs state the reason for the inner layer's off-by-default posture
+directly, and it is a genuine architectural warning, not a generic
+recommendation: "Keep `retry.provider.maxRetries` at `0` unless provider-level
+retries are explicitly needed. Setting it above `0` can make SDK/provider
+retries handle out-of-usage-limit errors before Pi sees them, which may block
+the agent until the provider quota resets in some circumstances." In other
+words, turning on the inner, status-code-based layer risks the SDK itself
+silently absorbing and re-waiting-out an error that the outer,
+string-pattern-based layer would have classified as a **non-retryable**
+quota/billing exhaustion and failed fast on instead -- the two layers'
+independently-authored classifiers can disagree, and the documented
+recommendation is to let the outer layer see every failure first by leaving
+the inner layer's own retry budget at zero.
+
+### 4.5 Reuse by compaction: the same policy, not a separate hard-coded loop
+
+VERIFIED, `packages/coding-agent/test/suite/regressions/
+6647-compaction-retries-transient-stream-drop.test.ts`, full file read this
+session, plus its own doc comment: "Regression for `#6647`: compaction runs a
+single non-retried summarization call, so a transient mid-stream socket death
+(`terminated`) failed the whole compaction. Verifies that summarization now
+reuses `settings.retry` (bounded retries with exponential backoff gated on
+`isRetryableAssistantError`), emits `summarization_retry_*` events, and that
+aborts / non-retryable errors are not retried." The test suite exercises this
+directly: a scripted transient `"terminated"` error retried twice before a
+scripted success (asserting exactly `maxAttempts + 1` calls and a matching
+`summarization_retry_scheduled`/`summarization_retry_finished` event pair), a
+scripted `"insufficient_quota"` error that is **not** retried at all (zero
+`summarization_retry_scheduled` events, immediate rejection), a case with
+`retry.enabled: false` behaving identically to the non-retryable case, a case
+where `maxRetries` is exhausted and the failure still propagates after the
+correct number of attempts, and a case where `abortCompaction()` mid-backoff
+is asserted to terminate the retry loop and mark `compaction_end` as
+`aborted: true`.
+
+This is a direct, worthwhile contrast against Claude Code's own compaction
+retry loop (§1.4): Claude Code ships compaction's own **separate, small,
+hard-coded circuit breaker** (3 attempts, no configurability, per its
+changelog's v2.1.76 entry) rather than routing through its main API-request
+policy. pi does the opposite -- compaction's summarization call is wired
+through the exact same `retryAssistantCall`/`settings.retry` policy an
+ordinary agent turn uses, configurable by the same two settings-file keys,
+distinguished from an ordinary turn only by which `summarization_retry_*`
+event name the callbacks emit. [context-compression.md](context-compression.md)
+§4.5 documents the companion fact this page does not re-derive: pi keeps
+**overflow recovery** (a context-window-exceeded failure) on a structurally
+separate code path from this retry-with-backoff mechanism entirely --
+`custom-provider.md`'s own guidance warns a custom-provider author
+specifically against letting an overflow-error-message normalization also
+match rate-limit/throttling text, "would falsely trigger compaction instead
+of pi's normal retry-with-backoff path" -- the same clean-carve-out discipline
+this page finds independently, from source, in OpenCode's context-overflow
+handling (§3.2-3.3) and Claude Code's docs (§1.1).
+
+### 4.6 A third, structurally distinct layer: durable, crash-recoverable retry state in `pi-agent-core`
+
+VERIFIED, `github.com/earendil-works/pi`'s `packages/agent/docs/harness.md`
+(the `@earendil-works/pi-agent-core` package's own design document, fetched in
+full this session), read alongside `packages/agent/src/harness/
+agent-harness.ts` (source, also fetched in full). This is a formal,
+state-machine-level specification for a different concern than §4.2-4.5:
+**surviving a process crash or restart mid-retry**, something no other
+harness's retry mechanism this page documents is shown to do explicitly.
+`agent-harness.ts` holds a `private retryPolicy: RetryPolicy` field defaulting
+to `{ enabled: false, maxRetries: 0, baseDelayMs: 1000 }` when no policy is
+supplied at construction -- **disabled by default at this framework layer**;
+it is `pi-coding-agent`'s own `settings.md` defaults (§4.4) that turn it on
+for end users of the actual CLI product, a distinct default from the
+framework it is built on, worth stating precisely rather than conflating the
+two.
+
+`harness.md`'s own state tables describe the mechanism: at the moment an
+assistant-generation checkpoint begins, the harness "conditionally
+snapshot[s] current lane config, stream options, and normalized retry policy
+inline into the context" as part of one atomic transaction moving the
+operation into a `ready` state with `nextAttempt: 1`. On a retryable error
+with attempts remaining, the operation moves to a dedicated `retry_wait`
+state carrying `nextAttempt: k+1` and a `notBefore` timestamp -- a durable
+register, not an in-memory timer -- and the doc states explicitly: "For each
+attempt... an elapsed retry wait first returns to `ready`," meaning if the
+process crashes or restarts while a retry backoff is pending, reopening the
+operation reads this durable `retry_wait` state directly rather than
+inferring position from a journal, and resumes the wait (or immediately
+proceeds, if `notBefore` has already elapsed) "under the **captured** retry
+policy" from when the operation began -- explicitly *not* whatever the
+harness's live retry-policy setting might have changed to in the meantime.
+The doc is equally explicit that this state machine checks context-window
+**overflow** before retryable-error classification ("retryable `error`,
+attempts remain / otherwise" is evaluated only after the overflow branch),
+independently corroborating, from this different and more formal source, the
+overflow-is-a-separate-path finding §4.5 already draws from
+`custom-provider.md`. Numeric edges are stated precisely too:
+`RetryPolicy`'s `maxRetries` and `baseDelayMs` "must be finite non-negative
+safe integers and `maxRetries + 1` must remain safe; disabled retry
+normalizes to one attempt," and "exponential delay and `notBefore` arithmetic
+saturate at `Number.MAX_SAFE_INTEGER`" -- an explicit overflow guard on the
+backoff math itself, a concern none of Claude Code's, Copilot CLI's, or
+OpenCode's own retry documentation states this page found equivalently.
+
+---
+
+## 5. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi |
+|---|---|---|---|---|
+| Verifiability | Docs + changelog; no public implementation | Changelog only; docs page found is generic platform guidance, not CLI-specific | Source-verified (`packages/llm`, `packages/opencode`), `dev` branch (caveat applies) | Source-verified across all three sibling packages (`pi-ai`, `pi-coding-agent`, `pi-agent-core`), `main` branch, plus its own settings docs and a regression-test file |
+| Architecture | One documented, named policy ("Automatic Retries") | Not documented as one named mechanism; changelog implies per-subsystem fixes (MCP, streaming, HTTP/2) rather than one shared module (BEST CURRENT UNDERSTANDING, UNCONFIRMED) | Two explicit, source-verified layers: bounded transport retry (`RequestExecutor`) wrapped by a separately-classified, effectively unbounded session-turn retry (`SessionRetry`) | Two explicit, source-verified layers with deliberately different classifiers (status-code-based inner `retryProviderRequest`, string-pattern-based outer `retryAssistantCall`), plus a third, durable crash-recovery state machine in `pi-agent-core` tracking retry state across process restarts |
+| Default attempt cap | 10 (`CLAUDE_CODE_MAX_RETRIES`), capped at 15 unless `CLAUDE_CODE_RETRY_WATCHDOG` is set (then ~300 or unlimited for capacity errors) | Not documented | Inner layer: 2 retries (3 attempts). Outer layer: **no cap** in the `Schedule` itself | Outer layer: 3 (`retry.maxRetries`, configurable). Inner layer: 0 -- **off by default** (`retry.provider.maxRetries`), and `pi-agent-core`'s own framework-level default is also `{enabled: false}` |
+| Backoff formula | Exponential, with the client-computed value enforced as a *minimum* even against a small server `Retry-After` (v2.1.98 fix) | Not documented for the CLI's own requests (cookbook page shows only example client code) | Inner: exponential with ±20% jitter, capped at 10s. Outer: `retry-after(-ms)` header if present (capped only by ~24.8-day 32-bit ceiling), else 2s×2^(attempt-1) capped at 30s if no headers at all | Outer: `baseDelayMs * 2^(attempt-1)` (default 2s, 4s, 8s), **no jitter**. Inner: `retry-after(-ms)` header if present (capped at `maxRetryDelayMs`, default 60s, or throws if exceeded rather than waiting), else `min(0.5*2^i, 8s)` with **negative-only** (-0 to -25%) jitter |
+| Non-retryable carve-outs | TLS cert validation, Bedrock content-type mismatch, mid-response partial failures (kept, not retried) | Not documented at this granularity | Auth (401/403), quota-exceeded, content-policy, invalid-request/context-overflow, transport errors -- all `retryable: false` at the inner layer; context-overflow additionally hard-excluded at the outer layer | Quota/billing/Go-usage-limit text (checked first, wins ties) at the outer layer; aborts are terminal at both layers; overflow is checked before retryable-error classification and routed to compaction instead, confirmed independently from both `custom-provider.md` and `pi-agent-core`'s own state-machine doc |
+| User-visible retry UX | Spinner countdown `Retrying in Ns · attempt x/y`; reason label revealed at attempt 3 (v2.1.198); stall banner at 20s (90s during advisor calls) | Not documented in mechanism-level detail; changelog confirms "user-friendly" rate-limit timing messages exist (0.0.389) | Session-status object (`{type:"retry", attempt, message, action, next}`) rendered by the TUI's/app's own `SessionRetry` component | `onRetryScheduled`/`onRetryAttemptStart`/`onRetryFinished` callbacks drive UI countdown; the identical mechanism is reused for compaction under a `summarization_retry_*` event name instead |
+| Alternative-to-retry mitigation | `fallbackModel`: up to 3 ordered fallback models, retried once on an unexpected non-retryable error (auth/rate-limit/request-size/transport excluded) | `continueOnAutoMode`: auto-switches to auto model-selection on rate limit instead of pausing | Free-tier/Go-usage-limit responses surface a subscribe/upgrade action link rather than only backing off | None found; quota/billing text is classified non-retryable and fails fast instead |
+| User-facing config lever | `CLAUDE_CODE_MAX_RETRIES`, `CLAUDE_CODE_RETRY_WATCHDOG`, `API_TIMEOUT_MS` | None found | None found on the docs config page; two open feature requests ask for exactly this (§3.4) | `retry.enabled`, `retry.maxRetries`, `retry.baseDelayMs`, `retry.provider.timeoutMs`, `retry.provider.maxRetries`, `retry.provider.maxRetryDelayMs` -- the most granular documented lever of the four harnesses examined |
+| Known failure mode, self-reported | Historical: v2.1.110's retry cap had to be reverted one version later for trading hangs for outright failures; voice-mode retry loop was unbounded until fixed (v2.1.204) | A remote-session heartbeat loop retried a rejected request "every few seconds forever" until fixed in 1.0.66 | Live, open issue (#17648, fetched this session): 173 consecutive retries over 2.5 hours, backoff growing past 7 minutes with no circuit breaker, corroborated by several further open issues/feature requests found (not independently fetched) | Historical: compaction's summarization call previously ran an unretried single call at all (`#6647`, fixed by wiring it into the shared `retry.*` policy); no equivalent open unbounded-retry issue found this session |
+
+**The design lesson.** All four harnesses draw the same basic
 distinction -- a status-code/error-type taxonomy that separates
 "try again, this is transient" from "stop, this needs a human or a
-different request" -- and all three exclude authentication failures,
+different request" -- and all four exclude authentication failures,
 malformed requests, and (where the concept applies) context-overflow from
 retry outright. Where they diverge sharply is in how tightly the *retry
 budget itself* is bounded once a failure is classified as transient.
@@ -602,7 +880,7 @@ Copilot CLI's changelog reads as a series of independent, per-subsystem
 retry hardenings rather than evidence of one shared, named policy, with
 at least one instance (the 1.0.66 heartbeat loop) of a genuinely unbounded
 retry shipping and later being fixed. OpenCode is the one harness of the
-three whose *current*, still-open state is a documented-by-its-own-users
+four whose *current*, still-open state is a documented-by-its-own-users
 unbounded retry: its inner transport layer is tightly bounded (2 retries,
 10-second cap, jittered), but that bound is not the retry budget a user
 actually experiences, because the outer, whole-turn-wrapping
@@ -610,7 +888,19 @@ actually experiences, because the outer, whole-turn-wrapping
 common case of a provider that returns rate-limit or overload headers on
 every attempt, is bounded only by a 32-bit integer overflow point roughly
 24.8 days away -- a gap this page's own source-reading and its
-cross-referenced, live-fetched GitHub Issue agree on independently.
+cross-referenced, live-fetched GitHub Issue agree on independently. pi is
+the one harness of the four that inverts the usual bounding direction: its
+inner, SDK-mirroring layer is the one left effectively unbounded-by-default
+in the sense of being *off* (`maxRetries: 0`), specifically because its own
+docs identify a correctness risk in turning it on (an SDK-level retry could
+silently re-wait-out an error the outer, string-pattern classifier would
+have failed fast on as a quota/billing exhaustion); the outer, turn-level
+layer carries the real, small, user-configurable budget (3 attempts by
+default), and a third, independent concern -- surviving a process crash
+mid-backoff -- is handled by a wholly separate, source-verified durable
+state machine in `pi-agent-core` that snapshots the retry policy inline into
+crash-recoverable operation state, a property this page found no equivalent
+of, confirmed or claimed, in any of the other three harnesses.
 
 ---
 
@@ -681,3 +971,45 @@ stable release tag):**
   session -- the live, user-reported corroboration of the unbounded
   session-level retry behavior cited in §3.4, including its own quoted
   (and since partially superseded) excerpt of `delay()`.
+
+**pi (authoritative for its own documented behavior AND its own real
+implementation across all three sibling packages; fetched 1 September 2026
+from `github.com/earendil-works/pi`, `main` branch):**
+- `packages/ai/package.json` and `packages/coding-agent/package.json` (via
+  `gh api repos/earendil-works/pi/contents/...`) -- settled this book's own
+  spelling inconsistency: `@earendil-works/pi-ai` and
+  `@earendil-works/pi-coding-agent` are two different sibling packages in one
+  monorepo, not two names for one package (§4 intro).
+- `packages/ai/src/utils/provider-retry.ts` (via `gh api`, full 125-line file)
+  -- the inner, request-level `retryProviderRequest()` mechanism covered in
+  §4.2: its status-code/`x-should-retry`-header retryability rule, its
+  header-honoring/negative-jitter/`maxRetryDelayMs`-capped backoff formula,
+  its default-off `maxRetries`, and its own "mirrors the pinned OpenAI/
+  Anthropic SDK retry policy" and "X-Stainless-Retry-Count remains zero"
+  source comments.
+- `packages/ai/src/utils/retry.ts` (via `gh api`, full 229-line file) and
+  `packages/ai/test/retry.test.ts` (via `gh api`, full 223-line file) -- the
+  outer, turn-level `retryAssistantCall()`/`isRetryableAssistantError()`
+  mechanism covered in §4.3: its two named regex classifiers (including the
+  deliberate `"retry delay"` cross-layer coupling to §4.2, sourced to pi's
+  own `#1123`/`#2264`/`#3594`/`#4433`/`#6019` issue-number comments), its
+  no-jitter exponential backoff, and its abort-during-backoff normalization.
+- `packages/coding-agent/docs/settings.md`, "Retry" section (via `gh api`,
+  fetched in full) -- the `retry.*`/`retry.provider.*` settings table and the
+  docs' own stated reason to keep `retry.provider.maxRetries` at `0`, both
+  covered in §4.4.
+- `packages/coding-agent/test/suite/regressions/
+  6647-compaction-retries-transient-stream-drop.test.ts` (via `gh api`, full
+  file) -- the regression test and its own doc comment covered in §4.5,
+  confirming compaction's summarization call now reuses `settings.retry` and
+  emits `summarization_retry_*` events rather than running one unretried call
+  as it previously did.
+- `packages/agent/package.json`, `packages/agent/docs/harness.md`, and
+  `packages/agent/src/harness/agent-harness.ts` (via `gh api`, all fetched in
+  full) -- the `@earendil-works/pi-agent-core` package's own formal
+  state-machine specification and source, covered in §4.6: the durable,
+  crash-recoverable `retry_wait`/`notBefore` operation state, the
+  captured-at-start retry-policy semantics, the framework-level
+  `{enabled: false}` default distinct from the coding-agent CLI's own
+  enabled-by-default settings, and the `Number.MAX_SAFE_INTEGER` backoff-math
+  saturation guard.

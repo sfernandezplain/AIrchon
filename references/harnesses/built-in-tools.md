@@ -10,7 +10,7 @@ alongside the built-ins, see [MCP integration](mcp-integration.md).
 
 Every claim below is tagged VERIFIED (fetched this session from the
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code,
-Copilot CLI, and OpenCode are three separate products from three
+Copilot CLI, OpenCode, and pi are four separate products from four
 separate organizations -- nothing confirmed for one is assumed for
 another. Sources and fetch dates at the bottom.
 
@@ -493,7 +493,180 @@ sources fetched for this page is not proof of absence in the product.
 
 ---
 
-## 4. Synthesis -- the same six jobs, three different tool surfaces
+## 4. pi
+
+Sources for this section: VERIFIED, fetched 1 September 2026 directly from
+`github.com/earendil-works/pi`, `main` branch -- `packages/coding-agent/docs/usage.md`
+(the "Tool Options" and "Design Principles" sections, in full), `packages/coding-agent/docs/index.md`,
+and, since no `tools.md` doc page exists in this repo, the source tree itself as the
+primary inventory: `packages/coding-agent/src/core/tools/index.ts` (the canonical
+`ToolName` union and the four tool-selection helper functions built on it), `bash.ts`,
+`powershell.ts`, `read.ts`, `write.ts`, `edit.ts`, `grep.ts`, `find.ts`, `ls.ts` (each
+tool's own Typebox input schema and system-prompt-contribution snippet), and
+`packages/coding-agent/src/utils/tools-manager.ts` (the `fd`/ripgrep binary-fetch
+mechanism behind `find`/`grep`). Also `packages/coding-agent/package.json` and
+`packages/ai/package.json` directly (exact npm package names, resolving this book's own
+inconsistent spelling -- §4.1 below) and
+`packages/coding-agent/examples/extensions/subagent/README.md` (confirming subagent
+dispatch is an example extension, not a built-in tool). VERIFIED unless flagged
+otherwise; this section does not re-derive pi's permission/sandbox model or its skill
+mechanism, both already covered in full elsewhere in this book -- see
+[Permissions and sandboxing](permissions-and-sandboxing.md) §5 and
+[Built-in skills](built-in-skills.md) §4.
+
+### 4.1 Two distinct npm packages behind one name -- resolving this book's own inconsistent spelling
+
+This book has cited pi under two different package names across its other pages --
+`@earendil-works/pi-ai` (named in [LLM API contract](llm-api-contract.md) §3.5,
+[configuration.md](configuration.md), [context-compression.md](context-compression.md),
+and elsewhere) and `@earendil-works/pi-coding-agent`
+(named in [Session & transcript persistence](session-persistence.md) and
+[Deterministic orchestration](deterministic-orchestration.md)). Fetched directly from the
+repo's own manifests this session, both names are correct -- they are two separate,
+independently-described, identically-versioned (0.84.4 as of this fetch) packages in the
+same monorepo, not a spelling inconsistency to resolve in favor of one over the other:
+
+- **`@earendil-works/pi-ai`** (`packages/ai/package.json`) describes itself as a "Unified
+  LLM API with automatic model discovery and provider configuration" -- this is the
+  model/provider-abstraction *library* [LLM API contract](llm-api-contract.md) §3.5
+  documents, importable independently of the CLI product.
+- **`@earendil-works/pi-coding-agent`** (`packages/coding-agent/package.json`) describes
+  itself as a "Coding agent CLI with read, bash, edit, write tools and session
+  management," and its `bin` entry (`"pi": "dist/bundle/cli.js"`) is what actually
+  installs the `pi` command a user runs (`npm install -g --ignore-scripts
+  @earendil-works/pi-coding-agent`, per the repo's own `index.md` quickstart). This is the
+  package -- and specifically its bundled tool set -- this section covers.
+
+So a claim about pi's LLM-provider abstraction layer is correctly cited as `pi-ai`; a
+claim about the terminal agent product itself (its tools, its TUI, its session format) is
+correctly cited as `pi-coding-agent`. Neither name is an error for the other anywhere it
+already appears in this book; a future editing pass across pi's sections should keep both
+names, picking whichever the specific claim is actually about, rather than collapsing
+them into one.
+
+### 4.2 The canonical built-in tool set: eight tools, named as a closed union in source
+
+pi's own `usage.md` states the inventory in one line, in the "Tool Options" section of its
+CLI reference: "Built-in tools: `read`, `bash`, `powershell` (Windows), `edit`, `write`,
+`grep`, `find`, `ls`." This is corroborated exactly, independently, by the package's own
+source: `packages/coding-agent/src/core/tools/index.ts` defines `type ToolName = "read" |
+"bash" | "powershell" | "edit" | "write" | "grep" | "find" | "ls"` as a closed union with
+no ninth member, and an `allToolNames: Set<ToolName>` built from the identical eight
+strings. There is no `tools.md` reference page in the docs tree the way `usage.md`,
+`security.md`, or `skills.md` exist as standalone pages -- the CLI reference's one-line
+enumeration and the source union are the two citable inventories, and they agree.
+
+| Tool | What it does | Mechanical detail (source-verified) |
+|---|---|---|
+| `read` | Reads file contents | Schema: `path`, optional 1-indexed `offset`, optional `limit`. Truncates via `truncateHead` against `DEFAULT_MAX_BYTES`/`DEFAULT_MAX_LINES` (from `truncate.ts`) when a whole-file read would exceed them. Also handles images (`processImage`, MIME-sniffed via `detectSupportedImageMimeTypeFromFile`). The system-prompt contribution explicitly tells the model "Use read to examine files instead of cat or sed." |
+| `bash` | Executes shell commands | Spawns via Node's `child_process.spawn`, using `getShellConfig`/`getShellEnv` for the resolved shell and environment; a caller-supplied timeout is converted to milliseconds and capped at `MAX_TIMEOUT_MS` (2,147,483,647 ms, i.e. the largest 32-bit signed integer -- effectively ~24.8 days, not a deliberately chosen product ceiling like Claude Code's 10-minute one). Output goes through the same `truncate.ts` byte/line ceilings as `read`. |
+| `powershell` | Windows-primary native PowerShell execution | Implemented as a thin wrapper over the same `bash.ts` shell-operations machinery (`PowerShellOperations = BashOperations`, `PowerShellToolInput = BashToolInput`), not a separate execution engine; prepends a UTF-8 console-output fix-up snippet before every command and documents that the model "can inspect `PI_*` environment variables for current model and session details." |
+| `edit` | Targeted string-replacement edits | Schema takes an array of `{oldText, newText}` edits per call (not a single pair), each `oldText` required to be exact, unique in the file, and non-overlapping with any other edit in the same call -- diff-based (`computeEditsDiff`/`generateUnifiedPatch` from `edit-diff.ts`), never regex or fuzzy matching, same family of guarantee as Claude Code's Edit (§1.4) and OpenCode's edit (§3.1), independently implemented. |
+| `write` | Creates or fully overwrites a file | Schema: `path`, `content`. Recursively creates parent directories (`fs.mkdir(dir, {recursive: true})`) before writing; the system-prompt contribution tells the model to "use write only for new files or complete rewrites." |
+| `grep` | Searches file contents | Schema: `pattern` (regex by default, `literal: true` for a literal string), optional `path`, `glob` filter, `ignoreCase`, `context` lines, and `limit` (default 100 matches). Its own system-prompt snippet states it "respects `.gitignore`." Not a JS regex engine wrapping Node's own `fs` reads -- it shells out (`child_process.spawn`) to an actual `ripgrep` (`rg`) binary, resolved and auto-installed by `ensureTool` (§4.3 below) rather than implemented in-process. |
+| `find` | Finds files by glob pattern | Schema: `pattern` (glob, e.g. `**/*.spec.ts`), optional `path`, `limit` (default 1000). Its system-prompt snippet likewise states it "respects `.gitignore`." Backed the same way as `grep` -- shells out to an actual `fd` (`sharkdp/fd`) binary via `ensureTool`, not an in-process glob implementation. |
+| `ls` | Lists directory contents | Schema: `path`, `limit` (default 500). Plain `fs.readdir`/`fs.stat`-based, no external binary dependency the way `grep`/`find` have. |
+
+Note the naming divergence from both other harnesses in this book: pi's file-finding tool
+is named `find` (glob-pattern-driven, functionally the same job as Claude Code's `Glob`
+and OpenCode's `glob`), not `glob` -- a naming choice worth remembering when reading pi
+source, docs, or `--tools`/`--exclude-tools` flag values, since `find` here has nothing to
+do with a `.gitignore`-respecting file listing that happens to share its name with the
+POSIX `find` command's argument style; the schema is a single glob string, not POSIX
+`find`'s predicate-expression grammar.
+
+### 4.3 Session-start tool selection, not a per-call permission gate
+
+[Permissions and sandboxing](permissions-and-sandboxing.md) §5.2 already documents the
+mechanism in full (pi ships no permission-rule engine and no per-call approval prompt at
+all, by explicit design) -- restated here only to the extent it bears on *which* of the
+eight tools above a given session even has in scope: `--tools`/`-t <list>` allowlists
+named built-in, extension, or custom tools; `--exclude-tools`/`-xt <list>` disables named
+ones while leaving the rest; `--no-builtin-tools`/`-nbt` disables all eight built-ins while
+keeping extension/custom tools active; `--no-tools`/`-nt` disables everything. All four
+are fixed for the whole session at launch -- there is no `ask` tier, no runtime toggle, and
+no distinction between a read-only and a mutating tool once it is in scope for that
+session.
+
+### 4.4 `grep`/`find` shell out to real `ripgrep`/`fd` binaries, auto-fetched on demand
+
+A mechanism with no stated counterpart in Claude Code's or Copilot CLI's own documented
+`grep`/glob-equivalent tools (both describe themselves as "ripgrep-backed" without further
+elaboration -- see §1.5's Grep and §2.1's search tools): pi's `packages/coding-agent/src/utils/tools-manager.ts`
+defines a small tool-management layer (`TOOLS: Record<string, ToolConfig>`) naming `fd`
+(`repo: "sharkdp/fd"`) and `rg`/ripgrep (`repo: "BurntSushi/ripgrep"`) as external binaries
+pi resolves at runtime -- trying documented system binary names first (`fd`/`fdfind` for
+`find`'s backing binary), and, if neither is found on `PATH`, downloading the correct
+platform/architecture release asset directly from that project's own GitHub releases into
+pi's own bin directory (`getBinDir()`), with a 120-second download timeout and a
+`PI_OFFLINE` environment variable that disables the network fetch outright (`PI_OFFLINE=1`
+or `=true`/`=yes`). So `grep` and `find` are not JavaScript reimplementations of
+ripgrep/fd's matching logic -- they are thin schema/truncation/rendering wrappers
+(`grep.ts`, `find.ts`) around `child_process.spawn`-invoked calls to the genuine upstream
+binaries, fetched and cached by pi itself the first time either tool is used on a machine
+that doesn't already have them installed.
+
+### 4.5 What's absent, by pi's own stated design, and how a user gets it back
+
+`usage.md`'s own "Design Principles" section states the omission list directly, in these
+words: "It intentionally does not include built-in MCP, sub-agents, permission popups,
+plan mode, to-dos, or background bash. You can build or install those workflows as
+extensions or packages, or use external tools such as containers and tmux." Mapped
+against this page's own comparison categories:
+
+- **No built-in web-fetch or web-search tool.** No `webfetch`/`websearch`-named tool
+  appears anywhere in `packages/coding-agent/src/core/tools/` or in the `ToolName` union;
+  the only repo hits for "webfetch"/"websearch" this session were inside
+  `packages/ai/src/api/anthropic-messages.ts` (Anthropic's own server-side tool schema,
+  which `pi-ai` merely passes through when the underlying model is Claude, not a pi-native
+  tool) and one example extension. Treat "pi ships no built-in URL-fetch or web-search
+  tool of its own" as VERIFIED-as-absent from the sources fetched this session (the closed
+  eight-item `ToolName` union plus the explicit `usage.md` omission list corroborate each
+  other), not merely unconfirmed silence.
+- **No built-in subagent-dispatch tool.** Every repo hit for "subagent" this session
+  resolved to `packages/coding-agent/examples/extensions/subagent/` -- a published,
+  install-it-yourself example extension (its own `README.md`: "Delegate tasks to
+  specialized subagents with isolated context windows... This tool executes a separate
+  `pi` subprocess with a delegated system prompt and tool/model configuration"), installed
+  by symlinking its `index.ts`/`agents.ts` into `~/.pi/agent/extensions/subagent/` and
+  sample agent definitions into `~/.pi/agent/agents/`. This is the same conclusion
+  [Handoff mechanism](handoff-mechanism.md) would need to state for pi were it added there
+  (it currently has no pi section) -- pi's subagent dispatch is a first-party-published,
+  opt-in extension pattern, not a tool present by default the way Claude Code's `Agent` or
+  OpenCode's `task` are.
+- **No built-in todo/task-list tool.** "to-dos" is named explicitly in the same omission
+  sentence; `extensions.md`'s own example-use-case list even names "Stateful tools (todo
+  lists, connection pools)" as something a *user's own extension* would add via
+  `pi.registerTool()`, not something the product ships pre-registered.
+- **No built-in code-intelligence (LSP) tool.** Absent from both the `ToolName` union and
+  every docs page fetched this session -- no confirmed pi equivalent of Claude Code's
+  `LSP` (§1.5) or OpenCode's experimental `lsp` tool (§3.1) was found. BEST CURRENT
+  UNDERSTANDING, UNCONFIRMED as fully absent from the product (an extension could in
+  principle add one via `pi.registerTool()`, same as any other custom tool), but VERIFIED
+  absent from the built-in set specifically.
+- **No built-in persistent-memory tool.** No memory-store tool comparable to Copilot CLI's
+  `store_memory`/`vote_memory` (§2.1) appears in the built-in tool set or in any docs page
+  fetched this session for this topic.
+- **Skill invocation is not a distinct tool at all.** Per [Built-in skills](built-in-skills.md)
+  §4.5, pi loads a skill's full `SKILL.md` content through the ordinary `read` tool (or a
+  `/skill:name` slash command as the deterministic fallback when the model doesn't invoke
+  `read` on its own) rather than exposing a dedicated `Skill`/`skill`-named tool the way
+  Claude Code and OpenCode both do (§1.1, §3.1) -- worth flagging here specifically because
+  it means "eight built-in tools, no skill tool among them" is not an omission parallel to
+  the ones above; skill content delivery rides on a tool pi already has, not a missing
+  ninth one.
+
+Every one of the absences above is explicitly framed by pi's own docs as a deliberate,
+extension-addressable design choice -- consistent with the same "keep the core small,
+push everything else into extensions/skills/prompt templates/packages" philosophy
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §5 and
+[Permissions and sandboxing](permissions-and-sandboxing.md) §5.1 already document for pi's
+extension and sandboxing posture respectively -- not a set of gaps discovered independently
+by this page.
+
+---
+
+## 5. Synthesis -- the same twelve jobs, four different tool surfaces
 
 ```mermaid
 flowchart LR
@@ -553,60 +726,96 @@ flowchart LR
         O11["lsp (experimental,<br/>opt-in flag)"]
         O12["none built in"]
     end
-    J1 -.-> C1 & G1 & O1
-    J2 -.-> C2 & G2 & O2
-    J3 -.-> C3 & G3 & O3
-    J4 -.-> C4 & G4 & O4
-    J5 -.-> C5 & G5 & O5
-    J6 -.-> C6 & G6 & O6
-    J7 -.-> C7 & G7 & O7
-    J8 -.-> C8 & G8 & O8
-    J9 -.-> C9 & G9 & O9
-    J10 -.-> C10 & G10 & O10
-    J11 -.-> C11 & G11 & O11
-    J12 -.-> C12 & G12 & O12
+    subgraph PI["pi"]
+        P1["bash / powershell"]
+        P2[read]
+        P3[write]
+        P4[edit]
+        P5["grep (spawns real<br/>rg binary)"]
+        P6["find (spawns real<br/>fd binary)"]
+        P7["none built in --<br/>extension only"]
+        P8["none built in --<br/>extension only"]
+        P9["none built in --<br/>example extension only"]
+        P10["none built in --<br/>excluded by design"]
+        P11["none built in"]
+        P12["none built in"]
+    end
+    J1 -.-> C1 & G1 & O1 & P1
+    J2 -.-> C2 & G2 & O2 & P2
+    J3 -.-> C3 & G3 & O3 & P3
+    J4 -.-> C4 & G4 & O4 & P4
+    J5 -.-> C5 & G5 & O5 & P5
+    J6 -.-> C6 & G6 & O6 & P6
+    J7 -.-> C7 & G7 & O7 & P7
+    J8 -.-> C8 & G8 & O8 & P8
+    J9 -.-> C9 & G9 & O9 & P9
+    J10 -.-> C10 & G10 & O10 & P10
+    J11 -.-> C11 & G11 & O11 & P11
+    J12 -.-> C12 & G12 & O12 & P12
 ```
 
-**Naming and rule-syntax convergence is superficial.** All three
-harnesses converge on a `kind(specifier)` shape for scoping rules --
-Claude Code's `Bash(npm run *)`, Copilot CLI's `shell(git:*)`,
-OpenCode's `"git *"` pattern under a `bash` key -- but the wildcard
-grammars differ (Claude Code's is documented as the most permissive,
-allowing `**` and broader mid-string `*`; Copilot CLI's docs state
-wildcards work only for `shell` and at the edges of a `url`; OpenCode's
-is a simple `*`/`?` glob). A rule string written for one harness is not
-portable to another even when it looks similar.
+**Naming and rule-syntax convergence is superficial, and pi mostly opts out of it
+entirely.** Claude Code, Copilot CLI, and OpenCode converge on a `kind(specifier)` shape
+for scoping rules -- Claude Code's `Bash(npm run *)`, Copilot CLI's `shell(git:*)`,
+OpenCode's `"git *"` pattern under a `bash` key -- but the wildcard grammars differ
+(Claude Code's is documented as the most permissive, allowing `**` and broader mid-string
+`*`; Copilot CLI's docs state wildcards work only for `shell` and at the edges of a `url`;
+OpenCode's is a simple `*`/`?` glob). pi has no rule-specifier grammar to compare at all --
+its only lever over tool *availability* is the coarse, session-start
+`--tools`/`--exclude-tools` allowlist (§4.3), with no per-call pattern matching on command
+or path arguments anywhere in its documented surface. A rule string written for one of the
+first three harnesses is not portable to another even when it looks similar, and none of
+them are expressible in pi's vocabulary at all.
 
-**The permission *default* differs meaningfully.** Claude Code prompts
-per-tool with documented exceptions (read-only Bash commands, Read/
-Grep/Glob for in-scope paths); Copilot CLI auto-allows a documented
-read-only set and otherwise prompts, with the same practical shape;
-OpenCode's stated default is the most permissive of the three -- "by
-default, all tools are enabled without requiring permission" -- putting
-the burden on the user to opt into `ask`/`deny` via `opencode.json`
-rather than shipping a conservative default gate. This is a real,
-sourced product difference, not a wording nuance: an OpenCode user who
-never touches the `permission` block has no per-call gate at all on
-`bash`, `edit`, or `write`, where the same user on Claude Code or
-Copilot CLI would see prompts for mutating operations from first use.
+**The permission *default* differs meaningfully, and pi is the most permissive point on
+the whole spectrum.** Claude Code prompts per-tool with documented exceptions (read-only
+Bash commands, Read/Grep/Glob for in-scope paths); Copilot CLI auto-allows a documented
+read-only set and otherwise prompts, with the same practical shape; OpenCode's stated
+default is "by default, all tools are enabled without requiring permission," putting the
+burden on the user to opt into `ask`/`deny` via `opencode.json` rather than shipping a
+conservative default gate. pi goes one step further than even that: it ships no per-call
+prompt *at all*, for any tool, under any configuration -- [Permissions and
+sandboxing](permissions-and-sandboxing.md) §5.1 documents this as an explicit design
+choice ("no built-in sandbox"), not an oversight, with the session-start allowlist (§4.3)
+as pi's one and only static lever. This is a real, sourced product difference, not a
+wording nuance: an OpenCode user who never touches the `permission` block, or a pi user
+under any configuration whatsoever, has no per-call gate at all on `bash`, `edit`, or
+`write`, where the same user on Claude Code or Copilot CLI would see prompts for mutating
+operations from first use.
 
-**Task/todo tooling is the least convergent job in the table.** Claude
-Code's own `TodoWrite` -> `Task*` migration shows the mechanism moving
-target even within one harness's history; Copilot CLI shows no
-confirmed dedicated checklist tool at all, routing task-shaped work
-through subagent dispatch instead; OpenCode keeps a simple standalone
-`todowrite` tool, explicitly disabled for subagents by default. Do not
-assume a "todo list" concept transfers between these harnesses even
-when the word appears in more than one of them.
+**Task/todo tooling is the least convergent job in the table, and pi is the one harness
+that excludes it as a matter of stated principle rather than simply lacking a confirmed
+one.** Claude Code's own `TodoWrite` -> `Task*` migration shows the mechanism moving
+target even within one harness's history; Copilot CLI shows no confirmed dedicated
+checklist tool at all, routing task-shaped work through subagent dispatch instead;
+OpenCode keeps a simple standalone `todowrite` tool, explicitly disabled for subagents by
+default; pi's own `usage.md` names "to-dos" directly in its list of things "intentionally"
+excluded from the built-in tool set, offering `pi.registerTool()`-based extensions as the
+sanctioned way to add one back (§4.5). Do not assume a "todo list" concept transfers
+between these harnesses even when the word appears in more than one of them.
 
-**Model-conditional tool substitution is a real, sourced pattern.**
-Copilot CLI's `apply_patch` toolchain swapped in specifically "for
-OpenAI Codex models" is the clearest confirmed instance in this book of
-a harness changing its own built-in tool implementation based on which
-underlying model is driving the session, rather than exposing one
-fixed tool surface regardless of model. Whether Claude Code or OpenCode
-do anything analogous was not found in any source fetched for this
-page -- treat as an open question, not a ruled-out one.
+**Model-conditional tool substitution is a real, sourced pattern -- confirmed for one
+harness, not yet found for the other three.** Copilot CLI's `apply_patch` toolchain
+swapped in specifically "for OpenAI Codex models" is the clearest confirmed instance in
+this book of a harness changing its own built-in tool implementation based on which
+underlying model is driving the session, rather than exposing one fixed tool surface
+regardless of model. Whether Claude Code, OpenCode, or pi do anything analogous was not
+found in any source fetched for this page -- treat as an open question, not a ruled-out
+one; pi's `edit`/`grep`/`find` in particular are documented as model-agnostic wrappers
+around a fixed diff algorithm and fixed `rg`/`fd` binaries (§4.2, §4.4), which weighs
+against an undiscovered model-conditional variant existing there, without ruling one out.
+
+**pi is the only harness in this book whose entire built-in tool set is a closed,
+literally-enumerated union in its own source, not just a documented list.** Claude Code's,
+Copilot CLI's, and OpenCode's inventories in §1-§3 above are all read from prose
+documentation describing an implementation this book did not independently inspect at the
+source level for this page; pi's eight-tool `ToolName` union (§4.2) is the one inventory
+in this section corroborated by both a docs-page sentence and a TypeScript source
+declaration with no room for an undocumented ninth built-in tool to exist unnoticed
+alongside it -- a materially stronger form of VERIFIED than "the docs list N tools" alone
+provides for the other three harnesses on this specific claim (their own tool
+*behavior*, once documented, is equally well-sourced -- it is specifically the
+closed-ness of the *inventory* that differs here).
 
 ---
 
@@ -622,6 +831,12 @@ page -- treat as an open question, not a ruled-out one.
 | `github/copilot-cli` `changelog.md` (via `gh api`) | 2026-07-30 | its own behavior-change history: shell/view/web-fetch/search/task-tool naming and fixes, memory tools (`store_memory`/`vote_memory`), Code Review tool, `apply_patch` for Codex models, built-in GitHub MCP server's curated default tool list and `--enable-all-github-mcp-tools` |
 | `opencode.ai/docs/tools` | 2026-07-30 | OpenCode's complete built-in tool list and per-tool description |
 | `opencode.ai/docs/permissions/` | 2026-07-30 | OpenCode's `permission` field, allow/ask/deny values, wildcard syntax, agent-level overrides |
+| `github.com/earendil-works/pi`'s `packages/coding-agent/docs/usage.md` (via `gh api`) | 2026-09-01 | pi's one-line built-in-tool enumeration ("Tool Options"), `--tools`/`--exclude-tools`/`--no-builtin-tools`/`--no-tools` flag semantics, and the "Design Principles" omission list (MCP, sub-agents, permission popups, plan mode, to-dos, background bash) |
+| `github.com/earendil-works/pi`'s `packages/coding-agent/docs/index.md` (via `gh api`) | 2026-09-01 | pi's quickstart install command, confirming the `@earendil-works/pi-coding-agent` package name as the one that installs the `pi` binary |
+| `github.com/earendil-works/pi`'s `packages/coding-agent/package.json` and `packages/ai/package.json` (via `gh api`) | 2026-09-01 | exact npm package names and each package's own one-line self-description, resolving the `pi-ai`-vs-`pi-coding-agent` naming question across this book's pi sections |
+| `github.com/earendil-works/pi`'s `packages/coding-agent/src/core/tools/index.ts`, `bash.ts`, `powershell.ts`, `read.ts`, `write.ts`, `edit.ts`, `grep.ts`, `find.ts`, `ls.ts` (via `gh api`) | 2026-09-01 | the closed eight-member `ToolName` union; each tool's own Typebox input schema, truncation behavior, and system-prompt-contribution snippet |
+| `github.com/earendil-works/pi`'s `packages/coding-agent/src/utils/tools-manager.ts` (via `gh api`) | 2026-09-01 | the `fd`/ripgrep binary resolution-and-auto-download mechanism behind `find`/`grep`, and `PI_OFFLINE`'s effect on it |
+| `github.com/earendil-works/pi`'s `packages/coding-agent/examples/extensions/subagent/README.md` (via `gh api`) | 2026-09-01 | confirming subagent dispatch is a published example extension, not a built-in tool, and its installation mechanism |
 
 Not consulted this session, and therefore not cited above: any direct
 inspection of `github.com/anomalyco/opencode`'s `dev`-branch source for
@@ -630,4 +845,8 @@ these specific tools (the docs pages sufficed for documented behavior);
 (not a direct fetch) suggested might reference a `todo`-named tool
 missing from some SDK surface -- worth an actual fetch of that repo's
 issues if a future question turns on Copilot CLI's todo/checklist
-tooling specifically.
+tooling specifically; pi's `edit-diff.ts`/`file-mutation-queue.ts`
+internals beyond what §4.2's table states, and pi's `powershell.ts`
+Windows-specific spawn path beyond the UTF-8 console fix-up already
+quoted, neither of which this page's own scope (tool inventory, not
+full shell-execution mechanics) required fetching further.

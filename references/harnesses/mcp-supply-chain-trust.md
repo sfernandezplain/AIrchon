@@ -543,7 +543,179 @@ shell" -- the same characterization [Permissions & sandboxing architecture](perm
 §3.5 already reaches for OpenCode's tool-execution model generally, restated here as it
 applies specifically to a compromised or rug-pulled third-party MCP server.
 
-## 8. Synthesis
+## 8. pi
+
+Sources fetched fresh this session, all directly from `github.com/earendil-works/pi`, `main`
+branch: `README.md` (root), `packages/coding-agent/docs/usage.md`, `packages/coding-agent/docs/packages.md`,
+and `packages/coding-agent/docs/security.md`, each read in full via `gh api
+repos/earendil-works/pi/contents/...`. Cross-referenced against this book's own prior pi
+coverage in [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) (the
+extension system generally) and [Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§5 (pi's own documented "no permission engine, no sandbox, by design" posture), neither
+re-derived here. VERIFIED unless flagged.
+
+### 8.1 A naming note this session resolved: `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` are both correct
+
+This book's own prior pages cite pi under two spellings -- `@earendil-works/pi-ai`
+([The LLM API contract](llm-api-contract.md) §3.5) and `@earendil-works/pi-coding-agent`
+([Deterministic orchestration](deterministic-orchestration.md), [Session & transcript
+persistence](session-persistence.md)) -- and this task asked whether that inconsistency is
+itself an error. Fetched directly this session: `packages/ai/package.json`'s own `name`
+field reads `"@earendil-works/pi-ai"` (description: "Unified LLM API with automatic model
+discovery and provider configuration"); `packages/coding-agent/package.json`'s own `name`
+field reads `"@earendil-works/pi-coding-agent"` (description: "Coding agent CLI with read,
+bash, edit, write tools and session management," and it is this package's `bin` entry,
+`pi`, that actually ships the `pi` executable). **Both spellings are correct, and the
+apparent inconsistency is not a book error** -- they are two sibling packages published
+from the same `earendil-works/pi` monorepo, not two names for one artifact: `pi-ai` is the
+provider-abstraction library documented in §3.5 of the LLM-API-contract page, and
+`pi-coding-agent` is the CLI binary that depends on it, documented everywhere this book
+discusses pi's actual runtime behavior. `packages.md`'s own dependency guidance confirms
+the monorepo boundary directly, naming both as bundled "core packages" a third-party pi
+package should list as `peerDependencies` rather than re-bundle:
+`@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-coding-agent`,
+`@earendil-works/pi-tui`, and `typebox`. One loose end worth naming but not chasing further:
+`security.md`'s own security-reporting section links to
+`github.com/earendil-works/pi-mono/blob/main/SECURITY.md`, a third repo name
+(`pi-mono`) this session did not independently resolve -- most plausibly a pre-rename
+artifact of the docs (the live `earendil-works/pi` repository, confirmed via `gh api
+repos/earendil-works/pi` this session, is active, unarchived, and not a fork), but flagged
+here as BEST CURRENT UNDERSTANDING, UNCONFIRMED rather than asserted as settled.
+
+### 8.2 The finding this page's brief anticipated: pi ships no MCP support at all
+
+This session's search of every `packages/coding-agent/docs/*.md` file for the string
+"mcp" (case-insensitive) returned zero matches outside the two files quoted below --
+confirmed directly, not inferred, since `settings.md`, `security.md`, `extensions.md`,
+`custom-provider.md`, `sdk.md`, `rpc.md`, `index.md`, and `docs.json` all returned nothing.
+The root `README.md` states the omission as a named, deliberate design choice, in its own
+"What pi doesn't do" framing: **"No MCP.** Build CLI tools with READMEs (see Skills), or
+build an extension that adds MCP support." -- with a link to a first-party design-rationale
+post. `packages/coding-agent/docs/usage.md` restates the same omission in a longer list:
+"It intentionally does not include built-in MCP, sub-agents, permission popups, plan mode,
+to-dos, or background bash. You can build or install those workflows as extensions or
+packages." **Supply-chain trust in MCP servers is, for pi specifically, a moot question
+at the product level for exactly the reason this page's brief anticipated: there is no
+first-party MCP client inside pi for a server to be vetted against, so there is no vetting
+mechanism -- present or absent -- to evaluate at that layer.** This is consistent with, and
+extends, [MCP integration](mcp-integration.md)'s own sibling-session finding that pi has no
+built-in MCP integration to document in the first place.
+
+```mermaid
+flowchart TD
+    A["pi ships NO built-in MCP client\n(confirmed: zero doc hits for 'mcp'\nacross packages/coding-agent/docs/*)"] --> B["README's own guidance:\nbuild an extension that adds MCP support"]
+    B --> C["Real example found this session:\npi-mcp-adapter (npm, third party,\nauthor: Nico Bailon / github.com/nicobailon)"]
+    C --> D["Installed the SAME way as any\npi package -- pi install npm:pi-mcp-adapter"]
+    D --> E["packages.md's own security notice applies\nunmodified: 'Pi packages run with full\nsystem access... Review source code\nbefore installing third-party packages'"]
+    E --> F["security.md: no built-in sandbox,\nno MCP-specific carve-out --\nsame full-process-privilege model\nas every other pi extension"]
+```
+
+**Why this matters more precisely than "pi has no MCP, full stop."** The important
+distinction the brief asked this page to draw out is that pi does not merely lack a
+documented MCP *vetting* layer the way Claude Code, Copilot CLI, and OpenCode each lack
+one on top of their own MCP *client* layers (§4-§7 above) -- pi lacks the MCP *client*
+layer itself. Whatever MCP support a pi user ends up with is not a pi-native config
+surface (there is no `.mcp.json`-equivalent, no `managed-mcp.json`-equivalent, no
+`mcp-servers` settings key found anywhere in `settings.md`) but an ordinary third-party pi
+*extension*, subject only to pi's general extension/package-installation trust model, not
+to any MCP-specific review at all -- because there is no MCP-specific code path in pi to
+review.
+
+**The rationale pi's own creator gives for the omission is about context economy and
+composability, not security -- worth stating precisely to avoid an easy but wrong
+inference.** Fetched fresh this session, `mariozechner.at/posts/2025-11-02-what-if-you-dont-need-mcp/`
+(the specific post the README's "No MCP" line links to; distinct from the
+`2025-11-30-pi-coding-agent` post already cited in this book's [Permissions &
+sandboxing architecture](permissions-and-sandboxing.md) §5, both by the same author, Mario
+Zechner, credited there as pi's own creator). The post's stated objections to MCP are
+**token cost** (a worked comparison putting Playwright MCP at "13.7k tokens (6.8% of
+Claude's context)" and Chrome DevTools MCP at "18.0k tokens (9.0%)" against a 225-token
+plain-script alternative), **poor composability** ("results returned by an MCP server have
+to go through the agent's context to be persisted to disk or combined with other
+results"), difficulty extending an existing server without understanding its whole
+codebase, and tool-list proliferation confusing the model when multiple servers are
+active together. **This session's fetch of that post found no stated security, trust, or
+supply-chain argument among pi's own reasons for omitting MCP** -- the omission is a
+product-design choice about context budget and workflow shape, not a security posture, and
+this page does not attribute a security rationale to pi's creator that the fetched source
+does not itself make.
+
+### 8.3 What actually happens when a user adds MCP support anyway: the package-installation trust model, unmodified
+
+Because MCP support only reaches a pi session through the general extension/package
+mechanism `packages.md` documents (already the subject of this book's own
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) coverage for
+extensions generally, not repeated here), every trust question this page's brief asks
+about "vetting a third-party MCP server" collapses, for pi, into "vetting a third-party pi
+package" -- and `packages.md`'s own stated posture on that question is a single, blunt
+sentence with no registry, no scanning, and no identity-proof step behind it: "**Pi
+packages run with full system access. Extensions execute arbitrary code, and skills can
+instruct the model to perform any action including running executables. Review source
+code before installing third-party packages.**" Three source types are accepted --
+`npm:@scope/pkg@version`, `git:host/user/repo@ref` (or a raw `https://`/`ssh://` URL), and
+a local filesystem path -- and none of the three carries any pi-run identity check,
+checksum pin, or code-safety scan comparable to §4.1's registry-level DNS/GitHub-OAuth
+namespace proof: an npm source is "pinned" only in the sense that a version-qualified spec
+is not silently bumped by `pi update`, and a git source is "pinned" only to a ref, not to a
+content hash. **This is the same Q1/Q2 gap this page's synthesis in §9 below already
+finds across every harness researched, reached independently by pi's own docs rather than
+inferred by this page:** pi proves nothing about who published a package or whether its
+code is safe; it only records which literal spec string a user typed.
+
+A genuinely real instance of this pattern exists on npm today: `pi-mcp-adapter`
+(`registry.npmjs.org/pi-mcp-adapter`, confirmed live this session, latest version `2.31.0`,
+maintained by `nicopreme`/Nico Bailon, `github.com/nicobailon/pi-mcp-adapter`), an
+independent, third-party package whose own npm description reads "MCP (Model Context
+Protocol) adapter extension for Pi coding agent." **This package is cited here as a
+concrete, real illustration of the README's own "build an extension that adds MCP support"
+guidance actually having been acted on by someone outside earendil-works, not as a
+pi-maintained or pi-endorsed artifact** -- installing it (`pi install npm:pi-mcp-adapter`)
+is, per §8.3's own analysis above, subject to exactly the same no-vetting package-install
+model as any other pi extension, with no MCP-specific review layered on by pi itself.
+Fetched this session directly from that package's own repository (a third-party source,
+never a pi-project or Anthropic/GitHub/MCP-project source, cited accordingly and not
+blended with any VERIFIED claim about pi itself): the adapter's own documentation states
+plainly that trust is assumed at the configuration layer -- "a socket is an explicit
+trusted local endpoint, so do not point unrelated projects or users at a mux service unless
+its tools, state, credentials, and filesystem access are intended to be shared" -- and
+implements no server-identity verification or code-safety check of its own before bridging
+to a configured MCP server. It does offer one narrower, real mechanism worth naming
+precisely because it is the only approval-shaped control found anywhere in this page's pi
+research: an `approveTools` setting gating individual tool calls **after** a server
+connection is already established -- the same per-call-not-per-server shape [Permissions &
+sandboxing architecture](permissions-and-sandboxing.md)'s enforcement layer takes for the
+other three harnesses, and no more able to answer this page's Q1 (identity) or Q3
+(continuity) questions than any of those harnesses' own equivalents in §3/§5.3/§6/§7.
+
+### 8.4 The consequence for blast radius: no sandbox, MCP-bridging extension included
+
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md) §5 already
+establishes, source-and-docs-verified, that pi ships neither a permission-rule engine nor
+an OS-level sandbox by design, and that `security.md` states this in its own words: "Pi
+does not include a built-in sandbox. Built-in tools can read files, write files, edit
+files, and run shell commands with the permissions of the pi process. Extensions are
+TypeScript modules that run with the same permissions." Applied to this page's specific
+question, a third-party MCP-bridging extension such as `pi-mcp-adapter` is, by pi's own
+stated architecture, indistinguishable in privilege from any other installed extension:
+it runs with the full permissions of the pi process, with **project trust**
+(`.pi/settings.json`-gated, `~/.pi/agent/trust.json`-persisted) governing only whether
+that extension's configuration is *loaded* in the first place, not what it is permitted to
+do once loaded -- `security.md`'s own words are explicit that project trust "is not a
+sandbox and does not restrict what the model can ask tools to do after you start working
+in a directory." This places pi at the same structural extreme [Permissions & sandboxing
+architecture](permissions-and-sandboxing.md) §5 already found for its general tool
+architecture, now confirmed specifically for the one path by which MCP servers reach a pi
+session at all: whatever a bridged, third-party-vetted-or-not MCP server can do, once
+connected through an extension pi itself never inspects, it can do with the same reach as
+pi's own built-in `read`/`write`/`bash` tools -- weaker, by construction, than Copilot
+CLI's default-on per-server MCP sandbox toggle (§6.3) and requiring the same
+container/VM-level opt-in `security.md`'s own "Running Untrusted or Unmonitored Work"
+section recommends (Gondolin micro-VM, container, remote sandbox) that [Permissions &
+sandboxing architecture](permissions-and-sandboxing.md) §5 already documents for pi's
+tool execution generally, not a new, MCP-specific mitigation this page's research
+surfaced.
+
+## 9. Synthesis
 
 ```mermaid
 flowchart TD
@@ -552,14 +724,17 @@ flowchart TD
         CCid["Claude Code: none for plain\n.mcp.json; Anthropic Directory\nreview for connectors only"]
         GHid["Copilot CLI: GitHub MCP\nRegistry preview, criteria\nnot published; custom registry\nis admin-owned"]
         OCid["OpenCode: none found"]
+        Piid["pi: N/A -- no built-in MCP\nclient at all; MCP arrives only\nvia an ordinary third-party\npi package/extension"]
     end
     subgraph Q2["Q2 -- Code safety: is it benign?"]
         RegQ2["Official Registry: explicitly\ndelegated to npm/PyPI/Docker Hub\nand downstream aggregators"]
-        AllQ2["All three harnesses: no\nharness-run code review found;\nadministrator/user judgment only"]
+        AllQ2["Claude Code / Copilot CLI / OpenCode:\nno harness-run code review found;\nadministrator/user judgment only"]
+        PiQ2["pi: same, one level down --\n'review source code before\ninstalling third-party packages'\nis pi's own stated policy"]
     end
     subgraph Q3["Q3 -- Continuity: still true after an update?"]
         RegQ3["Official Registry: no documented\nre-review on version publish"]
-        AllQ3["All three harnesses: approval is a\nname/URL/command-scoped, point-in-time\nevent -- no re-verification found on change"]
+        AllQ3["Claude Code / Copilot CLI / OpenCode:\napproval is a name/URL/command-scoped,\npoint-in-time event -- no\nre-verification found on change"]
+        PiQ3["pi: package spec is version- or\nref-pinned, but never content-hash\npinned -- same point-in-time gap,\none layer removed from MCP itself"]
     end
     Q1 --> Q2 --> Q3
 ```
@@ -575,7 +750,12 @@ specifically ("doesn't security-audit or manage any MCP server"); the official r
 says it about every server it hosts metadata for ("relying on the broader ecosystem for
 security scanning of actual server code"); GitHub's custom-registry feature says it by
 omission (no security-review language found anywhere in the fetched pages). Three
-independently-governed sources reach the identical division of responsibility.
+independently-governed sources reach the identical division of responsibility. **pi sits
+outside this comparison on a different axis entirely** -- it has no MCP-facing identity
+question to answer at all, having shipped no MCP client to begin with (§8.2); the closest
+analogue is the ordinary npm/git-source identity question §8.3 already found unanswered
+for pi's own package-installation mechanism, which is the general package-supply-chain
+problem every language ecosystem has, not an MCP-specific one.
 
 **Code safety is uniformly delegated, never owned.** No harness researched this session
 runs its own static or dynamic analysis of an MCP server's source before a user can add
@@ -589,7 +769,11 @@ design choice (npm, PyPI, and Docker Hub all made the same call for their own pa
 ecosystems decades before MCP existed), not a gap unique to the AI-agent-harness space --
 but it means "listed in a registry" or "installed from a well-known package name" carries
 essentially the same weight it always has for any package manager: a name you can verify,
-not a code review you can rely on.
+not a code review you can rely on. pi's own docs state the identical delegation in its own
+words, applied one layer down to packages generally rather than to MCP servers
+specifically: "review source code before installing third-party packages" (§8.3) is pi
+telling its own user to be the code-safety check, precisely the role every other harness
+and the official registry leave to "the ecosystem" in the abstract.
 
 **Continuity -- surviving a rug pull -- is the least-addressed axis of the three, and
 the one where this session found the most consistent negative result.** No registry
@@ -606,24 +790,34 @@ ReversingLabs' research describes generically ("approval is an event, not a cont
 state... trust [is bound] to the tool's name, not its actual content," in this page's own
 words built directly on that finding) and precisely the mechanism the ETDI paper's
 cryptographic-tool-authentication proposal exists to fix -- a proposal this session found
-no evidence any of the three production harnesses has adopted.
+no evidence any of the three production harnesses has adopted. pi's own package-pinning
+model (§8.3) shows the identical shape one layer removed: a version-qualified npm spec or
+a pinned git ref is stable against silent upgrade, but neither is a content hash, so a
+package publisher able to push a new release under the same pinned reference faces no
+re-verification step pi itself performs -- the same rug-pull shape, applied to the
+package bridging MCP in rather than to an MCP server directly.
 
-**The one axis where the three harnesses meaningfully diverge is OS-level containment,
-and it tracks [Permissions & sandboxing architecture](permissions-and-sandboxing.md)'s
-existing findings exactly.** A malicious or rug-pulled server's actual blast radius, once
-a tool call executes, depends entirely on whether anything besides the approval decision
-stands between that call and the host: Copilot CLI sandboxes locally-spawned MCP servers
-by an independent, default-on toggle; Claude Code leaves MCP servers unconstrained by
-default and requires a separate, explicitly-beta opt-in (`@anthropic-ai/sandbox-runtime`)
-or a container/VM to close that gap; OpenCode provides no OS-level containment for
-anything, MCP servers included. None of the three, and no layer of the registry
-infrastructure surveyed in §4, addresses Q1-identity-fraud or Q3-rug-pull risk through
-that sandbox at all -- a sandbox contains what an already-approved, already-running
-server can *do* to the host, it does not detect or prevent the server *lying* about what
-it does or *changing* what it does after approval. Those two problems, per every source
-fetched this session, remain open at the protocol level, unaddressed at the registry
-level beyond namespace-identity proof, and left to the same one-time human judgment call
-at approval time across all three harnesses researched here.
+**The one axis where the harnesses meaningfully diverge is OS-level containment, and it
+tracks [Permissions & sandboxing architecture](permissions-and-sandboxing.md)'s existing
+findings exactly.** A malicious or rug-pulled server's actual blast radius, once a tool
+call executes, depends entirely on whether anything besides the approval decision stands
+between that call and the host: Copilot CLI sandboxes locally-spawned MCP servers by an
+independent, default-on toggle; Claude Code leaves MCP servers unconstrained by default
+and requires a separate, explicitly-beta opt-in (`@anthropic-ai/sandbox-runtime`) or a
+container/VM to close that gap; OpenCode provides no OS-level containment for anything,
+MCP servers included; pi likewise provides no OS-level containment for anything,
+including whatever a third-party MCP-bridging extension does once loaded, naming the same
+container/VM/micro-VM escape hatch OpenCode's own gap is left to (§8.4). None of these,
+and no layer of the registry infrastructure surveyed in §4, addresses Q1-identity-fraud or
+Q3-rug-pull risk through that sandbox at all -- a sandbox contains what an already-
+approved, already-running server can *do* to the host, it does not detect or prevent the
+server *lying* about what it does or *changing* what it does after approval. Those two
+problems, per every source fetched this session, remain open at the protocol level,
+unaddressed at the registry level beyond namespace-identity proof, and left to the same
+one-time human judgment call at approval time across every harness researched here --
+pi's variant of that judgment call happening one step earlier, at "should I install this
+extension at all," rather than at "should I trust this MCP server," because pi never
+presents the latter question as a distinct decision in the first place.
 
 ---
 
@@ -722,6 +916,41 @@ prior source-verified findings plus a fresh docs fetch):**
 - `https://opencode.ai/docs/permissions` -- §7.1's confirmation that MCP tool calls are
   governed by the same general permission schema as every other tool, with no
   MCP-specific vetting step described.
+
+**pi (authoritative for its own documented behavior and package.json manifests; fetched
+fresh this session directly from `github.com/earendil-works/pi`, `main` branch, via `gh api`):**
+- `README.md` (repository root) -- §8.2's "No MCP... build an extension that adds MCP
+  support" quote.
+- `packages/coding-agent/docs/usage.md` -- §8.2's "intentionally does not include
+  built-in MCP" restatement.
+- `packages/coding-agent/docs/packages.md` (in full) -- §8.1's bundled-core-package list
+  (confirming `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` as sibling
+  packages, not competing names for one artifact) and §8.3's three package-source types
+  (npm/git/local path) and their pinning behavior.
+- `packages/coding-agent/docs/security.md` (in full) -- §8.3's "review source code before
+  installing third-party packages" quote and §8.4's "not a sandbox," "run with the
+  permissions of the pi process," and Running-Untrusted-Work container/VM guidance,
+  cross-checked against this book's prior citation of the same file in [Permissions &
+  sandboxing architecture](permissions-and-sandboxing.md) §5.
+- `packages/ai/package.json` and `packages/coding-agent/package.json` (fetched via `gh api
+  .../contents/.../package.json`) -- §8.1's exact npm `name` fields resolving the
+  `pi-ai`/`pi-coding-agent` spelling question directly from source rather than from either
+  prior citing page.
+- `gh api repos/earendil-works/pi` (repository metadata) -- §8.1's confirmation that
+  `earendil-works/pi` is the live, unarchived, non-fork repository, checked against the
+  `pi-mono` name found in `security.md`'s own security-reporting link.
+- `registry.npmjs.org/pi-mcp-adapter` and its `-/v1/search` endpoint (npm registry API,
+  fetched live this session) -- §8.3's confirmation that `pi-mcp-adapter` is a real,
+  actively-published third-party package, its maintainer, and its own description.
+- `https://mariozechner.at/posts/2025-11-02-what-if-you-dont-need-mcp/` (fetched fresh
+  this session; the specific post pi's own README links to under "No MCP," by Mario
+  Zechner, credited elsewhere in this book as pi's own creator) -- §8.2's token-cost,
+  composability, extensibility, and tool-proliferation rationale, and the explicit finding
+  that this post makes no security/trust/supply-chain argument for omitting MCP.
+- `github.com/nicobailon/pi-mcp-adapter` (fetched fresh this session; a third-party
+  community extension, never a pi-project source, cited accordingly) -- §8.3's
+  "explicit trusted local endpoint" quote and its `approveTools` per-tool,
+  post-connection approval mechanism.
 
 Not consulted this session, and therefore not cited above as a source of any claim: the
 `safedep.io`/`digitalthoughtdisruption.com`/`softwareseni.com` community writeups that

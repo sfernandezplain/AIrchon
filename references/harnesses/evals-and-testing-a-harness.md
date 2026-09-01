@@ -36,9 +36,16 @@ different on this exact topic in a way no other page in this book has
 been able to say yet: its repository does not just implement the
 mechanism, it ships the actual regression-test source code that
 protects it, down to the literal expected-event-array assertions on a
-tool-call reassembly function. That asymmetry shapes this page's
-structure -- OpenCode's section is the only one grounded in real test
-code rather than inferred from documentation or a changelog.
+tool-call reassembly function. pi (§5 below) is a second open-source
+harness in this same position -- its own monorepo ships hundreds of
+`*.test.ts` files and a dedicated model-backed eval package -- but
+arrives at that CI-safe visibility through a materially different
+architecture from OpenCode's record/replay cassettes: a synthetic,
+in-process "faux" model provider rather than recorded real-provider
+traffic. That asymmetry between the two closed-source harnesses and
+the two open-source ones shapes this page's structure -- OpenCode's
+and pi's sections are the only two grounded in real test code rather
+than inferred from documentation or a changelog.
 
 ```mermaid
 flowchart TD
@@ -646,50 +653,454 @@ implementation of exactly the trace-capture-per-test-case discipline
 
 ---
 
-## 5. Synthesis
+## 5. pi
 
-| Layer (per this page's own pyramid) | Claude Code | Copilot CLI | OpenCode |
-|---|---|---|---|
-| Unit-level wire-format/tool-call-parsing correctness | Not source-visible; changelog shows dated reassembly *bugs* fixed (v2.1.92, v2.1.94, cross-referenced from streaming-and-incremental-rendering.md §1.2), not a visible test | Not source-visible; no equivalent changelog entries found this session | Source-verified: `tool-stream.test.ts`'s `ToolStream` unit tests, asserting exact event sequences across a deliberately split-mid-string chunk boundary (§4.3) |
-| Session/integration correctness | Not source-visible | Not source-visible | Source-verified: `session-runner-tool-events.test.ts` (event-serialization + schema-backward-compatibility, §4.4) and `session-runner-recorded.test.ts` (whole-loop-against-a-recorded-transcript, §4.5) |
-| Cross-provider/protocol regression matrix | Not applicable in the same sense (single first-party model provider) | Not applicable in the same sense | Source-verified: one shared golden scenario (`weatherToolLoopRequest`) run against ~18 provider/model targets spanning every protocol family llm-api-contract.md §3.3 documents (§4.2), using deterministic VCR-style recorded cassettes (§4.1) |
-| API/route-surface coverage | Not source-visible | Not source-visible | Source-verified: a dedicated DSL-driven `httpapi-exercise` route-coverage harness, its own separately-timed CI gate (§4.6-§4.7) |
-| First-party published evals *guidance* | Two Anthropic engineering posts: representative-test-set/gate-releases-on-evals discipline, three verification methods (§2.1), the evaluator-agent/criteria-rubric/sprint-contract pattern (§2.2) | None found this session -- a real, flagged gap relative to Claude Code | None found as separate published guidance; the test suite itself is the artifact, not a companion essay about testing philosophy |
-| Documented scaffolding for external, script-driven verification | `--bare` determinism, `--output-format json`+`--json-schema`, `system/init`'s CI-gating `plugin_errors`/`mcp_server_errors` fields (§2.3) | `-p`/`-s` scripting mode, `--share`/`--share-gist` transcript export, changelog-confirmed `--output-format json` (v0.0.422), `PermissionRequest` hook (v1.0.16), non-interactive background-agent wait-to-completion fix (v1.0.33) (§3.1-§3.2) | The record/replay cassette package itself (`@opencode-ai/http-recorder`) is both the scaffolding and the thing being scaffolded around -- a first-party, in-repo testing tool, not merely a documented CLI flag surface |
-| Changelog's own regression-fix vocabulary (proxy evidence only) | Extensive, dated, version-attributed (§2.4) | Extensive, dated, version-attributed (§3.3) | Present in commit history generally but not this page's focus, since actual test source is directly readable instead |
+VERIFIED throughout this section unless flagged otherwise,
+`github.com/earendil-works/pi`, `main` branch, located via `gh api
+repos/earendil-works/pi/git/trees/main?recursive=true` (full repository
+file-tree listing, filtered for test/CI/eval paths) and individual files
+read in full via `gh api repos/earendil-works/pi/contents/<path>` this
+session. Like OpenCode, pi is a harness whose own repository is
+genuinely inspectable rather than being read only through documentation
+or a changelog; unlike OpenCode, its CI-safe deterministic layer is
+built on a synthetic in-process model provider rather than recorded
+real-provider HTTP traffic, and it additionally ships a *second*,
+explicitly separate package purpose-built for model-backed behavioral
+evaluation -- a distinction this book's other pi-covering pages have not
+had occasion to surface, since none of them examine pi's own test
+infrastructure.
+
+### 5.1 Resolving this book's own inconsistent `pi-ai`/`pi-coding-agent` naming: both are correct, for different packages
+
+VERIFIED, `package.json` read in full for `packages/ai`, `packages/coding-agent`,
+`packages/agent`, and `packages/evals`, plus the repository-root
+`package.json`, all fetched this session. pi is not a single npm
+package but an npm-workspaces monorepo, `pi-monorepo` (the root
+`package.json`'s own `name` field, marked `"private": true"`), declaring
+workspaces across `packages/*`, `packages/session-backends/*`, and five
+`packages/coding-agent/examples/extensions/*` example directories. This
+resolves the naming question the handoff for this section asked to
+verify: **`@earendil-works/pi-ai`** and **`@earendil-works/pi-coding-agent`**
+are both real, correctly-named, currently-published packages inside
+this one monorepo, not a spelling drift between two names for the same
+thing --
+
+- `packages/ai`'s `package.json` names the package `@earendil-works/pi-ai`
+  ("Unified LLM API with automatic model discovery and provider
+  configuration," version `0.84.4`, exposing a `pi-ai` CLI binary via its
+  own `bin` field) -- this is the LLM-protocol/provider-adapter layer
+  [llm-api-contract.md](llm-api-contract.md) §3.5 already documents as
+  `pi-ai`, and the correct package for any claim about anthropic/openai/
+  gemini/bedrock wire-protocol handling specifically.
+- `packages/coding-agent`'s `package.json` names the package
+  `@earendil-works/pi-coding-agent` ("Coding agent CLI with read, bash,
+  edit, write tools and session management," same version `0.84.4`,
+  exposing the actual `pi` CLI binary end users invoke), and declares a
+  direct `dependencies` entry on `@earendil-works/pi-ai` (pinned
+  `^0.84.4`) alongside three sibling first-party packages --
+  `@earendil-works/pi-agent-core`, `@earendil-works/pi-client`,
+  `@earendil-works/pi-protocol`, and `@earendil-works/pi-tui`. This is
+  the correct package name for any claim about the CLI/TUI, session
+  management, skills, hooks/extensions, or permissions/sandboxing --
+  i.e. the subject matter of this book's other pi-covering pages
+  (hooks-lifecycle-extensibility.md, permissions-and-sandboxing.md,
+  session-persistence.md, configuration.md, auth-and-usage-accounting.md,
+  built-in-skills.md, context-compression.md,
+  model-routing-and-selection.md).
+- A third, less-cited package this session's research turned up:
+  `packages/agent`'s `package.json` names it
+  `@earendil-works/pi-agent-core` ("General-purpose agent with transport
+  abstraction, state management, and attachment support") -- a layer
+  underneath `pi-coding-agent` that `pi-coding-agent` itself depends on
+  (`@earendil-works/pi-agent-core: "^0.84.4"` in its own dependency
+  list), and the package that actually hosts the `session/testing`
+  conformance-test-generator subpath export discussed in §5.3 below.
+- A fourth, private, non-published package, `packages/evals`'s
+  `package.json` names it `@earendil-works/pi-evals` (`"private": true`)
+  -- the model-backed eval package discussed in §5.4, deliberately never
+  shipped to the npm registry since it exists only to test pi itself,
+  not to be depended on by anything downstream.
+
+Every one of these packages shares the same repository
+(`git+https://github.com/earendil-works/pi.git`, distinguished only by
+each `package.json`'s own `repository.directory` field) and the same
+version number at any given commit (`0.84.4` for all four checked this
+session), kept in lockstep by the root `package.json`'s own
+`version:patch`/`version:minor`/`version:major` scripts (each running
+`npm version --workspaces` followed by a `scripts/sync-versions.js`
+pass). Read plainly: this book's prior pages citing `pi-ai` were correct
+about the LLM layer, and its prior pages citing `pi-coding-agent` were
+correct about the agent/CLI layer -- the apparent inconsistency the
+handoff flagged is not an error to fix, it is two different packages in
+the same monorepo, each cited correctly for the mechanism each page was
+actually describing.
+
+```mermaid
+flowchart TD
+    Mono["pi-monorepo (root package.json, private)\nnpm workspaces: packages/*"]
+    Mono --> AI["@earendil-works/pi-ai\n(packages/ai) -- LLM protocol/provider layer\nbin: pi-ai"]
+    Mono --> Core["@earendil-works/pi-agent-core\n(packages/agent) -- transport-agnostic agent loop,\nsession/testing conformance-suite export"]
+    Mono --> CA["@earendil-works/pi-coding-agent\n(packages/coding-agent) -- the CLI/TUI end users run\nbin: pi"]
+    Mono --> Evals["@earendil-works/pi-evals\n(packages/evals, private) -- model-backed\nbehavioral eval suite, not published"]
+    CA -- depends on --> AI
+    CA -- depends on --> Core
+    Evals -- devDependency on --> AI
+    Evals -- devDependency on --> CA
+```
+
+### 5.2 The CI-safe deterministic layer: a synthetic "faux" model provider, not recorded real-provider traffic
+
+VERIFIED, `packages/ai/src/providers/faux.ts` (opening ~60 lines read
+this session) and `packages/coding-agent/test/suite/README.md` (full
+file, four lines). Where OpenCode's CI-safe layer (§4.1 above) replays
+JSON cassettes recorded once from real provider traffic, pi's
+equivalent layer instead runs against `faux` -- an entirely synthetic,
+in-process `Provider` implementation registered under
+`DEFAULT_API = "faux"`/`DEFAULT_PROVIDER = "faux"`/`DEFAULT_MODEL_ID =
+"faux-1"`, exposing helper constructors (`fauxText`, `fauxThinking`,
+`fauxToolCall`, and -- used directly in the regression test read in
+§5.3 -- `fauxAssistantMessage`) that let a test author script an exact
+assistant response (text, thinking blocks, and/or tool calls) without
+ever making an HTTP request or needing a real API key. The
+`packages/coding-agent/test/suite/README.md` file states this as an
+explicit, enforced project convention for its own newer harness-based
+test suite: "Use the faux provider from `packages/ai/src/providers/
+faux.ts`... Do not use real provider APIs, real API keys, network
+calls, or paid tokens... Keep these tests CI-safe and deterministic,"
+alongside a companion rule that these new `test/suite/` tests should
+build on a shared `test/suite/harness.ts` helper rather than the
+project's older, superseded `test/test-harness.ts` path "unless a
+missing capability forces it" -- i.e. pi's own test suite is mid-
+migration between two harness-construction conventions, with the newer
+one the explicitly documented default for new tests. This architectural
+choice -- synthesize the model's output entirely rather than record and
+replay a real one -- trades away OpenCode's benefit of exercising real
+provider-specific response shapes (odd chunk boundaries, real error
+payloads) in favor of never needing network access, secrets redaction,
+or a `CI=true`/missing-cassette failure mode at all; the tradeoff itself
+is this page's own synthesis, not a claim either project's own
+documentation makes about the other.
+
+### 5.3 Issue-numbered regression tests, and the broader per-provider/per-package test surface
+
+VERIFIED, `packages/coding-agent/test/suite/regressions/
+7290-json-stream-linear.test.ts` (opening lines read in full this
+session) and the full repository file-tree listing (§5, header). pi's
+regression-test directory,
+`packages/coding-agent/test/suite/regressions/`, names each file after
+the GitHub issue number it fixes -- `2781-skill-collision-precedence.
+test.ts`, `5109-exclude-tools.test.ts`, `6363-agent-settled-event.
+test.ts`, and (the file read in full) `7290-json-stream-linear.test.ts`,
+whose own `describe` block is literally titled `"regression #7290: JSON
+event streams stay linear"` and which uses the §5.2 `faux` provider
+(`fauxAssistantMessage`) to script two assistant responses of different
+lengths and assert the JSON-serialized event stream's byte size scales
+linearly rather than quadratically with response length -- a genuine,
+source-verified performance regression test, not merely a correctness
+one, protecting the same JSON-event-streaming surface this book's
+[streaming-and-incremental-rendering.md](streaming-and-incremental-rendering.md)
+covers for other harnesses only via inferred or documented behavior.
+This is the same "name the bug you're protecting against" discipline
+this page's §2.4/§3.3 found only as prose in Claude Code's and Copilot
+CLI's changelogs -- pi instead encodes it directly as the test file's
+own path and `describe` string, at the time of this session's research
+counting more than 55 individually issue-numbered files under that one
+directory alone.
+
+Beyond that dedicated regression directory, the file-tree listing this
+session read shows the same `*.test.ts` density spread across every
+workspace package, each with its own `vitest.config.ts`: `packages/ai/
+test/` alone contains well over 100 files, the great majority named
+directly after a specific provider/feature pairing being protected --
+`anthropic-eager-tool-input-compat.test.ts`, `bedrock-raw-stop-reason.
+test.ts`, `openai-responses-partial-json-cleanup.test.ts`,
+`google-shared-gemini3-unsigned-tool-call.test.ts`,
+`mistral-tool-schema.test.ts`, and per-provider OAuth tests
+(`anthropic-oauth.test.ts`, `github-copilot-oauth.test.ts`,
+`openrouter-oauth.test.ts`, `xai-oauth.test.ts`, `kimi-coding-oauth.
+test.ts`, among others) -- read plainly, this is the same "one test
+scenario per protocol/provider" instinct OpenCode's golden-scenario
+matrix (§4.2) applies via one shared scenario replayed across targets,
+but here expressed instead as many separately-authored, provider-
+specific test files rather than one shared scenario generator reused
+across a declared target list; this session did not read enough of
+these files individually to confirm whether pi also has a shared-
+scenario abstraction analogous to OpenCode's `recorded-scenarios.ts`,
+so that comparison is offered as a structural observation about naming
+density, not a confirmed architectural equivalence.
+
+A separate, reusable pattern this session found and did confirm by
+reading an actual consuming test:
+`packages/agent/src/harness/session/testing/` (a `conformance.ts`/
+`index.ts`/`types.ts` module exported from `@earendil-works/pi-agent-core`
+under the subpath `./session/testing`) exports a
+`createSessionBackendConformance` helper -- a shared, parameterized test
+suite generator that any concrete `SessionRepo` backend implementation
+must pass. `packages/session-backends/sqlite-node/test/
+conformance.test.ts` (opening ~30 lines read this session) is a live
+consumer: it imports `createSessionBackendConformance` and
+`SessionBackendFixture` from `@earendil-works/pi-agent-core/session/
+testing`, supplies a factory constructing a real, temp-directory-backed
+`SqliteSessionRepository`, and gets the entire shared conformance suite
+run against that one concrete backend for free. `packages/server/src/
+testing/` and `packages/telemetry/src/testing/` export the identically-
+shaped pattern (a `conformance.ts`/`index.ts`/`types.ts` triple) for
+their own respective interfaces, confirmed present in the file tree
+though not read line-by-line this session -- i.e. "export a reusable
+conformance-test generator alongside the interface it tests" is a
+repeated, deliberate authoring convention across at least three of pi's
+packages, not a one-off.
+
+### 5.4 `packages/evals`: a dedicated, `vitest-evals`-based model-backed behavioral eval package, separate from the CI-safe suite above
+
+VERIFIED, `packages/evals/README.md` (full file), `packages/evals/
+package.json` (full file), `packages/evals/src/pi-harness.ts` (full
+file), and `packages/evals/src/smoke.eval.ts` (full file), all read this
+session. Distinct from every test discussed in §5.2-§5.3 -- which need
+no network access, no API key, and run in milliseconds -- pi ships a
+wholly separate package, `@earendil-works/pi-evals`, whose own README
+states its purpose plainly: "Pi evals are behavioral, model-backed
+checks for Pi workflows... Use them to measure end-to-end behavior and
+compare prompts, tools, skills, models, or other harness
+configurations." This is pi's own equivalent of this page's Layer 4 --
+a real, live (or at minimum externally-authenticated) model call is
+required, invoked via `npm run eval -- --provider openai --model
+gpt-5.6-sol` (or the equivalent `PI_PROVIDER`/`PI_MODEL` environment
+variables), authenticating through "Pi's normal `ModelRuntime`,
+including Pi subscription credentials and provider API-key environment
+variables" -- i.e. the same [auth-and-usage-accounting.md](auth-and-usage-accounting.md)
+credential-resolution path this book already documents for pi's normal
+runtime use, reused here for the eval runner rather than the eval
+runner inventing its own separate credential mechanism.
+
+The package's central adapter, `createPiCodingAgentHarness(...)` in
+`src/pi-harness.ts`, is a genuine integration test of pi's own real
+production code, not a mock: it calls `ModelRuntime.create()`,
+`createAgentSessionServices(...)`, and `createAgentSessionFromServices(...)`
+-- the identical `AgentSession` construction path a real interactive or
+headless pi invocation uses -- inside a freshly created temp directory
+pair (`cwd`/`agentDir`) per eval run, explicitly asserting `evalSession.
+extensionRunner.getExtensionPaths().length !== 0` would be a thrown
+error (i.e. asserting the eval session starts genuinely isolated, with
+zero extensions loaded, not merely configured to look isolated), and
+snapshotting the resulting session's own on-disk JSONL artifact (the
+same session-persistence format
+[session-persistence.md](session-persistence.md) documents) as a
+`PI_SESSION_SNAPSHOT_ARTIFACT` attached to the Vitest test result before
+the temp workspace is deleted. `src/smoke.eval.ts` (the package's own
+minimal example, read in full) is a single, literal illustration of
+this pattern: it prompts a `noTools: "all"`-configured harness with
+"What's the capital of France? Respond with only the city name," then
+asserts the trimmed output equals `"Paris"`, that `result.errors` is
+empty, that the recorded provider/model match the environment's
+`PI_PROVIDER`/`PI_MODEL`, and that `totalTokens` is greater than zero --
+a genuine, live-model-backed correctness check exercising the real tool-
+disable, prompt, and usage-accounting plumbing end to end, distinct from
+every synthetic `faux`-provider test in §5.2-§5.3. The README documents
+a second, more elaborate pattern layered on top -- `evalHarnessTable(...)`
+combined with Vitest's own `describe.for(...)` -- for comparative evals
+across named variants (e.g. a `baseline` vs. `candidate` harness pair,
+run across a configurable number of `repetitions`), computing a
+pass-rate "lift" (candidate pass rate minus baseline pass rate, in
+percentage points) from judge-scored runs, with an explicit documented
+convention that comparative suites should set `judgeThreshold: null` so
+a low score is recorded as an observation rather than failing the
+Vitest invocation outright -- i.e. pi's own eval-authoring guidance
+draws exactly the reliability distinction Anthropic's own blog post (§2.1)
+makes about LLM-as-judge scoring, independently arrived at and encoded
+as a structural default (`judgeThreshold: null`) rather than merely
+advisory prose. The README additionally names `vitest-evals` itself
+(`github.com/getsentry/vitest-evals`, an external, third-party
+dependency this session did not independently fetch or verify) as the
+general suite/judge/assertion framework pi's own eval package builds on
+top of, and separately points to `github.com/adewale/skill-eval-harness/`
+for comparative-eval methodology guidance -- neither of those two linked
+repositories was fetched this session, so their own content beyond
+being named and linked from pi's README is not claimed here.
+
+```mermaid
+flowchart LR
+    subgraph "CI-safe, deterministic (S5.2-S5.3)"
+        Faux["faux provider\n(packages/ai/src/providers/faux.ts)"]
+        Suite["test/suite + per-package *.test.ts\n(vitest --run, no network, no API key)"]
+        Faux --> Suite
+    end
+    subgraph "Manual/local, model-backed (S5.4)"
+        Runner["npm run eval\n(packages/evals/scripts/run-evals.mjs)"]
+        RealModel["real provider API\n(needs PI_PROVIDER/PI_MODEL + credentials)"]
+        Harness2["createPiCodingAgentHarness()\nreal AgentSession, isolated temp cwd/agentDir"]
+        Judge["judge-scored comparative suites\n(evalHarnessTable + describe.for)"]
+        Runner --> Harness2 --> RealModel
+        Harness2 --> Judge
+    end
+    Suite -.->|"gated in CI (S5.5)"| CI["ci.yml: npm run check && npm test"]
+    Runner -.->|"NOT invoked by any workflow found this session"| CI
+```
+
+### 5.5 The CI pipeline, and evals' deliberate exclusion from it
+
+VERIFIED, `.github/workflows/ci.yml` (full file, read this session) and
+the full `.github/workflows/` directory listing from this session's
+repository-tree fetch (nine other named workflow files:
+`approve-contributor.yml`, `build-binaries.yml`, `issue-analysis.yml`,
+`issue-gate.yml`, `issue-triage-labels.yml`, `npm-audit.yml`,
+`pr-gate.yml`, `publish-model-catalog.yml`,
+`remove-inprogress-on-close.yml`; only `ci.yml`'s own content was read
+this session, the other nine are named but not opened). `ci.yml` runs
+one job, `build-check-test`, on every push and pull request to `main`,
+installing Node 22 plus system libraries for canvas/image support
+(`libcairo2-dev`, `libpango1.0-dev`, `libjpeg-dev`, `libgif-dev`,
+`librsvg2-dev`, `fd-find`, `ripgrep`), then three sequential steps:
+`npm run build`, `npm run check` (Biome linting plus several
+project-specific consistency checks -- pinned-dependency versions,
+relative-import hygiene, a generated `npm-shrinkwrap.json` freshness
+check, a generated install-lock freshness check, and a TypeScript
+`--noEmit` pass), and finally `npm test`. The root `package.json`'s own
+`test` script resolves to `npm run test:scripts && npm run test
+--workspaces --if-present` -- i.e. a small Node-native test file glob
+(`node --test scripts/*.test.mjs`) followed by npm workspaces fanning
+that same `test` command out across every package that defines one
+(nearly all of them resolve to a bare `vitest --run`), the same
+"one root command fans out across every package's own suite" shape
+OpenCode's `bun turbo test` (§4.7) achieves via Turborepo instead of
+plain npm-workspaces propagation. **Critically, `packages/evals`'s own
+`test` script (`vitest run --config vitest.test.config.ts`) is included
+in this workspace fan-out and does run in CI** -- but that script tests
+the eval *package's own infrastructure* (`test/vitest-evals/
+artifacts.test.ts`, `harness-table.test.ts`, `summary.test.ts`,
+`test/pi-harness.test.ts`), not the model-backed `*.eval.ts` scenarios
+themselves; the model-backed `eval` script (`npm run eval`, invoking
+`scripts/run-evals.mjs`) is a **separate** script this session found no
+reference to in `ci.yml` or in any other workflow's own filename, so --
+BEST CURRENT UNDERSTANDING, UNCONFIRMED, since the other nine workflow
+files were not individually opened this session -- pi's own
+model-backed, judge-scored eval suite (§5.4) most plausibly runs
+manually/locally against a developer's own chosen provider and
+credentials rather than being gated automatically on every pull
+request, for the same practical reason Anthropic's own guidance (§2.1)
+flags LLM-as-judge scoring as latency-heavy and "not a very robust
+method": a suite that costs real API spend and real wall-clock time per
+run is a natural candidate to keep out of a required, blocking CI gate.
+This is the one meaningful architectural difference from OpenCode's own
+CI shape (§4.7), where even the live-network-adjacent Playwright `e2e`
+job runs automatically on every push and PR; pi's equivalent
+capability-level check appears, from what this session could directly
+confirm, to be opt-in rather than gate-blocking.
+
+### 5.6 Environment isolation for the test run itself
+
+VERIFIED, `test.sh` (full file, read this session). Separately from
+what gets tested, pi's own root-level `test.sh` wrapper (not itself
+invoked by `ci.yml`, which calls `npm test` directly -- this session
+found no reference to `test.sh` from within `ci.yml`) constructs an
+isolated `mktemp`-created home directory, redirects `HOME`,
+`USERPROFILE`, `TMPDIR`/`TMP`/`TEMP`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`,
+npm's own user/global config and cache paths, and a deliberately broken
+`GIT_ASKPASS` (`type -P false`) into that temp root, then runs `env -i`
+with an explicitly reconstructed, minimal environment variable list
+(preserving only `PATH`, `PWD`, platform-required Windows variables,
+and `CI`/`GITHUB_ACTIONS` for runner-behavior detection) before invoking
+`npm test` -- a self-described discipline of "start from an empty
+environment and allow only required platform and test settings," with
+its own cleanup trap refusing to delete anything that isn't a directory
+it marked as its own (`test_root/.pi-test-owned`) moments earlier. Read
+plainly, this script exists to guarantee the exact determinism property
+Claude Code's `--bare` mode (§2.3) states its own purpose in almost
+identical language for ("the same result on every machine") -- except
+here the isolation is achieved by a wrapper script scrubbing the
+external process environment before the test command ever starts,
+rather than by a CLI flag telling the harness itself to skip
+auto-discovery of its own configuration surface. A separate,
+unrelated helper at the repository root, `pi-test.sh`, serves a
+different purpose entirely: it is a `tsx`-driven wrapper for running
+pi's own CLI directly from source (`packages/coding-agent/src/cli.ts`)
+during development, with an optional `--no-env` flag that unsets over
+30 named provider/credential environment variables (`ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `AWS_*`, `AZURE_OPENAI_*`, and others, explicitly
+cross-referenced in its own comment to `packages/ai/src/
+env-api-keys.ts`) so a developer can manually verify pi's own
+no-credentials-available behavior -- a manual-testing convenience
+script, not a CI-invoked one, and not to be confused with `test.sh`'s
+own automated-suite-isolation purpose despite the similar filename.
+
+---
+
+## 6. Synthesis
+
+| Layer (per this page's own pyramid) | Claude Code | Copilot CLI | OpenCode | pi |
+|---|---|---|---|---|
+| Unit-level wire-format/tool-call-parsing correctness | Not source-visible; changelog shows dated reassembly *bugs* fixed (v2.1.92, v2.1.94, cross-referenced from streaming-and-incremental-rendering.md §1.2), not a visible test | Not source-visible; no equivalent changelog entries found this session | Source-verified: `tool-stream.test.ts`'s `ToolStream` unit tests, asserting exact event sequences across a deliberately split-mid-string chunk boundary (§4.3) | Source-verified: dozens of per-provider unit tests in `packages/ai/test/` (§5.3), run deterministically against the synthetic `faux` provider (§5.2) rather than recorded real traffic |
+| Session/integration correctness | Not source-visible | Not source-visible | Source-verified: `session-runner-tool-events.test.ts` (event-serialization + schema-backward-compatibility, §4.4) and `session-runner-recorded.test.ts` (whole-loop-against-a-recorded-transcript, §4.5) | Source-verified: `test/suite/`'s harness-based `AgentSession`/`AgentSessionRuntime` tests plus an issue-numbered regression directory (55+ files, §5.3), and a reusable `createSessionBackendConformance` interface-conformance generator shared across at least three packages (§5.3) |
+| Cross-provider/protocol regression matrix | Not applicable in the same sense (single first-party model provider) | Not applicable in the same sense | Source-verified: one shared golden scenario (`weatherToolLoopRequest`) run against ~18 provider/model targets spanning every protocol family llm-api-contract.md §3.3 documents (§4.2), using deterministic VCR-style recorded cassettes (§4.1) | Not confirmed as a single shared-scenario abstraction this session; instead, many separately-authored per-provider/per-feature test files (§5.3) -- a structural observation, not a confirmed architectural equivalence to OpenCode's matrix |
+| API/route-surface coverage | Not source-visible | Not source-visible | Source-verified: a dedicated DSL-driven `httpapi-exercise` route-coverage harness, its own separately-timed CI gate (§4.6-§4.7) | Not confirmed this session; the file-tree search did not surface an equivalent dedicated route-coverage harness |
+| First-party published evals *guidance* | Two Anthropic engineering posts: representative-test-set/gate-releases-on-evals discipline, three verification methods (§2.1), the evaluator-agent/criteria-rubric/sprint-contract pattern (§2.2) | None found this session -- a real, flagged gap relative to Claude Code | None found as separate published guidance; the test suite itself is the artifact, not a companion essay about testing philosophy | `packages/evals/README.md` doubles as both documentation and the artifact -- comparative-eval methodology (baseline/candidate lift, `judgeThreshold: null`) documented directly alongside the harness it describes (§5.4) |
+| Documented scaffolding for external, script-driven verification | `--bare` determinism, `--output-format json`+`--json-schema`, `system/init`'s CI-gating `plugin_errors`/`mcp_server_errors` fields (§2.3) | `-p`/`-s` scripting mode, `--share`/`--share-gist` transcript export, changelog-confirmed `--output-format json` (v0.0.422), `PermissionRequest` hook (v1.0.16), non-interactive background-agent wait-to-completion fix (v1.0.33) (§3.1-§3.2) | The record/replay cassette package itself (`@opencode-ai/http-recorder`) is both the scaffolding and the thing being scaffolded around -- a first-party, in-repo testing tool, not merely a documented CLI flag surface | The `@earendil-works/pi-evals` package itself (`createPiCodingAgentHarness`, `evalHarnessTable`) is likewise both scaffolding and artifact (§5.4); separately, `test.sh`'s process-environment-scrubbing wrapper is a script-level determinism guarantee with no CLI-flag equivalent found this session (§5.6) |
+| Changelog's own regression-fix vocabulary (proxy evidence only) | Extensive, dated, version-attributed (§2.4) | Extensive, dated, version-attributed (§3.3) | Present in commit history generally but not this page's focus, since actual test source is directly readable instead | Encoded directly as issue-numbered test file paths and `describe("regression #NNNN...")` strings rather than only changelog prose (§5.3) |
+| End-to-end/capability benchmark integration (GAIA, SWE-bench, etc.) | Not researched this session beyond §2.2's evaluator-agent pattern | Not researched this session | Not researched this session | VERIFIED absent: `gh search code` for "GAIA" and "SWE-bench" scoped to `earendil-works/pi` returned no matches this session; pi's own capability-level checks (§5.4) are entirely first-party, prompt-and-judge-based, not integrated with any published third-party benchmark |
 
 **The design lesson.** The single clearest, most load-bearing fact this
 page's research turned up is the asymmetry itself: two harnesses ship
 no way to check their own correctness claims from the outside beyond a
-changelog's own honesty about dated regressions, while the third ships
-the literal assertions. That asymmetry is a direct consequence of this
-book's own standing open-source/closed-source split (documented on
-every other page touching Claude Code's or Copilot CLI's internals),
-not evidence that either team tests less rigorously in private --
-Anthropic's own two engineering posts (§2.1-§2.2) are, if anything,
-unusually candid public evidence of a real internal evals discipline,
-just one this page cannot verify the shape of the way it can verify
-OpenCode's `ToolStream` test or its golden-scenario matrix line by
-line. For a builder validating a from-scratch harness, the concrete,
-transferable pattern this page's research actually supports is
-OpenCode's own four-layer shape, independent of which harness inspired
-it: (1) fast, deterministic unit tests on the fragment-accumulation
-algorithm itself, needing no network access; (2) a small number of
-integration tests that wire the real session loop against a recorded,
-not live, transcript; (3) a shared "golden scenario" authored once and
-replayed against every protocol/provider target the harness supports,
-so protocol implementations cannot silently drift out of parity with
-each other; and (4) a separate, explicit route/API-coverage pass
-distinct from all of the above, because none of the first three layers
-actually proves the documented public surface itself behaves as
-promised. Layer 4 of this page's opening pyramid -- end-to-end
-capability evals such as GAIA (§1) -- sits outside and above all four
-of these, and, per Anthropic's own harness-design post (§2.2), scores a
-combination of the model and the harness together; a from-scratch
-harness builder who only ever runs that outermost layer has no way to
-tell which of the two moved a score, which is the whole reason the
-inner four layers need to exist as their own, harness-scoped discipline
-first.
+changelog's own honesty about dated regressions, while the other two --
+OpenCode and pi -- ship the literal assertions. That asymmetry is a
+direct consequence of this book's own standing open-source/closed-source
+split (documented on every other page touching Claude Code's or Copilot
+CLI's internals), not evidence that either closed-source team tests
+less rigorously in private -- Anthropic's own two engineering posts
+(§2.1-§2.2) are, if anything, unusually candid public evidence of a real
+internal evals discipline, just one this page cannot verify the shape
+of the way it can verify OpenCode's `ToolStream` test, its golden-
+scenario matrix, or pi's own issue-numbered regression files line by
+line. OpenCode and pi arrive at that same source-visible position by
+genuinely different routes, and the difference is itself instructive: OpenCode
+protects its CI-safe layer with recorded-and-replayed real provider
+traffic (VCR-style cassettes), while pi protects its own equivalent
+layer with an entirely synthetic in-process model (the `faux` provider,
+§5.2) -- one preserves real provider-specific response shapes at the
+cost of needing a deliberate, human-triggered re-record step when a
+cassette goes missing, the other needs no network access or secrets-
+redaction discipline at all but cannot, by construction, catch a
+regression caused by a real provider changing its actual response shape
+underneath the synthetic model's assumptions. Neither this page nor
+either project's own documentation states one choice as strictly
+superior to the other; both are read here as two legitimate, differently
+-tradeoffed answers to the same "how do I test tool-call parsing without
+paying for a live model on every CI run" problem. For a builder
+validating a from-scratch harness, the concrete, transferable pattern
+this page's research actually supports pulls from both: (1) fast,
+deterministic unit tests on the fragment-accumulation algorithm itself,
+needing no network access, whether achieved via a recorded cassette or a
+synthetic fake model; (2) a small number of integration tests that wire
+the real session loop against a recorded or synthetic, not live,
+transcript; (3) either a shared "golden scenario" authored once and
+replayed against every protocol/provider target the harness supports (OpenCode's
+approach), or a densely issue-numbered regression directory naming each
+test after the specific bug it protects against (pi's approach), so
+protocol implementations or past bugs cannot silently regress
+unnoticed; (4) a separate, explicit route/API-coverage pass distinct
+from all of the above, because none of the first three layers actually
+proves the documented public surface itself behaves as promised (source-
+confirmed for OpenCode via its `httpapi-exercise` harness, §4.6; not
+confirmed as present in pi this session, per the synthesis table above);
+and (5) -- the one layer pi's own research surfaced most clearly of the
+two open-source harnesses -- a separate, explicitly non-CI-gated,
+model-backed eval package for judged, comparative, prompt-level
+behavior, kept deliberately out of the blocking pull-request gate
+because it costs real API spend and real wall-clock time per run
+(§5.4-§5.5). Layer 4 (5, in pi's own case) of this page's opening
+pyramid -- end-to-end capability evals such as GAIA (§1) -- sits outside
+and above all of these, and, per Anthropic's own harness-design post
+(§2.2), scores a combination of the model and the harness together; a
+from-scratch harness builder who only ever runs that outermost layer has
+no way to tell which of the two moved a score, which is the whole reason
+the inner layers need to exist as their own, harness-scoped discipline
+first. Notably, this session's own search of pi's repository found no
+integration with any published third-party capability benchmark (GAIA,
+SWE-bench, or similar, per the synthesis table's last row) -- pi's own
+capability-level checks are entirely first-party and prompt-authored,
+a real, citable finding about the scope of a comparatively young,
+single-maintainer-adjacent open-source project's own eval investment,
+not a criticism of its engineering rigor at the layers it does cover.
 
 **A brief, bounded closing note.** This project's own `CLAUDE.md` states
 plainly, as of this writing, that AIrchon itself -- the project this
@@ -779,3 +1190,27 @@ the two harnesses above, its own real implementation and test source;
   `packages/opencode/test/server/httpapi-exercise/dsl.ts` (§4.6), and
   the full contents of `.github/workflows/test.yml` (§4.7) -- covering
   §4 in full.
+
+**pi (authoritative for its own documented behavior AND, like OpenCode
+above, its own real implementation and test source; `main` branch;
+package/repo naming cross-checked live from each package's own
+`package.json` this session per §5.1):**
+- `https://github.com/earendil-works/pi`, `main` branch, located via
+  `gh api repos/earendil-works/pi/git/trees/main?recursive=true` (full
+  repository file-tree listing, filtered for test/CI/eval paths) and
+  individual files fetched via `gh api repos/earendil-works/pi/contents/
+  <path>` this session -- the root `package.json` and the `package.json`
+  for `packages/ai`, `packages/coding-agent`, `packages/agent`, and
+  `packages/evals` (§5.1), the opening ~60 lines of `packages/ai/src/
+  providers/faux.ts` and the full contents of `packages/coding-agent/
+  test/suite/README.md` (§5.2), the opening lines of `packages/coding-
+  agent/test/suite/regressions/7290-json-stream-linear.test.ts` and the
+  opening ~30 lines of `packages/session-backends/sqlite-node/test/
+  conformance.test.ts` (§5.3), the full contents of `packages/evals/
+  README.md`, `packages/evals/src/pi-harness.ts`, and `packages/evals/
+  src/smoke.eval.ts` (§5.4), the full contents of `.github/workflows/
+  ci.yml` (§5.5), and the full contents of `test.sh` and `pi-test.sh`
+  (§5.6) -- covering §5 in full. `gh search code` queries for `GAIA` and
+  `SWE-bench` scoped to this repository, both returning no matches, are
+  the source for §5's/§6's stated absence of third-party
+  capability-benchmark integration.

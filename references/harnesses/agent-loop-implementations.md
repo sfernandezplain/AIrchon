@@ -9,7 +9,10 @@ discipline -- no harness's mechanism is assumed to describe another's.
 Added 2026-08-24: a Copilot CLI section, closing a real gap this page
 previously left (it originally covered only two of the book's three
 target harnesses); the Claude Code and OpenCode sections below are
-unchanged from the original 2026-07-30 write.
+unchanged from the original 2026-07-30 write. Added 2026-09-01: a pi
+section (§4), covering a fourth harness already documented elsewhere in
+this book (see that section's own opening note for exactly which pages)
+but not previously covered on this specific page.
 
 ## 1. Claude Code (Agent SDK docs)
 
@@ -285,11 +288,231 @@ open-source (unlike Claude Code and Copilot CLI), this is the one
 harness of the three where "go read the loop" is a literal, actionable
 instruction rather than a dead end.
 
-## 4. Comparison
+## 4. pi
 
-All three document the same shape at the level the Hugging Face course
+**Source and naming note, resolved this session.** This book's other pi
+sections (`llm-api-contract.md` §3.5, `hooks-lifecycle-extensibility.md`,
+`permissions-and-sandboxing.md`, `session-persistence.md`,
+`configuration.md`, `auth-and-usage-accounting.md`, `built-in-skills.md`,
+`context-compression.md` §4, `model-routing-and-selection.md`) cite pi
+under two different package spellings, `@earendil-works/pi-ai` and
+`@earendil-works/pi-coding-agent`. VERIFIED, fetched 1 September 2026
+directly from `github.com/earendil-works/pi` (`main` branch, confirmed
+live via `gh api repos/earendil-works/pi` that this -- not a separate
+`pi-mono` repository some internal doc links point at -- is the
+canonical, non-redirecting repository identity): this is **not** an
+error to resolve in favour of one spelling over the other. `pi` is a
+monorepo shipping at least three separate, independently-versioned npm
+packages under the same `0.84.4` release, each with its own
+`package.json` read in full this session: `@earendil-works/pi-ai`
+(`packages/ai`, described in its own `package.json` as "Unified LLM API
+with automatic model discovery and provider configuration" -- the
+wire-protocol layer `llm-api-contract.md` §3.5 documents),
+`@earendil-works/pi-agent-core` (`packages/agent`, README: "Stateful
+agent with tool execution and event streaming. Built on
+`@earendil-works/pi-ai`" -- **the package this section is actually
+about**, since it is the one that implements the turn loop), and
+`@earendil-works/pi-coding-agent` (`packages/coding-agent`,
+`package.json`: "Coding agent CLI with read, bash, edit, write tools and
+session management," `bin: { pi: "dist/bundle/cli.js" }` -- the actual
+shipped `pi` CLI product, which embeds `pi-agent-core` as a dependency
+and layers tools, sessions, settings, and compaction policy on top of
+it). Every prior page's citation of either of the two previously-used
+names is independently correct for what it was describing; neither
+this page nor any prior one has stated the existence of the third,
+loop-implementing package, `pi-agent-core`, until now.
+
+```mermaid
+sequenceDiagram
+    participant App as coding-agent (AgentSession)
+    participant Loop as pi-agent-core (agentLoop/runLoop)
+    participant LLM as Model (via pi-ai)
+    participant Tools as Tools
+
+    App->>Loop: agent.prompt(text) / agentLoop(prompts, context, config)
+    Loop->>Loop: emit agent_start, turn_start
+    loop each turn
+        Loop->>LLM: streamAssistantResponse (context, tools)
+        LLM-->>Loop: AssistantMessage (stopReason: toolUse / stop / length / error / aborted)
+        alt stopReason is toolUse and no length-truncation
+            Loop->>Tools: executeToolCalls (sequential or parallel)
+            Tools-->>Loop: ToolResultMessage[]
+            Loop->>Loop: emit turn_end; shouldStopAfterTurn? -> agent_end
+            Loop->>App: prepareNextTurn hook (compaction check happens here)
+            Loop->>Loop: emit turn_start (next turn)
+        else stopReason is stop (no tool calls)
+            Loop->>App: getFollowUpMessages()
+            alt follow-ups queued
+                Loop->>Loop: inject as pendingMessages, continue
+            else none queued
+                Loop->>Loop: emit agent_end
+            end
+        else stopReason is error or aborted
+            Loop->>Loop: emit turn_end, agent_end (immediate)
+        end
+    end
+```
+
+**What constitutes one turn.** VERIFIED, `packages/agent/src/types.ts`
+(full file read this session): the `AgentEvent` union's own code comment
+states the definition plainly -- "Turn lifecycle - a turn is one
+assistant response + any tool calls/results." Mechanically, VERIFIED
+from `packages/agent/src/agent-loop.ts` (full file read this session,
+the `runLoop()` function): a `turn_start` event is emitted, one
+assistant response is streamed via `streamAssistantResponse()` (which
+itself emits `message_start`/`message_update`/`message_end` for the
+streaming deltas), any `toolCall` content blocks in that response are
+then executed (`executeToolCalls()`, sequential or parallel per
+`config.toolExecution`, default `"parallel"`), and a `turn_end` event
+closes the turn carrying the assistant message and its tool results
+together -- the same one-LLM-call-plus-its-tool-execution unit Copilot
+CLI's own `agent-loop.md` names a turn as (§2 above), though pi's own
+turn additionally brackets the tool execution *inside*
+the same `turn_start`/`turn_end` pair rather than treating tool
+execution as a step the harness performs between two separate LLM-call
+turns.
+
+**The natural stop condition is model-driven, with no documented hard
+turn-count or budget cap layered on top of it.** VERIFIED, same file:
+the inner loop continues (`hasMoreToolCalls || pendingMessages.length >
+0`) for as long as the assistant's message contains tool calls that
+were not all flagged `terminate: true`, or steering messages are
+queued; once a turn produces no tool calls and no messages are pending,
+the outer loop checks `config.getFollowUpMessages()` once more and, if
+that returns nothing, breaks and emits `agent_end` -- the same "the
+model itself is the decision-maker for when to stop" shape this page's
+§2 documents for Copilot CLI, reached here by an unrelated engineering
+team. VERIFIED, `packages/agent/src/types.ts`'s `AgentLoopConfig`
+interface (read in full): there is no `maxTurns`, `maxBudgetUsd`,
+`maxSteps`, or any other numeric cap field anywhere in the type the
+low-level loop is configured with -- the loop's only means of an
+externally-forced early stop is the `shouldStopAfterTurn` hook, an
+arbitrary predicate the *embedding application* supplies (it "returns
+true" to end the run "before starting another LLM call," checked
+immediately after `turn_end` is emitted, ahead of `prepareNextTurn`).
+VERIFIED, `packages/coding-agent/docs/settings.md` and
+`packages/coding-agent/docs/usage.md` (both fetched and grepped in
+full this session for `turn`, `budget`, `step`, `limit`): pi's own
+shipped CLI documents no hard cap analogous to Claude Code's
+`max_turns`/`max_budget_usd` (§1) or OpenCode's step-limit (§3). The
+nearest neighbouring numeric cap the settings doc names,
+`retry.provider.maxRetries` (default `0`), governs provider/SDK-level
+HTTP retry attempts *within a single LLM call*, not the number of
+turns a run may take -- a different axis entirely, not a loop-ending
+mechanism, and the settings doc itself warns raising it above `0` "can
+make SDK/provider retries handle out-of-usage-limit errors before Pi
+sees them," i.e. it can actively mask rather than enforce a budget
+limit. Absence of a documented cap in the docs fetched this session is
+"not found," not "proven absent" -- the same epistemic caveat this
+page's OpenCode section already applies to its own open questions.
+
+**Compaction's relationship to the loop is the `prepareNextTurn` hook,
+not a separate out-of-band check.** VERIFIED,
+`packages/coding-agent/docs/compaction.md` (already cited in
+[context-compression.md](context-compression.md) §4, cross-referenced
+here rather than re-derived): "Pi checks this threshold after tools
+finish and their results are appended, before starting the next
+assistant response. If the threshold is crossed, Pi compacts inside
+the same agent run and resumes with the summary and retained messages.
+It skips this between-turn check when the completed tool batch
+terminates the run and no queued message requires another response."
+VERIFIED, cross-checked against source this session,
+`packages/coding-agent/src/core/agent-session.ts` (grepped for
+`prepareNextTurn`): the coding-agent layer wires its own compaction
+check into the low-level loop by wrapping
+`this.agent.prepareNextTurnWithContext`, the exact hook
+`packages/agent/src/agent-loop.ts`'s `runLoop()` calls immediately
+before emitting the next `turn_start` -- confirming mechanically, not
+just by documentation cross-reference, that pi's compaction trigger
+point is this hook and not a separate poll loop or timer. Because
+`prepareNextTurn` is only reached when the inner loop is about to
+continue, the doc's own stated skip condition ("terminates the run and
+no queued message requires another response") falls out directly from
+the source: a run that is about to emit `agent_end` never reaches the
+`prepareNextTurn` call at all.
+
+**A truncated-output edge case with no documented analogue elsewhere in
+this book.** VERIFIED, `packages/agent/src/agent-loop.ts`
+(`failToolCallsFromTruncatedMessage()`): if an assistant message's
+`stopReason` is `"length"` (the model's output was cut off by the
+token limit) and that message nonetheless contains tool calls, pi
+never executes any of them. A `"length"` stop means "every tool call
+in the message may carry truncated arguments" even if a best-effort
+streaming JSON-salvage parser made them look syntactically valid and
+schema-validate cleanly, so the loop synthesizes an error
+`ToolResultMessage` for each one instead, instructing the model in the
+error text to "re-issue the tool call with complete arguments" --
+letting the model retry on the next turn rather than risking execution
+of a write/edit/bash call built from truncated input. This is a
+concrete pi-specific safety behavior at the loop level; none of §1-§3
+above documents an equivalent stopReason-length-gates-tool-execution
+rule for Claude Code, Copilot CLI, or OpenCode, though this page does
+not claim any of the three lacks one -- only that no source read for
+those sections this book states one.
+
+**Steering and follow-up message queues: a user-initiated reinjection
+mechanism, not a limit-triggered one.** VERIFIED,
+`packages/coding-agent/docs/usage.md` and
+`packages/agent/src/types.ts`: pi's interactive mode lets a user queue
+a **steering message** (Enter) or a **follow-up message** (Alt+Enter)
+while the agent is still working. A steering message is drained via
+`config.getSteeringMessages()` and injected as soon as the current
+turn's tool calls finish executing, before the next LLM call --
+"tool calls from the current assistant message are not skipped." A
+follow-up message is drained via `config.getFollowUpMessages()` only at
+the point the agent would otherwise stop (no more tool calls pending
+and no steering messages queued), and its presence is precisely what
+makes the outer `while (true)` loop in `runLoop()` continue instead of
+breaking to `agent_end`. Two independent settings, `steeringMode` and
+`followUpMode` (both documented in `settings.md`, both defaulting to
+`"one-at-a-time"`, the alternative being `"all"`), control whether a
+drain point delivers every queued message at once or only the oldest
+one, deferring the rest to the next drain point. Architecturally, this
+is the same "inject a message into the stream to produce one more
+model turn" move Copilot CLI's autopilot nudge (§2 above) and
+OpenCode's `MAX_STEPS_PROMPT` (§3 above) both perform -- but the
+*trigger* is categorically different from either: OpenCode injects on
+a step-count ceiling being reached and Copilot CLI's autopilot injects
+on a completion-signal being absent, both harness-side conditions,
+whereas pi's own queues are drained only because a human explicitly
+queued something -- there is no threshold or counter behind either
+drain point.
+
+**Subagents and a second, separate loop-adjacent runtime worth flagging
+as an open question, not a settled fact.** BEST CURRENT UNDERSTANDING,
+UNCONFIRMED: `packages/agent/src/harness/` is a real, implemented
+subsystem (confirmed via a directory listing this session showing
+`agent-harness.ts`, a `session/` subdirectory, and its own test suite,
+`vitest.harness.config.ts`) documented at far greater length in
+`packages/agent/docs/harness.md` -- a 200KB+ specification for a
+durable, crash-recoverable `AgentHarness` built around named "lanes"
+(cursors into a shared conversation tree), of which the spec states
+directly: "Additional lanes support Slack threads, subagents, and other
+parallel work over shared history." This reads as architecturally
+comparable to OpenCode's primary/subagent split (§3) at the level of
+intent, but this session did not read the harness.md spec in full given
+its size, and grepping it found no `maxTurns`/`budget`/step-limit
+concept there either. VERIFIED, however, cross-checking actual source
+this session: `AgentHarness` is imported only by
+`packages/coding-agent/src/server/create-harness.ts` in the shipped CLI
+package, while `packages/coding-agent/src/core/agent-session.ts` --
+whose own doc comment states it is "shared between all run modes
+(interactive, print, rpc)" -- imports `Agent`, not `AgentHarness`, from
+`@earendil-works/pi-agent-core`. So the turn loop this section documents
+above (`agentLoop()`/`runLoop()`, the simpler of the two) is confirmed
+to be what actually drives pi's ordinary interactive, print, and RPC
+sessions; `AgentHarness`'s exact deployment surface -- an experimental
+alternate server mode, a future replacement, something else -- was not
+determined this session and should not be assumed to describe pi's
+primary turn loop without a further, dedicated source read of
+`packages/coding-agent/src/server/create-harness.ts`'s own caller(s) and
+`harness.md` itself.
+
+## 5. Comparison
+
+All four document the same shape at the level the Hugging Face course
 teaches generically -- evaluate, act, observe, repeat, stop when the
-model stops requesting tools or a hard limit is hit. Three concrete
+model stops requesting tools or a hard limit is hit. Concrete
 differences, all VERIFIED from each harness's own source above:
 
 - **Stop enforcement mechanism.** Claude Code's hard caps
@@ -305,7 +528,19 @@ differences, all VERIFIED from each harness's own source above:
   reinjection mechanism structurally closer to OpenCode's than to
   Claude Code's -- a synthetic user message forces one more model turn
   -- but triggered by the *absence* of an explicit `task_complete`
-  signal rather than by a step counter reaching zero.
+  signal rather than by a step counter reaching zero. pi's ordinary
+  stop condition is likewise purely model-driven (a turn with no tool
+  calls, plus no queued follow-up message, ends the loop) and, per its
+  own `AgentLoopConfig` type and its CLI's own settings/usage docs, has
+  **no documented hard turn-count or budget cap at all** -- closer to
+  Copilot CLI's undocumented-cap posture than to Claude Code's or
+  OpenCode's, though pi's absence of a cap is source-verified (the
+  config type has no such field) rather than merely undocumented on a
+  closed product. pi's own reinjection mechanism (steering/follow-up
+  message queues) is triggered neither by a harness-side counter
+  (OpenCode) nor by an absent completion signal (Copilot CLI) but
+  purely by explicit user action -- a third, distinct trigger class for
+  the same "inject a message to force one more turn" move.
 - **Budget/limit shape.** Claude Code's `max_budget_usd` is a hard,
   pre-emptively-enforced spend cap that ends the loop outright.
   Copilot CLI's nearest analogue, `sessionLimits.maxAiCredits`, is
@@ -315,7 +550,9 @@ differences, all VERIFIED from each harness's own source above:
   OpenCode's step limit is shaped like a turn-count cap rather than a
   spend cap, and (per its own stop-enforcement behavior above) never
   produces a hard stop with zero further model calls the way Claude
-  Code's caps do.
+  Code's caps do. pi has no analogue at all in this dimension -- its
+  nearest numeric cap, `retry.provider.maxRetries`, bounds per-call HTTP
+  retries, not turns or spend, and defaults to `0` (disabled).
 - **Verifiability.** Claude Code's and Copilot CLI's loops are each
   knowable only through what their respective companies choose to
   document (the Agent SDK page for Claude Code; the separate Copilot
@@ -324,7 +561,21 @@ differences, all VERIFIED from each harness's own source above:
   the claim against. OpenCode's is knowable two ways that can be
   checked against each other: the docs page's claim and the actual
   `max-steps.ts` source, which is what this page did for OpenCode
-  specifically.
+  specifically. pi is the most directly verifiable of the four on this
+  page's own subject: `packages/agent/src/agent-loop.ts` and
+  `types.ts` are the actual, currently-shipping loop implementation
+  (not a docs paraphrase), and this page additionally confirmed by
+  reading `agent-session.ts`'s own import statement that this is the
+  implementation driving pi's real interactive/print/RPC sessions,
+  rather than the separate, larger `AgentHarness` specification that
+  also lives in the same package.
+- **Turn/tool-execution boundary.** Claude Code, Copilot CLI, and
+  OpenCode all treat "one LLM call" as the atomic turn unit, with tool
+  execution happening *between* two turns. pi's own `turn_start`/
+  `turn_end` pair instead brackets one LLM call *and* the execution of
+  every tool call that response contained, as one turn -- a smaller
+  but real structural difference in the same overall Action/Observation
+  shape.
 
 BEST CURRENT UNDERSTANDING, UNCONFIRMED: whether OpenCode has an
 analogue to Claude Code's budget cap (`max_budget_usd`) or to its
@@ -336,7 +587,11 @@ has any hard, harness-side turn-count cap at all distinct from the
 soft `maxAiCredits` spend cap and the `agentStop`-hook 8-consecutive-
 block guard documented above -- no such cap was found in the Copilot
 SDK docs or the CLI's own changelog fetched this session, which is
-"not found," not "proven absent."
+"not found," not "proven absent." Likewise UNCONFIRMED for pi: whether
+`AgentHarness` (§4's closing paragraph) ever governs turn-loop
+behavior for any real deployment of the CLI, and what its own
+lane-based subagent mechanism's turn/step semantics are -- `harness.md`
+was not read in full this session given its size.
 
 ## Sources
 
@@ -372,3 +627,31 @@ SDK docs or the CLI's own changelog fetched this session, which is
 - Hugging Face Agents Course -- see [agent-loop.md](agent-loop.md)'s
   own Sources section; used here only for the shared vocabulary this
   page maps onto, not re-cited as harness-specific evidence.
+- `github.com/earendil-works/pi`, `main` branch, fetched 1 September
+  2026 -- confirmed via `gh api repos/earendil-works/pi` as the
+  canonical, non-redirecting repository (not the `pi-mono` name some
+  internal doc links reference). Full-file reads via `gh api
+  repos/earendil-works/pi/contents/<path>`:
+  `packages/ai/package.json` and `packages/agent/package.json` and
+  `packages/coding-agent/package.json` (resolving the
+  `pi-ai`/`pi-agent-core`/`pi-coding-agent` three-package naming);
+  `packages/agent/src/agent-loop.ts` and `packages/agent/src/types.ts`
+  (the turn-loop implementation itself: turn definition, stop
+  conditions, `shouldStopAfterTurn`/`prepareNextTurn` hooks, truncated-
+  tool-call handling); `packages/agent/README.md` (the `Agent` class,
+  event-sequence walkthrough); `packages/coding-agent/docs/settings.md`
+  and `docs/usage.md` (grepped for turn/budget/step-limit config keys,
+  and for the steering/follow-up keybindings and `steeringMode`/
+  `followUpMode` defaults); `packages/coding-agent/docs/compaction.md`
+  (the between-turn compaction-check description, also cited in
+  [context-compression.md](context-compression.md) §4); and
+  `packages/coding-agent/src/core/agent-session.ts` (grepped for
+  `prepareNextTurn`, confirming the compaction-hook wiring, and for its
+  own `AgentSession`/`AgentHarness` import statements, confirming which
+  loop implementation drives pi's real interactive/print/RPC sessions).
+  `packages/agent/docs/harness.md` and the `packages/agent/src/harness/`
+  directory were confirmed to exist and were spot-checked (directory
+  listing, targeted greps for turn/budget/step-limit terms, the
+  "lanes... subagents" quote) but not read in full given the document's
+  size (200KB+) -- flagged as an open question in §4's own closing
+  paragraph, not treated as fully verified.

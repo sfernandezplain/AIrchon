@@ -426,19 +426,200 @@ inter-agent message from a human-facing one.
 
 ---
 
-## 4. Synthesis
+## 4. pi
 
-| Dimension | Claude Code (`SendMessage`) | Copilot CLI | OpenCode |
-|---|---|---|---|
-| Transport | Tool call, resolved to either an in-conversation resume or a filesystem mailbox write | One-directional event stream (SDK-documented); no CLI-confirmed transport for a peer channel | Real HTTP Server-Sent-Events endpoint (`text/event-stream`), source-verified |
-| Message envelope | Natural-language "task direction" for ordinary messages; two named structured types (`shutdown_request`, `plan_approval_response`) for agent-team protocol messages | Named lifecycle events with fixed field sets per type (`agentName`, `toolCallId`, `error`, etc.) -- not a general-purpose message, a fixed event schema | A generic `Info` message row (`role`, `parts[]`, `metadata`) -- the same schema for every message in the product, human or agent-originated |
-| Addressing | Agent ID (durable across name reuse) or agent name (collision-checked as of v2.1.199) | `agentId` tag on each event, attributing it to the sub-agent that produced it -- not an address a message is sent *to* | `sessionID` (a session with a `parentID` is a subagent's session); no separate agent-address concept beyond the session ID itself |
-| Push vs. pull | Push: "the lead doesn't need to poll for updates"; mailbox delivered automatically | Push: events "share the parent session stream" | Push: SSE stream, plus a `server.heartbeat` keepalive so a client can tell "connected, idle" from "disconnected" |
-| Peer-to-peer (agent-to-agent, not just parent-child) | Yes -- agent teams: "teammates message each other directly," one send per recipient, no broadcast primitive | Not found in any source fetched this session, across three separate pages researched | Not applicable in the same sense -- there is no peer concept; every message is a write into *some* session's own row, parent or child |
-| Provenance / trust boundary on receipt | Enforced at the permission-classifier level: a message is tagged as coming from another agent, not the human, and cannot carry approval consent | Not documented -- no permission-relay discussion found for Copilot CLI's sub-agent events | Not documented as a trust boundary; the message schema itself carries no sender-trust field distinct from `role: "user" | "assistant"` |
-| Malformed-message handling | Documented, dated fix: bad mailbox entries are validated, reported as errors, and evicted individually (v2.1.207+); before that, one bad entry blocked the whole mailbox | Not documented | Not documented as a distinct failure mode; ordinary schema validation (Effect's `Schema.Struct`) applies to every message row generally |
-| Extensibility hook for messaging-adjacent events | Three dedicated hooks (`TeammateIdle`, `TaskCreated`, `TaskCompleted`), each supporting exit-code-2 blocking, no `matcher` support | Not found | The same generic SSE stream any external tool could subscribe to; no dedicated hook system found for messaging specifically |
-| Verifiability | Docs-only (closed-source product) | Docs-only, and thinner than the other two on this specific question | Docs **and** live `dev`-branch source, cross-checked end to end (schema file, publish call sites, SSE handler) |
+Sources for this section, fetched 1 September 2026 via `gh api` directly from
+`github.com/earendil-works/pi` (`main` branch; GitHub's own API resolves the
+older `earendil-works/pi-mono` name -- still the link target inside
+`docs/json.md`'s own prose -- to this same `full_name: "earendil-works/pi"`
+repository, confirming the two spellings this book has used inconsistently
+across pages are the same, still-active repository under its current name,
+not two different projects): `packages/coding-agent/docs/sdk.md`,
+`packages/coding-agent/docs/extensions.md`, `packages/coding-agent/docs/json.md`,
+and the full source of the repository's own reference
+`examples/extensions/subagent/` extension (`README.md`, `index.ts`,
+`agents.ts`, and its four sample agent-definition files). VERIFIED unless
+tagged otherwise.
+
+### 4.1 There is no core multi-agent primitive -- "subagents" are a shipped, opt-in reference *example*, not a built-in tool
+
+This is the finding the research question actually turns on. Nothing in
+`packages/coding-agent/docs/` names a built-in tool, RPC command, or
+extension-API hook whose job is spawning or addressing another pi agent
+instance the way Claude Code's `Task`/`SendMessage` or Copilot CLI's
+custom-agent delegation are core, always-present product surfaces. What pi
+ships instead is a **reference extension**, `examples/extensions/subagent/`,
+documented in the SDK guide's own use-case list -- "Build custom tools that
+spawn sub-agents" -- and cross-referenced in the extensions catalogue table
+as `subagent/` / "Spawn sub-agents" / built from `registerTool`, `exec`,
+i.e. two ordinary, general-purpose extension-API primitives available to
+any custom tool, not a dedicated subagent API. Its own `README.md` is
+explicit that it is not wired in by default: installing it means manually
+symlinking `index.ts` and `agents.ts` from the repository's
+`packages/coding-agent/examples/extensions/subagent/` tree into
+`~/.pi/agent/extensions/subagent/`, plus symlinking its four sample agent
+definitions into `~/.pi/agent/agents/`. A pi installation with no extension
+configured has no subagent concept whatsoever, addressed or otherwise --
+inter-agent messaging is moot for the base product for exactly the reason
+this task's own framing anticipates, and the qualified finding for pi
+specifically is "no core mechanism exists, but the project ships and
+documents one concrete opt-in pattern for building one," which this section
+now traces at the same wire-format precision as the other three harnesses.
+
+### 4.2 The pattern the reference extension actually implements: a spawned OS process, not a session or a mailbox
+
+```mermaid
+sequenceDiagram
+    participant LLM as Parent pi's own LLM turn
+    participant Tool as subagent tool (registerTool)
+    participant Child as Child `pi` process<br/>(--mode json -p --no-session)
+
+    LLM->>Tool: tool_call { agent: "scout", task: "..." }
+    Tool->>Child: spawn(pi, args), stdio: ["ignore", "pipe", "pipe"]
+    Note over Tool,Child: task text + agent's system prompt<br/>passed as argv / temp file at spawn time only.<br/>stdin is explicitly closed -- no channel to send<br/>a follow-up or steering message once spawned.
+    loop child streams JSONL to stdout
+        Child-->>Tool: {"type":"message_end","message":{...}}
+        Child-->>Tool: {"type":"tool_result_end","message":{...}}
+        Tool->>Tool: onUpdate(partialResult) -- UI-only progress,<br/>not delivered to the parent LLM mid-flight
+    end
+    Child-->>Tool: process exit (proc.on("close"))
+    Tool-->>LLM: final tool_result content --<br/>only now is anything "sent to LLM"
+```
+
+The extension's own `runSingleAgent()` function (`index.ts`) spawns a
+completely separate `pi` process per delegated task -- "spawns a separate
+`pi` process for each subagent invocation, giving it an isolated context
+window," per the file's own header comment -- using `--mode json`
+(`docs/json.md`'s streamed-JSONL event mode, the same output shape pi's own
+non-interactive scripting integrations use generally) together with `-p`
+(one-shot prompt mode) and `--no-session` (no session file persisted for the
+child). Two mechanical facts, both read directly from the `spawn()` call
+site, are load-bearing for the messaging question specifically:
+
+- **`stdio` is `["ignore", "pipe", "pipe"]` -- the child's stdin is
+  explicitly closed.** The entire task the child will work on, and its
+  agent-specific system prompt (written to a temp file and passed via
+  `--append-system-prompt <path>`), are supplied once, as process
+  arguments, at spawn time. There is no code path in this extension for the
+  parent to write anything further into the child's stdin after it starts --
+  which stands in direct contrast to pi's own general-purpose **RPC mode**
+  (documented in `docs/rpc.md`, cited already in this book's
+  [llm-api-contract.md](llm-api-contract.md) and elsewhere), whose `prompt`
+  command supports a `streamingBehavior: "steer"` option specifically for
+  injecting a follow-up message into an *already-running* pi session. The
+  reference subagent extension does not use RPC mode or the `steer`
+  mechanism at all; it uses the simpler one-shot `--mode json -p` mode,
+  meaning a spawned subagent's task cannot be redirected, corrected, or
+  added to once it starts -- the parent can only wait for it to finish (or
+  `signal.abort()`-kill it, which the extension does support, propagating
+  `SIGTERM` then `SIGKILL` after a five-second grace period). Whether a
+  different, hand-written extension could instead spawn a child in
+  `--mode rpc` and drive it with `prompt`/`steer` commands to get a
+  genuinely steerable, message-addressable subagent is plausible given
+  what `rpc.md` documents about that mode generally, but no such extension
+  was found in the repository's own examples this session -- treat a
+  steerable-subagent pattern as BEST CURRENT UNDERSTANDING, UNCONFIRMED,
+  architecturally possible from the primitives pi documents but not a
+  shipped or documented instance of it.
+- **The streamed JSONL the child emits is consumed for progress display,
+  not delivered to the parent's own LLM turn by turn.** The extension's
+  `processLine()` function parses each JSON line the child writes to
+  stdout (`message_end`, `tool_result_end` event types, per `docs/json.md`'s
+  own event-type table) and calls the tool's `onUpdate` callback with the
+  latest accumulated text. `onUpdate` is documented, generically, in
+  `extensions.md`'s own `pi.registerTool()` reference as a way to "stream
+  progress" during a tool's `execute()` -- the worked example there marks
+  only the value *returned* from `execute()` with the comment "Sent to
+  LLM," never the `onUpdate` payload, which the same page's UI documentation
+  frames as feeding the tool-call's live rendering (the collapsed/expanded
+  views the subagent README itself documents, with a Ctrl+O toggle) rather
+  than the model's own context window. Concretely: the parent's LLM does
+  not see a subagent's intermediate tool calls or partial text as they
+  happen: it only receives the fully assembled final result -- "each
+  completed task's final output," capped at 50 KB per task in parallel mode
+  -- once `runSingleAgent()`'s underlying process actually exits and the
+  tool call as a whole resolves. This is architecturally the opposite of
+  Claude Code's teammate model (§1.6 above), where an idle notification and
+  ongoing `SendMessage` traffic are themselves first-class conversational
+  content the lead agent's own turn can react to mid-task; here, delegation
+  is a synchronous, blocking tool call from the parent LLM's perspective,
+  with a human-facing progress readout as a side channel the model itself
+  never sees.
+
+### 4.3 Sequencing multiple subagents is client-side string substitution, not a message protocol
+
+The extension's three invocation modes -- documented in its own README as
+Single (`{ agent, task }`), Parallel (`{ tasks: [...] }`, capped at 8 total
+and 4 concurrent), and Chain (`{ chain: [...] }`) -- are all implemented in
+the same extension's own TypeScript, not by any pi-level orchestration
+primitive. Chain mode's own mechanism, per the README, is a
+`{previous}` placeholder substituted into the next step's `task` string
+with the prior child process's final output text -- i.e. "agent B receives
+agent A's output" is accomplished by the parent extension code reading agent
+A's finished result and interpolating it into agent B's spawn arguments
+before spawning agent B, not by any inter-process channel connecting the
+two child processes to each other. The two children never communicate
+directly; the parent extension is the sole intermediary, and the "message"
+that crosses from one subagent to the next is, at the wire level, just a
+larger string embedded in the next child's own argv, indistinguishable from
+the human's original task text as far as the child process can tell. The
+same is true of the bundled workflow prompt templates (`/implement`,
+`/scout-and-plan`, `/implement-and-review`) -- these are pi prompt templates
+(`.pi/agent/prompts/*.md`) that pre-fill a chain's steps, not a separate
+messaging layer.
+
+### 4.4 A related-but-distinct mechanism worth naming to avoid confusion: `pi.events` is intra-process, not inter-agent
+
+The extensions catalogue also lists an `event-bus.ts` example under
+"Messages & Communication" -- "Inter-extension events" via `pi.events`. Read
+directly, this is an ordinary in-process publish/subscribe bus
+(`pi.events.emit(name, data)` / `pi.events.on(name, handler)`) scoped to the
+extensions loaded inside **one single pi session**, letting one extension
+notify another extension of something (the example emits a
+`my:notification` event on `session_start` and command invocation, consumed
+by a UI toast). It is not a channel between two separate pi processes or
+sessions, agent or otherwise, and should not be conflated with the
+subagent-spawning mechanism above merely because both appear under the same
+"Messages & Communication" catalogue heading in the docs.
+
+### 4.5 The naming question resolved
+
+Per this task's own instruction to verify rather than trust either spelling
+already in use across this book: the monorepo is `github.com/earendil-works/pi`
+(current name; `earendil-works/pi-mono` is a prior name for the identical
+repository, confirmed by `gh api repos/earendil-works/pi-mono` resolving to
+`full_name: "earendil-works/pi"` -- not two projects, not a fork). Inside
+that one repository, three separate, independently-versioned npm packages
+matter for this specific page: `@earendil-works/pi-ai` (`packages/ai`, the
+provider-agnostic LLM wire layer this book's
+[llm-api-contract.md](llm-api-contract.md) §3.5 documents), the CLI/harness
+itself is `@earendil-works/pi-coding-agent` (`packages/coding-agent`, whose
+own `docs/sdk.md` gives `npm install @earendil-works/pi-coding-agent` as its
+installation instruction, and whose exported `AgentSession`/`ModelRuntime`
+the extension examples above import from directly), and a third,
+lower-level package, `@earendil-works/pi-agent-core` (`packages/agent`,
+imported in the subagent extension for its `AgentToolResult`/`ThinkingLevel`
+types), which sits between the two. "`pi-ai`" and "`pi-coding-agent`" are
+therefore not inconsistent spellings of the same thing -- they are two
+distinct, correctly-named packages in the same monorepo, and a citation
+should name whichever one it is actually describing rather than treating
+them as interchangeable.
+
+---
+
+## 5. Synthesis
+
+| Dimension | Claude Code (`SendMessage`) | Copilot CLI | OpenCode | pi |
+|---|---|---|---|---|
+| Transport | Tool call, resolved to either an in-conversation resume or a filesystem mailbox write | One-directional event stream (SDK-documented); no CLI-confirmed transport for a peer channel | Real HTTP Server-Sent-Events endpoint (`text/event-stream`), source-verified | Spawned OS process (`child_process.spawn`, `--mode json -p --no-session`), stdin closed at spawn -- source-verified from an official but opt-in reference extension, not a core primitive |
+| Message envelope | Natural-language "task direction" for ordinary messages; two named structured types (`shutdown_request`, `plan_approval_response`) for agent-team protocol messages | Named lifecycle events with fixed field sets per type (`agentName`, `toolCallId`, `error`, etc.) -- not a general-purpose message, a fixed event schema | A generic `Info` message row (`role`, `parts[]`, `metadata`) -- the same schema for every message in the product, human or agent-originated | Streamed JSONL `AgentSessionEvent`/`AgentEvent` lines (`message_end`, `tool_result_end`, etc., per `docs/json.md`) consumed for UI progress only; the one value actually delivered to the parent LLM is the tool call's own final `content`, assembled client-side by the extension |
+| Addressing | Agent ID (durable across name reuse) or agent name (collision-checked as of v2.1.199) | `agentId` tag on each event, attributing it to the sub-agent that produced it -- not an address a message is sent *to* | `sessionID` (a session with a `parentID` is a subagent's session); no separate agent-address concept beyond the session ID itself | Agent *name* only, resolved from a markdown frontmatter file (`~/.pi/agent/agents/*.md`, or project-scoped `.pi/agents/*.md`) at dispatch time -- no persistent handle to a *running* instance exists, because each dispatch is a fresh, short-lived child process, not a resumable session |
+| Push vs. pull | Push: "the lead doesn't need to poll for updates"; mailbox delivered automatically | Push: events "share the parent session stream" | Push: SSE stream, plus a `server.heartbeat` keepalive so a client can tell "connected, idle" from "disconnected" | Push, but UI-scoped only: the extension's `onUpdate` callback is invoked as JSONL lines arrive on the child's stdout, updating the tool call's live render; nothing is pushed into the parent LLM's own context until the child process exits |
+| Peer-to-peer (agent-to-agent, not just parent-child) | Yes -- agent teams: "teammates message each other directly," one send per recipient, no broadcast primitive | Not found in any source fetched this session, across three separate pages researched | Not applicable in the same sense -- there is no peer concept; every message is a write into *some* session's own row, parent or child | No -- strictly parent-to-child, one direction, spawn-time only; sequencing multiple subagents (chain mode) is the parent extension's own string interpolation of one child's finished output into the next child's spawn arguments, never a channel between the two children themselves |
+| Provenance / trust boundary on receipt | Enforced at the permission-classifier level: a message is tagged as coming from another agent, not the human, and cannot carry approval consent | Not documented -- no permission-relay discussion found for Copilot CLI's sub-agent events | Not documented as a trust boundary; the message schema itself carries no sender-trust field distinct from `role: "user" | "assistant"` | Documented at the agent-*definition* level, not the message level: project-local agent files (`.pi/agents/*.md`) are treated as less trusted than user-level ones, and the reference extension prompts for confirmation before running a project-local agent in an untrusted project (`agentScope`, `confirmProjectAgents`) -- a load-time trust gate on which prompt runs, not a runtime check on message content |
+| Malformed-message handling | Documented, dated fix: bad mailbox entries are validated, reported as errors, and evicted individually (v2.1.207+); before that, one bad entry blocked the whole mailbox | Not documented | Not documented as a distinct failure mode; ordinary schema validation (Effect's `Schema.Struct`) applies to every message row generally | Documented per-invocation, not per-message: a non-zero child exit code surfaces as a tool error with captured stderr/output, an LLM-level `stopReason: "error"` propagates as an error message, and in chain mode the whole chain stops at the first failing step |
+| Extensibility hook for messaging-adjacent events | Three dedicated hooks (`TeammateIdle`, `TaskCreated`, `TaskCompleted`), each supporting exit-code-2 blocking, no `matcher` support | Not found | The same generic SSE stream any external tool could subscribe to; no dedicated hook system found for messaging specifically | None dedicated to subagent messaging specifically; the generic `registerTool`/`onUpdate`/`exec` extension primitives the reference example is built from are available to any tool, and a separate, unrelated `pi.events` in-process pub/sub bus exists for extension-to-extension notification within one session (§4.4) -- not a hook on the subagent pattern itself |
+| Verifiability | Docs-only (closed-source product) | Docs-only, and thinner than the other two on this specific question | Docs **and** live `dev`-branch source, cross-checked end to end (schema file, publish call sites, SSE handler) | Docs **and** the full, real TypeScript source of the one reference extension the "subagent" concept is built from, both fetched this session from the `main` branch |
 
 **The design lesson.** The three harnesses answer "how does a message
 actually get from one agent instance to another" in three
@@ -466,7 +647,25 @@ a message format I can point at, specific to agent-to-agent
 communication" will find a rich, dedicated one on Claude Code, will
 find only an observational event stream and a status-report channel on
 Copilot CLI, and will find that the question dissolves entirely on
-OpenCode into "which session is this message actually a part of."
+OpenCode into "which session is this message actually a part of." pi
+dissolves the question a third, different way: the harness itself has no
+opinion on inter-agent messaging at all, and the one documented multi-agent
+pattern in the entire project is a reference extension the operator must
+opt into by hand, built entirely from generic single-session extension
+primitives (`registerTool`, `exec`, `onUpdate`) rather than any dedicated
+subagent API. Its "isolation" comes from the OS process boundary, not a
+session/mailbox abstraction, and that same process boundary is exactly why
+it has no addressed messaging channel to speak of: a spawned child's stdin
+is closed the moment it starts, so the only two things that ever cross the
+boundary are the fully-specified task handed to the child at spawn and the
+fully-assembled result handed back when it exits, with everything in
+between (the streamed JSONL events) visible only to a human watching the
+tool call's own progress render, never to the parent model's own turn. A
+workflow builder coming to pi expecting even OpenCode's minimal "it's just
+another session" answer will find something one level starker still: pi
+does not ship multiple agents talking to anything, in or out of process,
+unless a project has deliberately wired the one example extension the
+repository provides for building that pattern themselves.
 
 ---
 
@@ -544,3 +743,42 @@ tag and may not match the current stable release:**
   `packages/opencode/src/tool/task.txt`, already fetched and cited in
   [handoff-mechanism.md](handoff-mechanism.md) section 3, for the
   synthetic-message injection mechanism this page builds on.
+
+**pi (authoritative for pi's own documented behavior AND, this session, the
+real source of its one reference multi-agent extension), `main` branch via
+`gh api`, fetched 1 September 2026:**
+- `gh api repos/earendil-works/pi` and
+  `gh api repos/earendil-works/pi-mono` -- confirms both names resolve to
+  the identical, current repository (`full_name: "earendil-works/pi"`),
+  resolving section 4.5's naming question.
+- `packages/coding-agent/docs/sdk.md` -- the "Build custom tools that spawn
+  sub-agents" use-case framing, the `npm install @earendil-works/pi-coding-agent`
+  installation instruction, and the `createAgentSession`/`ModelRuntime`
+  Quick Start shape.
+- `packages/coding-agent/docs/extensions.md`, in full (3000+ lines) --
+  the extensions catalogue table naming `subagent/` ("Spawn sub-agents",
+  built from `registerTool`/`exec`) and `event-bus.ts` ("Inter-extension
+  events", `pi.events`) under the same "Messages & Communication" heading
+  (section 4.4's disambiguation); the `pi.registerTool()` reference
+  documenting `onUpdate` as a progress-streaming callback distinct from the
+  `execute()` return value explicitly marked "Sent to LLM" (section 4.2).
+- `packages/coding-agent/docs/json.md` -- the `--mode json` streamed-JSONL
+  event schema (`JsonAgentSessionEvent`, `message_end`, `tool_result_end`,
+  etc.) the reference subagent extension's own `processLine()` parses.
+- `packages/coding-agent/docs/rpc.md` -- re-read this session specifically
+  for the `prompt` command's `streamingBehavior: "steer"` option, cited in
+  section 4.2 as the documented steering mechanism the reference subagent
+  extension does *not* use.
+- `packages/coding-agent/examples/extensions/subagent/README.md`,
+  `index.ts`, and `agents.ts`, in full -- the entire reference
+  implementation this section documents: the three invocation modes
+  (single/parallel/chain), the `spawn()` call site and its
+  `stdio: ["ignore", "pipe", "pipe"]` argument, the agent-definition
+  markdown/frontmatter format and its `agentScope`/`confirmProjectAgents`
+  trust gate, the parallel-mode 8-task/4-concurrent cap and 50 KB
+  per-task output cap, and the chain-mode `{previous}` string-substitution
+  mechanism.
+- `packages/coding-agent/examples/extensions/event-bus.ts`, in full --
+  confirms `pi.events` is an in-process, single-session
+  extension-to-extension pub/sub bus, cited in section 4.4 specifically to
+  distinguish it from the subagent-spawning mechanism.

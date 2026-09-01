@@ -669,48 +669,402 @@ stable integration surface worth targeting) rather than a one-off.
 
 ---
 
-## 4. Synthesis
+## 4. pi
 
-| Concern | Claude Code | Copilot CLI | OpenCode |
-|---|---|---|---|
-| Rendering engine | Ink-adjacent (BEST CURRENT UNDERSTANDING, corroborated by Ink's own adopters list + a community reverse-engineering claim of substantial custom rewrite); Yoga-based Flexbox layout, later a pure-TS reimplementation (VERIFIED via changelog, cross-ref streaming-and-incremental-rendering.md §1.1); two distinct rendering paths (classic scrollback vs. alt-screen "fullscreen") | Ink, directly confirmed (VERIFIED via Ink's own README adopters list AND a first-party GitHub engineering blog naming Ink components/hooks explicitly); a later, separately-named "cell-based renderer" layered on top | OpenTUI: a native Zig core exposed over a C ABI, Flexbox layout, consumed via the Solid reconciler specifically (not the also-available React one) -- fully source/docs-verified, the most precisely documented of the three |
-| Component model | Reconstructed only indirectly, via a 19-context keybindings taxonomy documented for input-scoping purposes, not as an explicit UI-architecture description | Reconstructed indirectly from changelog behavior; a distinct split-view Sessions sidebar shown to be independently focusable from the main chat surface | Fully source-verified three-tier hierarchy: primitive intrinsics (`box`/`text`/`textarea`/`scrollbox`/`diff`) -> composite widgets (a reusable parametrized `Prompt<T>` dialog component instantiated three ways for one feature) -> feature-scoped dialog/route files, plus a shared generic dialog toolkit |
-| Modal-state architecture | Per-context keybinding scoping (`Confirmation`, `DiffDialog`, `Select`, etc.), each context independently defining its own actions; fullscreen mode gives open dialogs explicit auto-follow display priority | A cycled `mode` list (interactive/plan/autopilot, shell demoted out of the cycle in a later release) whose current value is read by the same dialog-invocation logic that decides whether to surface permission/elicitation/`ask_user` dialogs at all, rather than being a separate code path | A genuine mode**-stack** (push/pop, shadowing rather than toggling), architecturally closer to a modal text editor's own mode machinery than either other harness's flatter scoping mechanism |
-| Multi-line input mechanism | `Ctrl+J`/backslash-Enter always work; `Shift+Enter` requires either native terminal support or a one-time `/terminal-setup` write into the *outer* terminal's own config | `Shift+Enter` requires Kitty-keyboard-protocol support or the same `/terminal-setup`-into-outer-terminal pattern; two open GitHub Issues confirm the terminal-coverage gap is still live | A dedicated, densely-populated `input_*` keybinding family (36 actions) covering cursor movement, selection, word/line/buffer-scoped deletion, undo/redo, and both logical- and "visual"-line home/end variants -- editor-grade granularity, source-confirmed rather than inferred |
-| Leader-key / chord support | Chords supported in the keybindings file (space-separated sequences, e.g. `ctrl+x ctrl+e`) with documented prefix-reservation semantics, but no single default "leader" concept | A narrower single chord (`Ctrl+X` then `/` for slash-command insertion); no broader leader-key system documented | A first-class `<leader>` placeholder (default `ctrl+x`) used across dozens of bindings, paired with a dedicated which-key discoverability panel -- a Vim-plugin-derived pattern with no confirmed equivalent in either other harness |
-| Permission-prompt modal design | A single generic `Confirmation` context reused for yes/no/explain-toggle, with `Shift+Tab` permission-mode cycling available from inside the open dialog | Three-option dialog combining accept-once/accept-for-session/reject-with-redirection-text in one prompt; suppressed entirely under autopilot mode rather than auto-answered by a separate path | A three-stage `Switch`/`Match` state machine (`permission` -> `always` -> `reject`) built from one reusable `Prompt<T>` component instantiated per stage, with a permission-kind-specific body dispatch table (edit/bash/task/webfetch/etc.) and its own local, component-scoped keybindings |
-| Cross-harness interop found | -- | Reads Claude Code's `.claude/settings.json` directly (already documented in [configuration.md](configuration.md)) | Reads Claude Code's `~/.claude/ide/*.lock` file protocol directly to discover a connected IDE for editor-selection sync (§3.4, newly documented here) |
+Sources for this section: VERIFIED, fetched 1 September 2026 directly from
+`github.com/earendil-works/pi`, `main` branch -- `packages/tui/package.json`
+and `packages/tui/README.md` in full, a recursive directory listing of
+`packages/tui/src/` and `packages/tui/src/components/`, `packages/tui/src/native-modifiers.ts`
+and `packages/tui/src/native-module-path.ts` in full, `packages/tui/src/keybindings.ts`
+in full, `packages/coding-agent/package.json`, `packages/ai/package.json`, and
+`packages/client/package.json` in full, a directory listing of
+`packages/coding-agent/src/modes/` and `packages/coding-agent/src/modes/interactive/`
+and `packages/coding-agent/src/modes/interactive/components/`, and the opening
+~90 lines of `packages/coding-agent/src/modes/interactive/interactive-mode.ts`
+together with the opening lines of `print-mode.ts` and `json-event.ts`. Unlike
+Claude Code and Copilot CLI (§1-§2), and exactly like OpenCode (§3), pi's TUI
+is fully source-inspectable -- every claim below is read from the package's
+own source and its own README, not reconstructed indirectly.
 
-**The design lesson.** All three harnesses converge on the same underlying
+**A package-naming finding worth resolving explicitly first, since this book
+cites both spellings elsewhere.** [llm-api-contract.md](llm-api-contract.md)
+§3.5, [auth-and-usage-accounting.md](auth-and-usage-accounting.md),
+[context-compression.md](context-compression.md), and
+[model-routing-and-selection.md](model-routing-and-selection.md) all cite
+`@earendil-works/pi-ai`, while [deterministic-orchestration.md](deterministic-orchestration.md)
+and [session-persistence.md](session-persistence.md) cite
+`@earendil-works/pi-coding-agent`. Reading all three relevant `package.json`
+files directly this session resolves this as **not an error**: pi is a
+monorepo (`github.com/earendil-works/pi`) shipping several independently
+versioned (all currently `0.84.4`), separately scoped npm packages, and each
+citation in this book is naming the correct package for the topic it covers.
+`packages/ai/package.json`'s `name` field is literally `@earendil-works/pi-ai`
+("Unified LLM API with automatic model discovery and provider configuration"),
+`packages/coding-agent/package.json`'s is `@earendil-works/pi-coding-agent`
+("Coding agent CLI with read, bash, edit, write tools and session management",
+exposing the `pi` binary itself via its `bin` field), and -- the fact this
+section adds -- `packages/tui/package.json`'s own `name` field is a **third**,
+previously uncited package: `@earendil-works/pi-tui` ("Terminal User Interface
+library with differential rendering for efficient text-based applications"),
+authored, per its own `package.json` `author` field, by Mario Zechner -- the
+same first-party voice [permissions-and-sandboxing.md](permissions-and-sandboxing.md)
+§5 already cites for pi's own design-rationale blog post. `interactive-mode.ts`'s
+own import statements (`import ... from "@earendil-works/pi-tui"`, read
+directly this session) confirm the coding-agent package consumes this exact
+package by that exact name at the source level, not merely in its own
+`package.json` metadata.
+
+### 4.1 Rendering engine: `pi-tui`, a from-scratch, dependency-free TUI framework
+
+VERIFIED. `packages/tui/package.json`'s `dependencies` field lists exactly
+two runtime packages: `get-east-asian-width` (wide-character-width
+calculation, needed for correct column math with CJK and other double-width
+glyphs) and `marked` (Markdown parsing, backing the built-in `Markdown`
+component). There is no dependency on Ink, React, Solid, blessed, or OpenTUI
+anywhere in this file -- `devDependencies` lists only `@xterm/headless`
+(a headless terminal emulator, evidently used for testing rendering output
+rather than shipped at runtime) and `chalk` (ANSI color styling). This
+directly answers this book's own open question about pi's rendering stack:
+unlike Claude Code and Copilot CLI's Ink-adjacent renderer (§1.1, §2.1) and
+unlike OpenCode's OpenTUI-Zig-core-plus-Solid-reconciler stack (§3.1), pi
+built its own terminal-UI framework from scratch, as a fourth, independently
+engineered rendering stack, and open-sourced it as its own versioned package
+rather than adopting an existing one.
+
+The README (fetched in full this session) documents the framework's own
+stated feature list directly: "differential rendering and synchronized output
+for flicker-free interactive CLI applications." Differential rendering here
+is explicitly **line-level**, not the individual-terminal-cell diffing this
+book's other pages document for Claude Code's and Copilot CLI's own
+"cell-based renderer" (§1.1, §2.1) -- the README states plainly that updates
+touch "only changed lines or viewport rows," and the `Component` interface's
+own contract (§4.2 below) requires every component to return `string[]`, one
+already-styled string per output line, which is the concrete reason the
+diffing granularity sits at the line rather than the cell. Synchronized
+output is implemented via "CSI 2026" (VERIFIED, README's own feature list),
+the identical terminal escape-sequence mechanism
+[streaming-and-incremental-rendering.md](streaming-and-incremental-rendering.md)
+already documents Claude Code and Copilot CLI using for the same
+flicker-suppression purpose -- a fourth independent convergence on the same
+terminal protocol feature, not a shared implementation.
+
+Two swappable renderer implementations sit behind one shared `TUI` interface
+(VERIFIED, README Quick Start and "Core API" sections, and the exported
+`tui-main-screen.ts`/`tui-alt-screen.ts` source files): `TuiMainScreen`
+"renders into the main terminal buffer and preserves terminal scrollback" --
+architecturally the same choice as Claude Code's "classic" renderer (§1.1) --
+while `TuiAltScreen` "renders a fixed-height viewport in the alternate
+terminal buffer with application-owned scrolling," the same alt-screen-buffer
+strategy Claude Code's opt-in "fullscreen rendering" mode (§1.1) implements
+independently. `TuiAltScreen` specifically supports an explicit,
+terminal-height-constrained layout tree built from `VStack`/`HStack`
+(allocating constrained regions) and `ScrollView` (owning scrolling for one
+region), with stack entries carrying `basis`, `grow`, `shrink`, `minSize`,
+`maxSize`, and responsive `visible` callbacks -- this is, verbatim, CSS
+Flexbox's own `flex-basis`/`flex-grow`/`flex-shrink` vocabulary, making pi's
+own from-scratch layout engine a **fourth** independent implementation of the
+same Flexbox-family layout model §1.1, §3.1 already find Claude Code/Ink
+(via Yoga) and OpenCode (via OpenTUI's own native Flexbox implementation)
+converging on. The primary `ScrollView` additionally supports jumping between
+OSC 133 semantic-prompt markers and an in-viewport `Ctrl+Shift+F` search mode
+with `Enter`/`Ctrl+G` next-match and `Escape`-to-close -- a source-confirmed,
+close functional analogue of Claude Code's own `Ctrl+O` `less`-style
+transcript-search mode (§1.3), independently engineered.
+
+**Bracketed-paste handling** is a first-class, named README feature
+("Handles large pastes correctly with markers for >10 line pastes"), the same
+architectural problem Claude Code's >800-character/two-line paste-collapsing
+mechanism (§1.3) solves, independently re-implemented here at a materially
+different, lower threshold (10 lines rather than 800 characters or two
+lines).
+
+**Native, compiled modifier-key detection.** This is pi-tui's most
+structurally distinctive rendering-layer finding, and it is fully
+source-confirmed. `native-modifiers.ts` (read in full this session) loads a
+platform- and architecture-gated native Node addon -- `darwin-modifiers.node`
+on macOS, `win32-console-mode.node` on Windows, both restricted to `x64`/
+`arm64` -- exposing a single `isModifierPressed(name: "shift" | "command" |
+"control" | "option"): boolean` function, i.e. a compiled, OS-API-level check
+of live modifier-key state that exists specifically because the ordinary
+ANSI/terminal-escape-sequence input channel this book documents for the other
+three harnesses (§1.3's Kitty-keyboard-protocol-gated `Cmd+c` support,
+§2.3's Kitty-protocol-gated `Shift+Enter`) cannot always report modifier
+state reliably on its own. `native-module-path.ts` (read in full) implements
+a candidate-path resolution scheme -- first trying to resolve the installed
+`@earendil-works/pi-tui` package location via `require.resolve`, then falling
+back to paths relative to the running module and to the process's own
+executable directory -- explicitly to support **both** an npm-installed
+library consumer and pi's own standalone compiled binary (`packages/coding-agent`'s
+`build:binary` script, read this session, compiles the whole CLI via `bun
+build --compile` into a single `dist/pi` executable with no installed
+`node_modules` tree to resolve against). No comparably-documented native
+modifier-detection layer is confirmed for Claude Code, Copilot CLI, or
+OpenCode in this book's existing coverage -- flagged as a real, if narrow,
+architectural distinction rather than a superiority claim, since none of
+those three harnesses' own sources were re-checked this session specifically
+for the absence of an equivalent mechanism.
+
+### 4.2 Component model: a plain-string-array render contract, no virtual DOM
+
+VERIFIED, the README's own "Component Interface" section and
+`packages/tui/src/components/` (directory listing read this session). Every
+pi-tui component implements a three-method interface --
+`render(width: number): string[]` (mandatory; each returned line "must not
+exceed `width`," an invariant the TUI itself enforces and errors on if
+violated), `handleInput?(data: string): void` (fires only on the focused
+component, receiving raw terminal input including any unparsed ANSI escape
+sequences), and `invalidate?(): void` (clears cached render state so the next
+`render()` call rebuilds from scratch) -- and components are composed
+**imperatively**, via `addChild()`/`removeChild()` calls building a plain
+runtime object tree, not declaratively via JSX compiled through a reconciler
+the way Ink (§1.1, §2.1) or OpenTUI's React/Solid bindings (§3.1) work. This
+is architecturally the most different of the four rendering stacks this page
+now covers on exactly this axis: there is no virtual-DOM diff, no
+fine-grained-signal dependency graph, and no compiled JSX step anywhere in
+pi-tui's own documented API -- a component's `render()` method is called
+directly by the owning `TUI` instance and its returned line array is diffed
+line-by-line against the previous frame (§4.1).
+
+Built-in components, enumerated directly from the `packages/tui/src/components/`
+file listing and the README's own worked examples: `Container` (a bare
+child-grouping node), `Box` (padding plus an optional background-color
+function applied to all children), `Text`/`TruncatedText` (word-wrapped
+versus single-line-truncated text, both with configurable padding and a
+background function), `Input` (single-line, horizontally-scrolling text
+entry), `Editor` (multi-line, autocomplete- and paste-aware, vertically
+scrolling when content exceeds the available height -- the component backing
+the main prompt, per its own required `tui`-instance constructor argument for
+height-aware scrolling), `Markdown` (syntax-highlighted, themeable rendering
+via the `marked` dependency), `Loader`/`CancellableLoader` (spinners), a
+`SelectList`/`SettingsList` pair (the generic reusable list/menu components,
+directly analogous to Claude Code's `Select` keybindings-context, §1.2, and
+OpenCode's own reusable dialog primitives, §3.2 -- here, as with OpenCode,
+fully source-confirmed rather than inferred from a keybindings taxonomy),
+`Spacer`, `Image` (Kitty- and iTerm2-graphics-protocol inline images, the same
+capability [streaming-and-incremental-rendering.md](streaming-and-incremental-rendering.md)
+and this page's §1.1/§3.1 document for the other harnesses' own terminal-image
+support), and the `Stack`/`VStack`/`HStack`/`ScrollView` layout family
+already named in §4.1.
+
+**Overlays as the dialog-and-modal primitive.** VERIFIED, README's own
+"Overlays" section: `tui.showOverlay(component, options)` renders a component
+on top of existing content without replacing it, returning an `OverlayHandle`
+with `hide()`/`setHidden()`/`isHidden()`/`focus()`/`unfocus()`/`isFocused()`
+methods. Positioning is resolved through a documented, explicit precedence
+order -- absolute `row`/`col` beats percentage `row`/`col` beats a named
+`anchor` (`center`, the four corners, the four edge-midpoints), `minWidth`
+is applied as a post-calculation floor, `margin` clamps the final position to
+stay inside the terminal bounds, and a per-frame `visible(termWidth,
+termHeight)` callback can hide an overlay responsively (e.g. on a narrow
+terminal) -- and focus arbitration between multiple simultaneously-visible
+overlays is explicit rather than implicit: calling `handle.unfocus()` returns
+focus "to another visible capturing overlay or the previous focus target,"
+while `handle.unfocus({target: component})` or `handle.unfocus({target:
+null})` lets calling code direct focus precisely, including to no component
+at all. This overlay-handle API is pi-tui's own answer to the same
+multiple-simultaneously-active-modal-surfaces problem Claude Code's 19-context
+keybindings taxonomy (§1.2) and Copilot CLI's independently-focusable Sessions
+sidebar (§2.2) both address by different means -- here, uniquely among the
+four harnesses this page covers, as an explicit, source-confirmed focus-handle
+API rather than a declared context enum or a changelog-inferred behavior.
+
+**The `Focusable` interface and IME cursor positioning.** VERIFIED, README:
+a component that needs a visible or IME-trackable text cursor implements
+`Focusable` (`focused: boolean`, set by the TUI on focus change) and emits a
+zero-width `CURSOR_MARKER` escape sequence at the cursor's logical position
+within its rendered line; the TUI scans the rendered output for that marker
+and positions the real hardware terminal cursor there, keeping it hidden by
+default (toggle via `showHardwareCursor`, `setShowHardwareCursor(true)`, or
+`PI_HARDWARE_CURSOR=1`) since "some terminals require a visible hardware
+cursor for IME positioning" -- an explicit, source-documented mechanism for
+correctly placing a CJK input-method candidate window that this book's
+existing coverage of Claude Code, Copilot CLI, and OpenCode does not name an
+equivalent for (flagged as a pi-specific finding, not a claim the other three
+lack the capability, since this session did not specifically re-check their
+own sources for it). Container components that embed a focusable child
+(a search dialog wrapping an `Input`, for instance) must themselves implement
+`Focusable` and propagate their own `focused` state down to that child, or
+IME candidate-window positioning breaks -- a documented composition
+obligation on any dialog author building on top of these primitives.
+
+**The coding-agent's own feature-scoped components, built on these
+primitives.** VERIFIED, a directory listing of
+`packages/coding-agent/src/modes/interactive/components/` read this session:
+roughly forty files, each a composite widget built from the §4.2 primitives
+above -- `model-selector.ts`, `session-selector.ts`/`session-selector-search.ts`,
+`theme-selector.ts`, `trust-selector.ts`, `login-dialog.ts`, `oauth-selector.ts`,
+`config-selector.ts`, `settings-selector.ts`/`settings-submenu.ts`,
+`extension-selector.ts`/`extension-editor.ts`/`extension-input.ts`,
+`skill-invocation-message.ts`, `diff.ts`, `tool-execution.ts`, `bash-execution.ts`,
+`assistant-message.ts`/`user-message.ts`/`user-message-selector.ts`,
+`branch-summary-message.ts`, `compaction-summary-message.ts` (cross-reference
+[context-compression.md](context-compression.md)'s own pi section for what
+these last two summarize, not repeated here), `first-time-setup.ts`,
+`footer.ts`, `keybinding-hints.ts`, `mermaid.ts`, and `show-images-selector.ts`
+among others -- the same feature-scoped-dialog-file pattern this page already
+finds in OpenCode's `dialog-*.tsx` family (§3.2), here confirmed for a fourth
+harness at the same level of source precision.
+
+### 4.3 Input handling: CLI-invocation-time modes, not runtime-cycled ones, plus an overlay-dialog interior
+
+This is the section that most directly answers this page's own "interaction-mode
+structure" question, and pi's answer is structurally different in kind from
+either Claude Code's per-context taxonomy (§1.2), Copilot CLI's `Tab`-cycled
+mode list (§2.2), or OpenCode's push/pop mode-stack (§3.3).
+
+VERIFIED, a directory listing of `packages/coding-agent/src/modes/` plus the
+opening comments of `print-mode.ts`, `json-event.ts`, and the `rpc/`
+subdirectory's own file names, all read this session: pi's own "mode"
+concept operates at **CLI invocation time**, not as a runtime-cycled or
+runtime-pushed state inside one running TUI. Four mutually exclusive entry
+points exist as sibling modules under `src/modes/`: `interactive`
+(the full TUI covered in §4.1-§4.2, entered by running `pi` with no
+`--print`/`--mode` flag), `print-mode.ts` ("single-shot: send prompts, output
+result, exit" -- documented in its own file header as backing both `pi -p
+"prompt"` for plain text output and `pi --mode json "prompt"` for a
+structured JSON event stream), `json-event.ts` (the event-serialization logic
+`print-mode.ts` calls into for that JSON-event-stream case, converting
+internal `AgentSessionEvent`s into a documented wire shape), and `rpc/`
+(`rpc-mode.ts`, `rpc-client.ts`, `rpc-types.ts`, `jsonl.ts` -- a JSON-RPC
+server mode). That `rpc` mode is the confirmed server side of a separate,
+matching package, `@earendil-works/pi-client` (`packages/client/package.json`,
+read in full this session), described in its own `description` field as a
+"transport-neutral client for remote pi sessions over framed CBOR bytes" --
+i.e. pi's four "modes" are better understood as four distinct **process
+entry points/output formats** selected once at startup (interactive TUI,
+one-shot text, one-shot JSON event stream, or a long-running RPC server for
+an external client), not a single running interface whose modal state changes
+mid-session the way Copilot CLI's `interactive`/`plan`/`autopilot`/`shell`
+cycle (§2.2) or OpenCode's mode-stack (§3.3) both are.
+
+**Inside interactive mode specifically**, keybinding registration is a
+plain, declared-vocabulary registry rather than either Claude Code's
+context-enum file (§1.2) or OpenCode's push/pop mode-stack (§3.3).
+`packages/tui/src/keybindings.ts` (read in full this session) declares a
+`Keybindings` TypeScript interface as pi-tui's own base action vocabulary --
+`tui.editor.*` (cursor motion, word/line-scoped deletion, history
+navigation, undo, kill-ring yank/yank-pop -- an Emacs-style kill-ring is a
+named, source-confirmed feature with no documented equivalent elsewhere in
+this book's coverage of the other three harnesses), `tui.input.*` (newline,
+submit, tab, copy), `tui.select.*` (list navigation/confirm/cancel), and
+`tui.altScreen.*` (page/half-page/line scrolling, semantic-prompt-marker
+jumps, search open/next/previous/close, top/bottom) -- with the file's own
+doc comment stating explicitly that "downstream packages can add keybindings
+via declaration merging," a TypeScript module-augmentation pattern letting
+`packages/coding-agent`'s own `KeybindingsManager`
+(`../../core/keybindings.ts`, imported by name in `interactive-mode.ts`'s own
+opening imports, read this session, though its own action vocabulary was not
+separately enumerated this session) extend that same registry type-safely
+with app-level actions rather than maintaining a wholly separate keybinding
+system. This is architecturally a flatter, single-registry design -- one
+merged vocabulary of named actions, dispatched to whichever component
+currently holds focus (via the overlay-focus-handle mechanism §4.2 already
+documents) -- rather than either Claude Code's per-context binding files or
+OpenCode's mode-stack's binding-precondition mechanism.
+
+**Multi-line input and large-paste handling**, both already named in §4.1 as
+rendering-layer features, recur here as input-handling specifics documented
+directly on the `Editor` component itself (README's own "Editor" section,
+fetched this session): `Enter` submits; `Shift+Enter`, `Ctrl+Enter`, or
+`Alt+Enter` insert a newline, with the docs stating plainly this is
+"terminal-dependent, Alt+Enter most reliable" -- the same
+terminal-emulator-capability-variance problem Claude Code's and Copilot
+CLI's own `Shift+Enter` documentation names explicitly (§1.3, §2.3),
+independently phrased here rather than resolved via a `/terminal-setup`-style
+host-terminal-config write. Large pastes (more than 10 lines) collapse to a
+`[paste #1 +50 lines]`-style marker, the same UX pattern as Claude Code's
+paste-cache placeholder (§1.3) at a materially lower, line-count-only
+threshold rather than Claude Code's combined 800-character-or-two-line rule.
+Word-level navigation (`Ctrl+Left`/`Ctrl+Right` and `Alt+Left`/`Alt+Right`,
+both bound to the same word-navigation actions for cross-terminal coverage,
+mirroring the same multiple-alternative-chord-per-action pattern OpenCode's
+own `keybind.ts` documents, §3.3) and a documented `Ctrl+]`/`Ctrl+Alt+]`
+jump-to-character mechanism (awaiting one further keypress, then moving the
+cursor to its first occurrence) round out the `Editor` component's own input
+vocabulary, all VERIFIED directly from the README's "Key Bindings" list for
+both `Input` and `Editor`.
+
+**No permission-approval modal exists in this TUI, by design.**
+[permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5.1 already
+establishes, VERIFIED from pi's own `security.md`, that pi ships **neither**
+a permission-rule engine **nor** an OS-level sandbox -- it runs with the
+full permissions of the invoking user account and treats every file that
+user can write as inside its own trust boundary. This page's own contribution
+on top of that finding: the `tool-execution.ts` and `bash-execution.ts`
+components enumerated in §4.2 render a tool call's *progress and output*
+(this session did not re-open these two files to confirm their exact
+rendering logic beyond their names and directory position, so this specific
+detail is BEST CURRENT UNDERSTANDING, UNCONFIRMED), but no accept/reject
+confirmation-dialog component analogous to Claude Code's `Confirmation`
+context (§1.2), Copilot CLI's three-option approval dialog (§2.3), or
+OpenCode's `PermissionPrompt`/`Prompt<T>` component (§3.2) is named anywhere
+in the `packages/coding-agent/src/modes/interactive/components/` listing
+read this session -- consistent with, and a direct architectural consequence
+of, pi's documented no-permission-system design rather than a coverage gap in
+this book. A `trust-selector.ts` component does exist, but nothing fetched
+this session confirms whether it gates directory-level trust the way Copilot
+CLI's first-run folder-trust dialog does (§2.3) or serves some other purpose
+-- flagged, not asserted, as BEST CURRENT UNDERSTANDING, UNCONFIRMED.
+
+---
+
+## 5. Synthesis
+
+| Concern | Claude Code | Copilot CLI | OpenCode | pi |
+|---|---|---|---|---|
+| Rendering engine | Ink-adjacent (BEST CURRENT UNDERSTANDING, corroborated by Ink's own adopters list + a community reverse-engineering claim of substantial custom rewrite); Yoga-based Flexbox layout, later a pure-TS reimplementation (VERIFIED via changelog, cross-ref streaming-and-incremental-rendering.md §1.1); two distinct rendering paths (classic scrollback vs. alt-screen "fullscreen") | Ink, directly confirmed (VERIFIED via Ink's own README adopters list AND a first-party GitHub engineering blog naming Ink components/hooks explicitly); a later, separately-named "cell-based renderer" layered on top | OpenTUI: a native Zig core exposed over a C ABI, Flexbox layout, consumed via the Solid reconciler specifically (not the also-available React one) -- fully source/docs-verified, the most precisely documented of the three | `@earendil-works/pi-tui`: a wholly from-scratch, dependency-free framework (no Ink/OpenTUI/blessed) -- fully source-verified. Line-level (not cell-level) differential rendering, CSI 2026 synchronized output, two swappable renderers (`TuiMainScreen`/`TuiAltScreen`) behind one shared interface, its own Flexbox-vocabulary (`basis`/`grow`/`shrink`) alt-screen layout engine, and native compiled (darwin/win32) modifier-key detection with no confirmed equivalent elsewhere in this page |
+| Component model | Reconstructed only indirectly, via a 19-context keybindings taxonomy documented for input-scoping purposes, not as an explicit UI-architecture description | Reconstructed indirectly from changelog behavior; a distinct split-view Sessions sidebar shown to be independently focusable from the main chat surface | Fully source-verified three-tier hierarchy: primitive intrinsics (`box`/`text`/`textarea`/`scrollbox`/`diff`) -> composite widgets (a reusable parametrized `Prompt<T>` dialog component instantiated three ways for one feature) -> feature-scoped dialog/route files, plus a shared generic dialog toolkit | Fully source-verified: a plain `Component` interface (`render(width): string[]`, no virtual DOM/JSX/reconciler at all) composed imperatively via `addChild`/`removeChild`; ~18 built-in primitives/composites plus an explicit `OverlayHandle` focus-arbitration API for dialogs; roughly forty feature-scoped app components built on top in the coding-agent package |
+| Modal-state architecture | Per-context keybinding scoping (`Confirmation`, `DiffDialog`, `Select`, etc.), each context independently defining its own actions; fullscreen mode gives open dialogs explicit auto-follow display priority | A cycled `mode` list (interactive/plan/autopilot, shell demoted out of the cycle in a later release) whose current value is read by the same dialog-invocation logic that decides whether to surface permission/elicitation/`ask_user` dialogs at all, rather than being a separate code path | A genuine mode**-stack** (push/pop, shadowing rather than toggling), architecturally closer to a modal text editor's own mode machinery than either other harness's flatter scoping mechanism | Two independent layers, structurally unlike the other three: mutually exclusive **CLI-invocation-time** entry points (interactive/print/print-json/rpc, chosen once at startup, never cycled or pushed mid-session) plus, inside interactive mode, one flat merged keybinding registry (extended via TypeScript declaration merging) dispatched to whichever component the overlay-focus mechanism currently targets |
+| Multi-line input mechanism | `Ctrl+J`/backslash-Enter always work; `Shift+Enter` requires either native terminal support or a one-time `/terminal-setup` write into the *outer* terminal's own config | `Shift+Enter` requires Kitty-keyboard-protocol support or the same `/terminal-setup`-into-outer-terminal pattern; two open GitHub Issues confirm the terminal-coverage gap is still live | A dedicated, densely-populated `input_*` keybinding family (36 actions) covering cursor movement, selection, word/line/buffer-scoped deletion, undo/redo, and both logical- and "visual"-line home/end variants -- editor-grade granularity, source-confirmed rather than inferred | `Shift+Enter`/`Ctrl+Enter`/`Alt+Enter` all insert a newline in the `Editor` component, docs stating "Alt+Enter most reliable" across terminals; a documented Emacs-style kill-ring (yank/yank-pop) with no confirmed equivalent in the other three |
+| Leader-key / chord support | Chords supported in the keybindings file (space-separated sequences, e.g. `ctrl+x ctrl+e`) with documented prefix-reservation semantics, but no single default "leader" concept | A narrower single chord (`Ctrl+X` then `/` for slash-command insertion); no broader leader-key system documented | A first-class `<leader>` placeholder (default `ctrl+x`) used across dozens of bindings, paired with a dedicated which-key discoverability panel -- a Vim-plugin-derived pattern with no confirmed equivalent in either other harness | No leader-key or chord system found in the base `Keybindings` registry read this session (`Ctrl+]`/`Ctrl+Alt+]` jump-to-character is the closest analogue, a two-step but not chorded action) |
+| Permission-prompt modal design | A single generic `Confirmation` context reused for yes/no/explain-toggle, with `Shift+Tab` permission-mode cycling available from inside the open dialog | Three-option dialog combining accept-once/accept-for-session/reject-with-redirection-text in one prompt; suppressed entirely under autopilot mode rather than auto-answered by a separate path | A three-stage `Switch`/`Match` state machine (`permission` -> `always` -> `reject`) built from one reusable `Prompt<T>` component instantiated per stage, with a permission-kind-specific body dispatch table (edit/bash/task/webfetch/etc.) and its own local, component-scoped keybindings | None exists -- pi ships no permission-rule engine at all (VERIFIED, cross-ref [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5.1), so no accept/reject confirmation component is named anywhere in its interactive-mode component listing, a structural consequence of that design choice rather than a coverage gap |
+| Cross-harness interop found | -- | Reads Claude Code's `.claude/settings.json` directly (already documented in [configuration.md](configuration.md)) | Reads Claude Code's `~/.claude/ide/*.lock` file protocol directly to discover a connected IDE for editor-selection sync (§3.4, newly documented here) | None found this session |
+
+**The design lesson.** All four harnesses converge on the same underlying
 layout paradigm (Flexbox, whether via Yoga proper, an Ink-inherited Yoga
-binding, or OpenTUI's own native implementation of the same model) and on
+binding, OpenTUI's own native implementation of the same model, or pi-tui's
+own from-scratch `basis`/`grow`/`shrink` alt-screen layout engine) and on
 the same broad shape of problem (a terminal UI needs many independently
 interactive surfaces -- a chat prompt, a permission dialog, a diff viewer, a
 session picker -- each with its own keybinding vocabulary and focus state),
 but they diverge meaningfully in how that modal-scoping problem gets solved:
 Claude Code's documented context taxonomy and Copilot CLI's cycled-mode list
-both read as flatter, single-active-scope-at-a-time designs, while
-OpenCode's source-verified mode**-stack** is a strictly more general
-mechanism (nested, shadowing, disposal-scoped) borrowed conceptually from
-modal text editors rather than invented fresh for a coding-agent CLI. None
-of this is presented here as one harness having "solved" terminal-UI
+both read as flatter, single-active-scope-at-a-time designs; OpenCode's
+source-verified mode**-stack** is a strictly more general mechanism (nested,
+shadowing, disposal-scoped) borrowed conceptually from modal text editors
+rather than invented fresh for a coding-agent CLI; and pi splits the problem
+along a different seam entirely, separating a **process-level** mode choice
+(interactive/print/print-json/rpc, fixed for the lifetime of one invocation)
+from a **single flat keybinding registry** governing everything inside
+interactive mode, with an explicit overlay-focus-handle API doing the work
+Claude Code's context enum and OpenCode's mode-stack each do differently.
+None of this is presented here as one harness having "solved" terminal-UI
 architecture better than another -- the underlying problem (numerous modal
 surfaces, imperfect terminal-emulator capability parity, a permission system
-that must interrupt the main loop safely) is genuinely table-stakes
-engineering common to any mature terminal agent, and each harness's own
-solution shows real, independently-earned engineering effort rather than one
-copying another. The one place a direct dependency *is* real rather than
-merely analogous is the rendering framework itself: Ink is independently
-confirmed, by name, underneath both Claude Code and Copilot CLI, which makes
-OpenCode's choice of a from-scratch native-Zig renderer (OpenTUI) with its
-own framework-agnostic reconciler layer the more architecturally distinct
-choice of the three, not merely the most source-visible one.
+that must interrupt the main loop safely, where one exists at all) is
+genuinely table-stakes engineering common to any mature terminal agent, and
+each harness's own solution shows real, independently-earned engineering
+effort rather than one copying another. The one place a direct dependency
+*is* real rather than merely analogous is the rendering framework itself:
+Ink is independently confirmed, by name, underneath both Claude Code and
+Copilot CLI, which makes OpenCode's from-scratch native-Zig renderer
+(OpenTUI) and pi's own from-scratch, dependency-free `pi-tui` package the
+two architecturally distinct choices of the four, each independently
+engineered rather than adopted, and pi's own case additionally notable for
+solving a terminal-input-fidelity problem (reliable modifier-key detection)
+via compiled native code rather than protocol negotiation alone -- a genuine
+fourth path on the rendering-stack question this page opened with, and the
+only one of the four with no permission-approval dialog to render at all,
+by its own documented design.
 
 ---
 
 ## Sources
 
-All fetched or read fresh this session (2026-08-17) unless noted otherwise.
+All fetched or read fresh in the session that added them -- 2026-08-17 for
+§1-§3 and the Synthesis table's original three-harness content, 1 September
+2026 for §4's pi coverage and the Synthesis table's/design-lesson's pi
+additions -- unless noted otherwise inline.
 
 **Claude Code (authoritative for its own documented behavior; no
 implementation source exists in this repo):**
@@ -787,3 +1141,36 @@ stable release tag):**
   (full file, the external-editor spawn mechanism and the `~/.claude/ide`
   lock-file-reading `discoverEditorConnection()` function, §3.4) -- covering
   §3 in full.
+
+**pi (authoritative for its own documented behavior AND, like OpenCode, its
+own real implementation; `main` branch, fetched 1 September 2026 via `gh api`
+against `github.com/earendil-works/pi`):**
+- `packages/tui/package.json` and `packages/tui/README.md` (both in full) --
+  the dependency-free-framework finding, the `TuiMainScreen`/`TuiAltScreen`
+  split, differential/synchronized-output rendering, the `Component`/
+  `Focusable`/overlay APIs, the built-in-component list, and the `Input`/
+  `Editor` key-bindings tables; covers §4.1-§4.3.
+- `packages/tui/src/native-modifiers.ts` and `packages/tui/src/native-module-path.ts`
+  (both in full) -- the darwin/win32 native modifier-key-detection addon and
+  its candidate-path resolution scheme; covers §4.1.
+- `packages/tui/src/keybindings.ts` (in full) -- the base `Keybindings`
+  interface and its declaration-merging extension pattern; covers §4.3.
+- Directory listings of `packages/tui/src/` and `packages/tui/src/components/`
+  -- the built-in-component enumeration in §4.2.
+- `packages/coding-agent/package.json`, `packages/ai/package.json`, and
+  `packages/client/package.json` (all in full) -- the three-package naming
+  resolution (`@earendil-works/pi-ai` vs. `@earendil-works/pi-coding-agent`
+  vs. `@earendil-works/pi-tui`) and the `@earendil-works/pi-client`
+  CBOR-transport confirmation for `rpc` mode; covers the opening of §4 and
+  §4.3.
+- Directory listings of `packages/coding-agent/src/modes/`,
+  `packages/coding-agent/src/modes/interactive/`, and
+  `packages/coding-agent/src/modes/interactive/components/`, plus the opening
+  lines of `interactive-mode.ts`, `print-mode.ts`, and `json-event.ts` --
+  the four CLI-invocation-time modes and the ~40 feature-scoped interactive
+  components; covers §4.2-§4.3.
+- Cross-referenced against this book's own
+  [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5.1 (pi's
+  no-permission-system, no-sandbox finding, itself sourced from pi's own
+  `security.md`) for §4.3's permission-modal-absence finding, not re-fetched
+  this session.

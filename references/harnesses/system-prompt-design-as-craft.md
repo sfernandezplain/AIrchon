@@ -17,7 +17,10 @@ run -- even though, chronologically, it is one of the last pages
 written. It is also the one artifact every harness examined in this
 book hand-writes, iterates on, and re-tunes on almost every release:
 the Claude Code and Copilot CLI changelog evidence in §4 documents this
-directly.
+directly, and pi's own source-verified, unit-tested prompt-construction
+function (§2.5, §4.4) documents the same "actively maintained, not
+written once" reality from a third, structurally different angle --
+verifiable test coverage rather than release-note history.
 
 **Scope boundary, stated up front per this book's own cross-reference
 discipline.** This page does not re-derive:
@@ -245,6 +248,29 @@ recurs across every subsequent section of this page:
   instruction defines an infinite space of acceptable outputs by
   exclusion; a positive instruction names the target directly.
 
+### 1.7 pi's own documented micro-style-rule for a flat, multi-contributor bullet list
+
+VERIFIED, `github.com/earendil-works/pi`'s `packages/coding-agent/docs/extensions.md`,
+fetched fresh this session (1 September 2026, `main` branch, located via `gh search code`
+and read via `gh api`) -- a first-party, source-verified example of exactly the kind of
+craft rule §1.6 describes in the abstract, stated for a concrete failure mode pi's own
+prompt-assembly pipeline (§2.5 below) genuinely creates. Any custom tool an extension
+registers via `pi.registerTool()` can supply a `promptGuidelines` array -- free-text
+bullets appended into the assembled system prompt's `Guidelines:` section -- and the docs
+warn about the referential trap this invites: "`promptGuidelines` bullets are appended
+flat to the `Guidelines` section with no tool name prefix or grouping. Each guideline must
+name the tool it refers to -- avoid 'Use this tool when...' because the LLM cannot tell
+which tool 'this' means. Write 'Use my_tool when...' instead." This is worth setting
+directly against §1.6's XML-tag/sectioning guidance: Anthropic's own recommendation
+solves referential ambiguity *structurally*, by nesting content inside named tags so the
+model can attribute a sentence to its source; pi's `Guidelines:` block, by contrast, is a
+single flat, unstructured list any number of built-in tools and extension-registered
+custom tools contribute a bullet into side by side (confirmed directly from
+`system-prompt.ts`'s source in §2.5), so pi's docs instead solve the same ambiguity by
+convention -- an authoring rule enforced only by an extension author's own discipline,
+not by any structural separation the assembly code itself enforces. This is a genuinely
+distinct point on the same design-space axis §1.6 opens, not a restatement of it.
+
 ---
 
 ## 2. Few-shot tool-call examples vs. prose constraints as competing strategies
@@ -392,6 +418,142 @@ states:* this session did not fetch the paper's full quantitative
 results tables, so no specific accuracy delta is asserted here -- only
 the qualitative failure-mode-and-mitigation framing the abstract states
 directly.
+
+### 2.5 pi: a code-assembled template rather than a static prompt file, with tools authoring their own fragments
+
+VERIFIED, direct source read this session (1 September 2026) of
+`github.com/earendil-works/pi`, `main` branch, package
+`@earendil-works/pi-coding-agent` (npm name confirmed directly from
+`packages/coding-agent/package.json`'s own `name` field, fetched this session --
+distinct from `@earendil-works/pi-ai`, `packages/ai/package.json`'s own confirmed
+name, the wire-protocol layer [The LLM API contract](llm-api-contract.md) §3.5
+already documents; this book's own prior citations of both spellings are, on
+inspection, each individually correct for the package each cites, not the error the
+brief for this addition flagged as a possibility -- two genuinely distinct packages
+in the same monorepo, not one package misspelled two ways): `packages/coding-agent/src/core/system-prompt.ts`'s
+`buildSystemPrompt()` function, in full, plus its own test file
+`packages/coding-agent/test/system-prompt.test.ts` and the extension-authoring
+contract in `packages/coding-agent/docs/extensions.md`. Where OpenCode's `anthropic.txt`
+(§2.3) is a static text file shipped verbatim per model family, pi's default prompt is
+never a file read off disk at all when no override is supplied -- it is a TypeScript
+function's return value, assembled fresh from structured pieces at session-construction
+time, confirmed directly from the source rather than inferred from documented behavior.
+
+```mermaid
+flowchart TD
+    Custom{"customPrompt supplied?\n(--system-prompt flag, or\nSYSTEM.md / APPEND_SYSTEM.md discovered)"}
+    Custom -->|yes| CP["customPrompt text used verbatim\nas the prompt base"]
+    Custom -->|no| Template["Fixed template string:\n'You are an expert coding assistant\noperating inside pi...'"]
+    Template --> Tools["Available tools: list\n(only tools with a promptSnippet appear;\nomitted tools are silently absent, never '(none)'\nunless the whole list is empty)"]
+    Tools --> Guide["Guidelines: flat bullet list\n(fixed defaults + conditional\nbash/PowerShell bullet + every active\ntool's own promptGuidelines, unprefixed)"]
+    Guide --> Docs["Pi documentation pointers\n(README/docs/examples absolute paths,\nread only if the user asks about pi itself)"]
+    CP --> Append
+    Docs --> Append["+ appendSystemPrompt text\n(--append-system-prompt / APPEND_SYSTEM.md)"]
+    Append --> Ctx["<project_context>\n  <project_instructions path=...>AGENTS.md/CLAUDE.md content</project_instructions>\n</project_context>"]
+    Ctx --> Skills["<available_skills>\n  <skill><name/><description/><location/></skill>\n</available_skills>\n(only if the read tool is active)"]
+    Skills --> Cwd["Current working directory: <cwd>"]
+```
+
+Four points worth naming precisely because each is a concrete, source-verified
+illustration of a principle this page's earlier sections state only from Anthropic's own
+documentation:
+
+- **Tool descriptions author their own system-prompt fragment, colocated with the tool's
+  own registration, not hand-maintained centrally.** `pi.registerTool()` accepts an
+  optional `promptSnippet` (a one-line entry for the `Available tools:` list) and an
+  optional `promptGuidelines` array (free-text bullets folded into the shared
+  `Guidelines:` section, only while that specific tool is active per
+  `pi.setActiveTools()`) -- confirmed directly in `system-prompt.ts`'s own
+  `visibleTools`/`toolSnippets`/`guidelinesList` construction and in
+  `agent-session.ts`'s `_toolPromptSnippets`/`_toolPromptGuidelines` maps, which populate
+  those two `BuildSystemPromptOptions` fields per active tool at session-build time. This
+  is the same ACI-as-design-discipline principle §1.5 documents Anthropic recommending
+  (a tool's description is where usage guidance belongs, not an afterthought), pushed one
+  step further architecturally: pi's own built-in tools and a session's dynamically
+  registered custom tools all contribute their fragment through the identical mechanism,
+  so a tool omitted from `selectedTools` for a given session (e.g. a read-only session
+  excluding `edit`/`write`) simply never contributes its snippet or guideline bullets at
+  all, rather than requiring a hand-edited prompt variant per tool configuration.
+- **A conditional, not fixed, `Guidelines:` block.** The function adds a
+  bash/PowerShell file-exploration bullet only when `bash` or `powershell` is an active
+  tool *and* none of `grep`/`find`/`ls` is (source-confirmed branching, cross-checked
+  against `system-prompt.test.ts`'s own assertions -- "uses shell-specific guidance for
+  `[powershell]`"/"`[bash, powershell]`" test cases), and always appends two fixed
+  defaults ("Be concise in your responses," "Show file paths clearly when working with
+  files") regardless of tool configuration. This is source-level confirmation of exactly
+  the "minimal set of information that fully outlines expected behaviour" principle §1.6
+  cites from Anthropic's context-engineering post -- the guideline that would actively
+  mislead a session lacking a dedicated search tool (telling it to "use `grep`" when
+  `grep` isn't registered) is withheld by construction rather than left in as dead,
+  potentially confusing text; a unit test enforces this rather than leaving it to
+  manual review at each release.
+- **Self-referential documentation pointers, conditioned on the user's own question.**
+  The template's final structural block names pi's own `README.md`, `docs/`, and
+  `examples/` absolute paths on disk and instructs the model to consult them "only when
+  the user asks about pi itself, its SDK, extensions, themes, skills, or TUI," with a
+  further instruction to "follow .md cross-references before implementing" once a pi-topic
+  question is in play. This is a distinctive data point among the five harnesses this
+  book covers: a harness whose own default system prompt tells the model where its own
+  manual lives on the local filesystem, gated behind a topical trigger condition rather
+  than always injected -- the same "right altitude" tradeoff §1.6 names in the abstract
+  (a small, conditional pointer rather than always paying the token cost of inlining the
+  full docs tree) applied to the harness's *own* self-documentation specifically, a case
+  this page has not found a comparable citable instance of elsewhere in this book.
+- **XML-tag structuring, arrived at independently of Anthropic's own guidance and of
+  OpenCode's `<example>` tags.** Project context files are wrapped in a literal
+  `<project_context>` block containing one `<project_instructions path="...">` element
+  per loaded `AGENTS.md`/`CLAUDE.md`-equivalent file (confirmed directly in
+  `system-prompt.ts`'s string-concatenation logic), and loaded skills are wrapped in an
+  `<available_skills>` block of `<skill><name/><description/><location/></skill>`
+  elements (confirmed in `packages/coding-agent/src/core/skills.ts`'s
+  `formatSkillsForPrompt()` function, including its own `escapeXml()` call on every
+  interpolated field -- a direct, source-level instance of the delimiter-integrity
+  concern §5.2 documents Anthropic recommending for untrusted content, applied here to
+  a trusted but still string-interpolated value, a file's own path and description). This
+  is the same tag-based separation §1.6 documents Anthropic recommending and §2.3
+  documents OpenCode's `anthropic.txt` using for few-shot examples specifically -- a
+  third, independently-arrived-at instance of the same structural idea, this time for
+  demarcating *injected file content* rather than worked examples. The prompt's terminal
+  line, `Current working directory: <cwd>`, is likewise the same "tell the model where it
+  is and what it can touch" pattern §3.3 quotes Anthropic's own docs recommending ("Call
+  pwd; you can only read and write files in this directory") -- reached independently by
+  a different engineering team building against a different mechanism (a template
+  literal versus a documented prompting suggestion), not because one copied the other.
+
+**The override chain, and what it does and does not disturb.** A `customPrompt` (passed
+via a CLI `--system-prompt <text-or-path>` argument, or auto-discovered from a
+project-local `.pi/SYSTEM.md` -- gated behind the same project-trust check
+[permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5.2 documents for pi's
+extension loading, not re-derived here -- or a global `~/.pi/agent/SYSTEM.md`, per
+`resource-loader.ts`'s `discoverSystemPromptFile()`) replaces the entire template body in
+§2 of the flow above, but the append-system-prompt text, the `<project_context>` block,
+and the `<available_skills>` block (when the read tool is active) are still layered on
+top of a supplied `customPrompt` exactly as they are on top of the default template --
+confirmed directly from `buildSystemPrompt()`'s own early-return branch for
+`customPrompt`, which duplicates the same three append steps rather than skipping them.
+An author replacing pi's default prompt wholesale therefore still inherits project-context
+and skill injection automatically, a design choice that narrows what a custom prompt
+actually needs to reproduce itself -- the equivalent lever to Claude Code's
+`--system-prompt-file` (§4.1's v1.0.55 entry) and `--append-system-prompt`, but with the
+project-context/skills layering made an explicit, code-level guarantee rather than left
+to the replacement prompt's own author to reconstruct.
+
+**One base template, not a per-model-family dispatch table.** Cross-referencing §2.3's
+finding that OpenCode routes different model families to entirely different prompt files
+(`anthropic.txt`/`beast.txt`/etc.) and §4.1's finding that Claude Code switches between a
+"lean" and a fuller system prompt by model generation: this session traced every call
+site of `buildSystemPrompt()` in pi's source (`agent-session.ts`, `create-harness.ts`) and
+found no model-identity branching anywhere in the call chain -- the same
+`BuildSystemPromptOptions` shape and the same template function run regardless of which
+provider or model the active session is configured against. Whatever prompting
+adjustments a specific model family might need in pi are therefore left to whatever a
+custom tool's own `promptSnippet`/`promptGuidelines` or a `before_agent_start` extension
+handler ([hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §5.4 already
+documents this hook's own `systemPromptOptions` introspection object and handler-chaining
+semantics in full, not repeated here) chooses to inject conditionally, rather than to a
+harness-level dispatch mechanism comparable to OpenCode's or Claude Code's own -- a
+genuine architectural difference between pi and the two harnesses this page has already
+established do vary their base prompt by model identity.
 
 ---
 
@@ -696,6 +858,35 @@ assert the literal wording of Claude Code's or Copilot CLI's own system
 prompts, and does not attempt to reconstruct them from unverified
 third-party leaks.
 
+### 4.4 pi: a third craft-maturity model -- the prompt-construction function has its own regression tests
+
+VERIFIED, `github.com/earendil-works/pi`'s
+`packages/coding-agent/test/system-prompt.test.ts`, fetched fresh this session -- a data
+point genuinely distinct in kind from §4.1's and §4.2's changelog evidence and from
+§2.3's static-file evidence. Claude Code's and Copilot CLI's system prompts are known to
+be iterated only indirectly, through dated release notes describing a change already
+shipped (§4.1-4.2); OpenCode's `anthropic.txt` is a static text asset with no evidence,
+found this session, of an automated test asserting anything about its own content shape.
+pi's `buildSystemPrompt()` (§2.5), by contrast, has a dedicated `vitest` suite asserting
+concrete, specific properties of its own output -- "shows `(none)` for empty tools list,"
+"shows file paths guideline even with no tools," "includes all default tools when
+snippets are provided," and the parametrized "uses shell-specific guidance for
+`[powershell]`" / "`[bash, powershell]`" cases already quoted in §2.5 -- meaning a future
+change to the template's conditional-guideline logic that silently broke one of these
+documented behaviors would fail a test suite before ever reaching a release, rather than
+being caught only after shipping and then written up as a changelog line the way §4.1's
+and §4.2's evidence is structured. This is not evidence that pi's prompt-authoring
+process is categorically more disciplined than Claude Code's or Copilot CLI's own
+internal practice -- neither closed harness's own test suite is visible to this book at
+all, so the honest comparison is between *what each harness's own public surface lets
+this page verify*, not a ranked claim about which team's actual internal process is
+better. What it does establish, source-verified rather than inferred: at least one of the
+five harnesses in this book treats its own system-prompt-construction *logic* (as
+distinct from a static prompt string) as ordinary application code subject to ordinary
+unit-test discipline, a third distinct craft-maturity model alongside "static text file,
+hand-reviewed per release" (OpenCode) and "opaque, evidenced only through changelog
+entries" (Claude Code, Copilot CLI).
+
 ---
 
 ## 5. Resisting prompt injection from the authoring side
@@ -895,7 +1086,17 @@ Pulling every section above into one operational picture:
    uses prose for a simple, single-sentence invariant (mark todos as
    you go) and multi-turn worked examples for a pattern that spans many
    turns and decision points (when and how aggressively to plan with
-   `TodoWrite`), in the same document, by design.
+   `TodoWrite`), in the same document, by design. pi's own template
+   (§2.5) makes a related but distinct choice at the same altitude:
+   rather than choosing prose or examples for a fixed document, it
+   chooses which *pieces* of the prompt get assembled at all, per
+   session, from structured data -- a tool's own snippet and guideline
+   bullets appear only while that tool is active, and the bash/PowerShell
+   file-exploration guideline appears only when no dedicated search tool
+   is registered, so pi's version of "the minimal set of information
+   that fully outlines expected behaviour" (§1.6) is enforced by
+   conditional assembly logic rather than by an author's editorial
+   judgment over a static document.
 3. **A phrasing that must survive compaction should be written as
    though it will be judged only by its first sentence** (§3.1), and an
    author who knows their harness compacts should say so explicitly in
@@ -913,23 +1114,52 @@ Pulling every section above into one operational picture:
    [permissions-and-sandboxing.md](permissions-and-sandboxing.md)
    documents, never a replacement for it, a point both Anthropic's own
    guidance and the wider spotlighting literature (§5.3) agree on from
-   different directions.
-5. **Every mechanism above is empirically iterated, not designed once
-   and shipped.** Two closed-source products from two organizations
-   (§4.1-4.2) show years of dated, released, changelog-documented
-   tuning of the exact same three levers -- tool-calling-style phrasing,
-   token-cost hygiene of the instruction text itself, and
-   model-generation-specific retuning -- which is the strongest
-   available evidence that system-prompt authorship is a genuine,
-   ongoing engineering discipline at every harness examined in this
-   book, not a one-time creative-writing exercise that happens to also
-   involve an LLM.
+   different directions. pi's own source (§2.5) shows the same
+   structural-separation instinct applied to *trusted* file content, not
+   just adversarial input: its `<project_context>`/`<available_skills>`
+   XML-tag wrapping runs every interpolated path and description through
+   an explicit `escapeXml()` call, the same delimiter-integrity concern
+   §5.2 documents for untrusted tool output, applied here as a general
+   string-interpolation hygiene habit rather than a threat-specific
+   control.
+5. **Structural separation extends to referential ambiguity, not just
+   trust.** §1.6's XML-tag guidance and §5.2's provenance-marking
+   guidance both solve a version of "which part of this text does that
+   instruction refer to" -- and pi's own documented micro-style-rule
+   (§1.7) names a case neither structural mechanism reaches: a single
+   flat `Guidelines:` bullet list that several independent tools
+   contribute into side by side, where the only available fix is an
+   authoring convention ("write 'Use my_tool when...', never 'Use this
+   tool when...'") rather than a tag boundary, because the assembly code
+   itself does not nest each contributor's bullets separately.
+6. **Every mechanism above is empirically iterated, not designed once
+   and shipped -- and harnesses differ genuinely in how that iteration
+   is evidenced, not merely in how much of it happens.** Two closed-source
+   products from two organizations (§4.1-4.2) show years of dated,
+   released, changelog-documented tuning of the exact same three levers --
+   tool-calling-style phrasing, token-cost hygiene of the instruction
+   text itself, and model-generation-specific retuning. OpenCode ships
+   the literal prompt text as a static, per-model-family asset (§2.3).
+   pi (§2.5, §4.4) is the one harness in this book whose
+   system-prompt-*construction logic* -- as distinct from a fixed string --
+   is both fully source-visible and covered by its own automated
+   regression tests, a third, structurally different way of making
+   "this is maintained craft, not a one-time artifact" a verifiable claim
+   rather than an inference from release notes. Taken together, this is
+   the strongest available evidence that system-prompt authorship is a
+   genuine, ongoing engineering discipline at every harness examined in
+   this book, not a one-time creative-writing exercise that happens to
+   also involve an LLM -- and that "iterated craft" itself takes at
+   least three observably different institutional shapes across the
+   four harnesses this page has now examined.
 
 ---
 
 ## Sources
 
-All fetched fresh this session (2026-08-17) unless noted otherwise.
+All fetched fresh this session (2026-08-17) unless noted otherwise. pi's own sources
+(below) were fetched fresh in a later session, 1 September 2026, per their own dated
+citation.
 
 **Anthropic (authoritative for Claude's documented prompting behavior
 and Anthropic's own recommended prompt-engineering technique; not
@@ -992,6 +1222,37 @@ specific harness's own implementation):**
 - `https://arxiv.org/abs/2403.14720` ("Defending Against Indirect Prompt
   Injection Attacks With Spotlighting") -- §5.3's provenance-marking
   mechanism and reported attack-success-rate reduction, abstract only.
+
+**pi (authoritative for its own behavior and, unlike Claude Code and Copilot CLI, its own
+real implementation; `github.com/earendil-works/pi`, `main` branch, fetched fresh this
+session, 1 September 2026, via `gh search code` to locate files and `gh api` to read full
+contents):**
+- `packages/coding-agent/src/core/system-prompt.ts` (full file) -- the `buildSystemPrompt()`
+  function itself: the fixed template string, the conditional tool-list/guidelines
+  construction, the `customPrompt` override branch, and the `<project_context>`/
+  `<available_skills>`/`Current working directory` trailer construction; covers §2.5 in
+  full.
+- `packages/coding-agent/src/core/resource-loader.ts` (full file) -- `discoverSystemPromptFile()`/
+  `discoverAppendSystemPromptFile()`'s `SYSTEM.md`/`APPEND_SYSTEM.md` project-trust-gated
+  discovery order; covers §2.5's override-chain paragraph.
+- `packages/coding-agent/src/core/agent-session.ts` (grepped and read in context) --
+  `_toolPromptSnippets`/`_toolPromptGuidelines` per-tool fragment collection, and
+  confirmation that `buildSystemPrompt()` has no model-identity branching at its call
+  site; covers §2.5's tool-owned-fragments and one-base-template paragraphs.
+- `packages/coding-agent/src/core/skills.ts` (`formatSkillsForPrompt()`, grepped and read
+  in context) -- the `<available_skills>`/`<skill>` XML construction and its own
+  `escapeXml()` call; covers §2.5 and the synthesis's escaping point.
+- `packages/coding-agent/docs/extensions.md` (grepped and read in context) --
+  `promptSnippet`/`promptGuidelines` registration API and pi's own documented
+  "name the tool, don't say 'this tool'" style rule; covers §1.7 and part of §2.5.
+- `packages/coding-agent/test/system-prompt.test.ts` (read in full) -- the
+  `vitest` assertions on empty-tools, default-tools, and shell-specific-guidance
+  behavior; covers §4.4 and corroborates §2.5's conditional-guideline claims.
+- `packages/coding-agent/package.json` and `packages/ai/package.json` (`name` field only)
+  -- confirming `@earendil-works/pi-coding-agent` and `@earendil-works/pi-ai` as two
+  genuinely distinct, correctly-named packages in the same monorepo, resolving this
+  page's own brief's concern about inconsistent spelling elsewhere in this book (§2.5's
+  opening paragraph).
 
 **Checked this session but explicitly NOT cited as a source of any
 claim above, per this project's grounding discipline (UNOFFICIAL /
