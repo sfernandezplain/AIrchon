@@ -555,6 +555,168 @@ harness-level dispatch mechanism comparable to OpenCode's or Claude Code's own -
 genuine architectural difference between pi and the two harnesses this page has already
 established do vary their base prompt by model identity.
 
+### 2.6 OpenCode: the model-family dispatch §2.3 quotes is only the base tier of a per-turn-assembled prompt, sitting under a per-agent override chain
+
+VERIFIED, direct source read this session (1 September 2026), `github.com/anomalyco/opencode`,
+`dev` branch (per this project's standing `dev`-branch caveat): `packages/opencode/src/session/system.ts`
+(already cited in §2.3 for `provider()`'s model-family dispatch alone), plus three files §2.3 did not
+need and this session read in full to close the gap -- `packages/opencode/src/session/prompt.ts`
+(the per-turn assembly call site), `packages/opencode/src/session/llm/request.ts` (`LLMRequestPrep.prepare()`,
+where every tier is joined into the actual system message(s) sent to the model), and
+`packages/opencode/src/agent/agent.ts` (the `Agent.Info` schema and built-in agent table) -- plus
+`packages/opencode/test/session/system.test.ts` and the public docs pages `packages/web/src/content/docs/agents.mdx`
+and `packages/web/src/content/docs/config.mdx`. §2.3's own citation of `anthropic.txt`/`beast.txt` was
+sufficient for the narrower point that page section was making (prose and examples coexisting in one
+document); it was never a claim that the *file itself* is the whole system prompt an OpenCode session
+actually sends. It is not: `anthropic.txt` is the static base tier of an assembly pipeline with a
+dynamic tier layered on top of it every turn, and a per-agent override chain that can replace the base
+tier outright. That is the asymmetry this section closes.
+
+```mermaid
+flowchart TD
+    Agent{"agent.prompt set?\n(built-in hidden agents, or a\ncustom agent's JSON/Markdown prompt)"}
+    Agent -->|yes| AP["agent.prompt text used verbatim\n(replaces model-family dispatch entirely)"]
+    Agent -->|no| Dispatch["SystemPrompt.provider(model)\nstatic per-model-family file\n(anthropic.txt / beast.txt / etc., section 2.3)"]
+    Dyn["Effect.all, recomputed every turn:\nenvironment() + skills() + mcp() + instruction.system()"]
+    Dyn --> Env["'<env>' block: model id, cwd, worktree,\ngit flag, platform, live date,\n'<available_references>'"]
+    Dyn --> Instr["project instructions\n(instruction.system(), AGENTS.md-equivalent,\ncross-ref configuration.md)"]
+    Dyn --> Mcp["'<mcp_instructions>'\n(permission-filtered per MCP server)"]
+    Dyn --> Skills["verbose skills listing\n(permission-gated, stable across\nrepeated calls in the same turn)"]
+    AP --> Join["prepare(): filter(Boolean).join('\\n')\ninto one system string by default"]
+    Dispatch --> Join
+    Env --> Join
+    Instr --> Join
+    Mcp --> Join
+    Skills --> Join
+    Join --> User["+ user.system\n(session-level append, last)"]
+    User --> Msg["one system-role message\n(unless a plugin's\nexperimental.chat.system.transform\nhook splits header/rest)"]
+```
+
+**The dynamic tier: three effectful functions plus a fourth, unrelated service, recomputed every turn,
+not cached across a session.** `system.ts`'s `SystemPrompt.Service` exposes `environment(model)`,
+`skills(agent)`, and `mcp(agent, permission)` as `Effect`-returning functions, not static strings; `prompt.ts`
+calls all three, together with a fourth call to `Instruction.Service.system()` (the AGENTS.md-equivalent
+project-instructions loader this book's [configuration.md](configuration.md) and
+[memory-management.md](memory-management.md) already document in full and this page does not
+re-derive), in one `Effect.all([...])` at the top of every turn's step loop -- confirmed directly in
+`prompt.ts`'s `const [skills, env, instructions, mcpInstructions, modelMsgs] = yield* Effect.all([...])`
+call, itself inside the same per-step loop that fires `session.summarize()` and the
+`experimental.chat.messages.transform` plugin hook. The four results are concatenated, in this fixed
+order, into an array: `[...env, ...instructions, ...(mcpInstructions ? [mcpInstructions] : []), ...(skills
+? [skills] : [])]`, with a `STRUCTURED_OUTPUT_SYSTEM_PROMPT` string conditionally pushed onto the end
+when the active request specifies a `json_schema` response format -- source-confirmed conditional
+assembly of exactly the same shape as §2.5 documents pi's own `buildSystemPrompt()` doing (a guideline
+appears only when the condition that would make it relevant is true), independently arrived at by a
+different engineering team.
+
+- **`environment(model)`** returns a `<env>` block -- "You are powered by the model named
+  `${model.api.id}`. The exact model ID is `${model.providerID}/${model.api.id}`", then `Working
+  directory`, `Workspace root folder`, `Is directory a git repo`, `Platform`, and `Today's date: ${new
+  Date().toDateString()}` -- followed, only when the project has configured named reference
+  directories, by an `<available_references>` block of alphabetically-sorted `<reference>` elements
+  (`<name>`/`<path>`/optional `<description>`). This is source-level confirmation of the same "tell the
+  model where it is" pattern §3.3 quotes Anthropic's own docs recommending and §2.5 documents pi's
+  `Current working directory: <cwd>` trailer doing -- a third, independently-arrived-at instance, this
+  time computed by a live `Date`/`process.platform` read on every turn rather than written once at
+  session start.
+- **`skills(agent)`** is gated behind a `Permission.disabled(["skill"], agent.permission)` check --
+  returning nothing at all for an agent whose skill permission is disabled -- and otherwise renders a
+  verbose skills listing via `Skill.fmt(list, { verbose: true })`, with a source-code comment stating the
+  empirical rationale directly: "the agents seem to ingest the information about skills a bit better if
+  we present a more verbose version of them here and a less verbose version in tool description, rather
+  than vice versa." This is a concrete, source-quoted instance of exactly the kind of iterated,
+  model-behavior-driven authoring judgment call §1 and §4 document Anthropic, Claude Code, and Copilot
+  CLI making from their own side -- OpenCode's version of it happens to be a comment left directly next
+  to the code it explains rather than a changelog entry, a fourth documentary shape (source comment) this
+  page had not yet catalogued alongside §4.1-4.2's release notes, §2.5/§4.4's test assertions, and §2.3's
+  bare static file. `system.test.ts`'s own `"skills output is sorted by name and stable across calls"`
+  test (VERIFIED, read in full this session) confirms the output is alphabetically sorted by skill name
+  and, on repeated invocation within the same turn, reference-identical (`toBe`, not merely
+  value-equal) -- i.e. memoized, not recomputed per call.
+- **`mcp(agent, permission)`** merges the agent's own permission ruleset with any request-level override
+  and filters MCP server instructions to those where at least one of the server's own advertised tools
+  is not fully permission-disabled, wrapping survivors in an `<mcp_instructions>` block of one
+  `<server name="...">` element per server. `system.test.ts`'s own `"MCP output omits servers when all
+  advertised tools are denied"` test (VERIFIED) confirms this filtering behavior directly: a server whose
+  every tool is denied is dropped from the block entirely rather than left in with a caveat, the same
+  "don't leave in text that would actively mislead" discipline §1.6 and §2.5 both document from other
+  angles.
+
+**The per-agent override chain, and where it sits relative to Claude Code's and pi's own levers.**
+`request.ts`'s `prepare()` function is where every tier above is actually joined: `[...(input.agent.prompt
+? [input.agent.prompt] : SystemPrompt.provider(input.model)), ...input.system, ...(input.user.system ?
+[input.user.system] : [])].filter((x) => x).join("\n")`, confirmed directly from source. Three things
+follow from this one line, each source-verified this session:
+
+- **An `Agent.Info.prompt` field, when present, replaces the model-family dispatch outright** -- not
+  merged with it, not appended to it. `agent.ts`'s built-in agent table shows this used for OpenCode's
+  own hidden, non-user-facing lifecycle agents: `explore` (the codebase-exploration subagent) ships its
+  own `PROMPT_EXPLORE` file, and `compaction`, `title`, and `summary` (all `hidden: true`, `mode:
+  "primary"`) ship their own `PROMPT_COMPACTION`/`PROMPT_TITLE`/`PROMPT_SUMMARY` files -- while `build`
+  (the default agent), `plan`, and `general` carry no `prompt` field at all and therefore fall through to
+  `SystemPrompt.provider(model)`, the same per-model-family dispatch §2.3 quotes. This is a structural
+  fact worth naming precisely: OpenCode does not give every internal agent role the full
+  model-family-tuned prompt register `anthropic.txt`/`beast.txt` represent -- a lifecycle agent whose job
+  is narrow and fixed (summarizing on compaction, generating a title, exploring a codebase) gets its own
+  purpose-built prompt instead, uniform across every model family, rather than inheriting per-model
+  tuning it presumably does not need.
+- **Operators and end users get the identical lever, one level up, through config**, documented in
+  `agents.mdx` (VERIFIED, fetched this session): an `opencode.json` `agent.<name>.prompt` key accepts
+  either a literal inline string or a `{file:./prompts/x.txt}` reference resolved relative to the config
+  file, or the agent can be defined entirely as a Markdown file under `~/.config/opencode/agents/`
+  (global) or `.opencode/agents/` (per-project) with YAML frontmatter (`description`, `mode`, `model`,
+  `temperature`, `permission`) and the Markdown body itself becomes the agent's system prompt -- the
+  filename becomes the agent name. `agent.ts`'s config-merge loop (`item.prompt = value.prompt ??
+  item.prompt`) confirms this operates by simple override, not append: a configured `prompt` value
+  replaces whatever prompt (or absence of one) the agent had before. `agents.mdx` also documents an
+  interactive agent-creation flow that itself calls an LLM to draft a new agent's system prompt and
+  identifier before writing the resulting Markdown file, backed source-side by `agent.ts`'s own
+  `generate()` interface and `PROMPT_GENERATE` template.
+- **This is the same lever Claude Code's own v2.0.59 changelog entry names** -- "Added `agent` setting to
+  configure main thread with a specific agent's system prompt, tool restrictions, and model" (§4.1) -- and
+  the same shape of decision pi's `customPrompt` override makes (§2.5), independently arrived at by three
+  different engineering teams: let an operator swap the *entire* base prompt for a named agent identity,
+  rather than only ever layering append-only text on top of one fixed document. OpenCode's own version is
+  the most granular of the three sourced in this book: the override is keyed per named agent (of which a
+  session may have several defined simultaneously, each independently swappable), not a single global
+  session-level flag.
+- **`input.user.system` is the final, append-only layer**, joined in last, after every tier above --
+  OpenCode's structural equivalent of Claude Code's `--append-system-prompt` and pi's
+  `appendSystemPrompt` (§2.5), confirmed from the same `prepare()` line quoted above.
+
+**A caching-hygiene observation this page is positioned to make and `caching.md` is not.**
+[caching.md](caching.md) §4.2-§4.3 already documents, independently, that OpenCode's Anthropic-protocol
+adapter places a `cache_control` breakpoint at "the last system part" of the request -- but that page's
+own scope is the breakpoint *placement* mechanism, not the *content* flowing through it, so it does not
+discuss what follows here. `request.ts`'s `prepare()` function, absent any plugin, produces exactly **one**
+joined system string -- meaning the static, large, genuinely cacheable `anthropic.txt`/`beast.txt` text
+sits in the *same* string, ahead of the `<env>` block's `Today's date: ${new Date().toDateString()}`
+literal, that gets recomputed and rejoined into that one string on every single turn. *BEST CURRENT
+UNDERSTANDING, UNCONFIRMED*: this session did not verify how the Anthropic-protocol adapter's single
+"last system part" breakpoint behaves against a joined string whose tail changes daily -- whether the
+provider's own prefix-matching is granular enough to still cache everything up to (but not including) the
+date, or whether the date's presence anywhere in the cached unit invalidates the whole block once
+per day. Read next to Claude Code's own dated v2.1.42 changelog entry -- "Improved prompt cache hit rates
+by moving date out of system prompt" (§4.1) -- this is either a non-issue (if the provider's own
+prefix-cache is granular below the block level) or the same authoring problem Claude Code found and fixed,
+recurring independently in a different codebase; this page states the open question rather than the
+answer, precisely because answering it requires re-deriving cache-boundary mechanics
+[caching.md](caching.md) owns.
+
+**An extensibility point neither §2.5's pi coverage nor §4's changelog evidence names.**
+`request.ts`'s `prepare()` fires a `plugin.trigger("experimental.chat.system.transform", ..., { system
+})` hook after the base join, letting a plugin mutate the `system` array before it becomes the final
+message list; a following `if (system.length > 2 && system[0] === header)` check then collapses whatever
+the plugin appended back down to exactly two entries -- the original joined header string, and everything
+the plugin added, re-joined by `\n` -- rather than leaving an unbounded number of separate system-role
+messages. This is a plugin-facing customization surface distinct in kind from every lever named above (it
+is neither a config key nor a file convention, but a runtime hook a plugin author's own code calls), and
+it is the closest structural analog this session found in OpenCode to pi's own `before_agent_start`
+extension hook ([hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §5.4, cross-referenced
+rather than re-derived here) -- both let third-party code intervene on the assembled prompt immediately
+before a request is sent, though the two mechanisms are independent implementations on independent
+plugin architectures, not the same code.
+
 ---
 
 ## 3. Phrasing that survives compaction and context pressure
@@ -866,7 +1028,19 @@ point genuinely distinct in kind from §4.1's and §4.2's changelog evidence and
 §2.3's static-file evidence. Claude Code's and Copilot CLI's system prompts are known to
 be iterated only indirectly, through dated release notes describing a change already
 shipped (§4.1-4.2); OpenCode's `anthropic.txt` is a static text asset with no evidence,
-found this session, of an automated test asserting anything about its own content shape.
+found this session, of an automated test asserting anything about its own *content shape*
+-- the actual prose. A later pass for this page's own §2.6, added after this section was
+first written, did find `packages/opencode/test/session/system.test.ts` unit-testing the
+machinery *around* that static text: `SystemPrompt.provider()`'s model-family routing
+(asserted per model-ID pattern -- Muse Spark/Glimmer template interpolation, Kimi-provider
+routing) and the `environment()`/`skills()`/`mcp()` functions' own output shape (sort
+order, memoization, permission-based filtering, all quoted in §2.6). The distinction that
+still holds, precisely stated: the *dispatch and assembly logic* has test coverage,
+source-verified; the *literal wording* of `anthropic.txt` and `beast.txt` themselves does
+not, the same way pi's own test suite (below) exercises `buildSystemPrompt()`'s
+conditional-assembly logic without asserting anything about the literal wording of its
+fixed template string either -- both harnesses test the code that assembles a prompt more
+thoroughly than they test the prose inside it.
 pi's `buildSystemPrompt()` (§2.5), by contrast, has a dedicated `vitest` suite asserting
 concrete, specific properties of its own output -- "shows `(none)` for empty tools list,"
 "shows file paths guideline even with no tools," "includes all default tools when
@@ -880,12 +1054,21 @@ process is categorically more disciplined than Claude Code's or Copilot CLI's ow
 internal practice -- neither closed harness's own test suite is visible to this book at
 all, so the honest comparison is between *what each harness's own public surface lets
 this page verify*, not a ranked claim about which team's actual internal process is
-better. What it does establish, source-verified rather than inferred: at least one of the
-five harnesses in this book treats its own system-prompt-construction *logic* (as
-distinct from a static prompt string) as ordinary application code subject to ordinary
-unit-test discipline, a third distinct craft-maturity model alongside "static text file,
-hand-reviewed per release" (OpenCode) and "opaque, evidenced only through changelog
-entries" (Claude Code, Copilot CLI).
+better. What it does establish, source-verified rather than inferred: two of the five
+harnesses in this book treat their own system-prompt-construction *logic* (as distinct
+from the literal prose a static prompt string carries) as ordinary application code
+subject to ordinary unit-test discipline -- pi at the level of the entire template
+function, OpenCode at the level of the model-family dispatch and the dynamic-tier
+`environment()`/`skills()`/`mcp()` functions §2.6 documents in full, while its
+`anthropic.txt`/`beast.txt` prose itself remains as untested as pi's own fixed template
+string's literal wording does. This yields three distinct craft-maturity models rather
+than a clean binary: "opaque, evidenced only through changelog entries" (Claude Code,
+Copilot CLI); "assembly logic under test, prose text not" (OpenCode, pi's fixed-template
+mode); and, unique to pi among the harnesses sourced this session, a template that is
+never a static asset read off disk at all when no override is supplied (§2.5) -- meaning
+the boundary between "tested code" and "untested prose" sits in a different place in pi's
+architecture than in OpenCode's, even though both now have real, source-verified test
+coverage of the logic that assembles their respective prompts.
 
 ---
 
@@ -1086,10 +1269,16 @@ Pulling every section above into one operational picture:
    uses prose for a simple, single-sentence invariant (mark todos as
    you go) and multi-turn worked examples for a pattern that spans many
    turns and decision points (when and how aggressively to plan with
-   `TodoWrite`), in the same document, by design. pi's own template
-   (§2.5) makes a related but distinct choice at the same altitude:
-   rather than choosing prose or examples for a fixed document, it
-   chooses which *pieces* of the prompt get assembled at all, per
+   `TodoWrite`), in the same document, by design -- and that static file
+   is itself only the base tier of a per-turn-assembled prompt (§2.6):
+   an `<env>` block, project instructions, MCP server instructions, and
+   a skills listing are each computed fresh by their own `Effect`-returning
+   function and joined on afterward, so the "which pieces belong in this
+   prompt" question is answered partly by the static file's own author
+   and partly by conditional assembly code that runs every turn. pi's own
+   template (§2.5) makes a related but distinct choice at the same
+   altitude: rather than choosing prose or examples for a fixed document,
+   it chooses which *pieces* of the prompt get assembled at all, per
    session, from structured data -- a tool's own snippet and guideline
    bullets appear only while that tool is active, and the bash/PowerShell
    file-exploration guideline appears only when no dedicated search tool
@@ -1139,19 +1328,40 @@ Pulling every section above into one operational picture:
    released, changelog-documented tuning of the exact same three levers --
    tool-calling-style phrasing, token-cost hygiene of the instruction
    text itself, and model-generation-specific retuning. OpenCode ships
-   the literal prompt text as a static, per-model-family asset (§2.3).
-   pi (§2.5, §4.4) is the one harness in this book whose
-   system-prompt-*construction logic* -- as distinct from a fixed string --
-   is both fully source-visible and covered by its own automated
-   regression tests, a third, structurally different way of making
-   "this is maintained craft, not a one-time artifact" a verifiable claim
-   rather than an inference from release notes. Taken together, this is
-   the strongest available evidence that system-prompt authorship is a
+   the literal prompt text as a static, per-model-family asset (§2.3),
+   layered under a per-turn-assembled dynamic tier and a per-agent
+   override chain (§2.6) whose *surrounding logic* -- the model-family
+   dispatch, the environment/skills/MCP assembly functions -- does carry
+   its own automated test coverage, even though the prose inside
+   `anthropic.txt`/`beast.txt` itself does not (§4.4, revised). pi (§2.5,
+   §4.4) goes one step further: its system-prompt-*construction logic* --
+   as distinct from a fixed string, because no fixed string exists on
+   disk in the default case -- is both fully source-visible and covered
+   by its own automated regression tests. Taken together, this is the
+   strongest available evidence that system-prompt authorship is a
    genuine, ongoing engineering discipline at every harness examined in
    this book, not a one-time creative-writing exercise that happens to
    also involve an LLM -- and that "iterated craft" itself takes at
    least three observably different institutional shapes across the
    four harnesses this page has now examined.
+7. **The lever to replace an entire base system prompt for one named
+   agent identity, rather than only ever appending to a fixed document,
+   was arrived at independently by all three source-inspectable-or-changelogged
+   harnesses this page covers.** Claude Code's v2.0.59 changelog entry
+   -- "Added `agent` setting to configure main thread with a specific
+   agent's system prompt, tool restrictions, and model" (§4.1) -- pi's
+   `customPrompt` override chain, which still layers project-context and
+   skills injection on top of a fully replaced template (§2.5) -- and
+   OpenCode's `Agent.Info.prompt` field, which replaces
+   `SystemPrompt.provider(model)`'s model-family dispatch outright for
+   any agent that sets it, whether a built-in hidden lifecycle agent or
+   a user-defined one configured via JSON or a Markdown file with
+   frontmatter (§2.6) -- are three independent implementations of the
+   same underlying design decision. OpenCode's version is the most
+   granular of the three: the override is keyed per named agent, of
+   which a single session may have several defined at once, each
+   independently swappable, rather than a single global session-level
+   flag or a single default template with one override slot.
 
 ---
 
@@ -1159,7 +1369,8 @@ Pulling every section above into one operational picture:
 
 All fetched fresh this session (2026-08-17) unless noted otherwise. pi's own sources
 (below) were fetched fresh in a later session, 1 September 2026, per their own dated
-citation.
+citation. The additional OpenCode sources supporting §2.6 (below) were fetched fresh in
+that same later session, 1 September 2026.
 
 **Anthropic (authoritative for Claude's documented prompting behavior
 and Anthropic's own recommended prompt-engineering technique; not
@@ -1198,6 +1409,51 @@ not a stable release tag):**
   quoted production system prompt for Claude-family models) and
   `packages/opencode/src/session/prompt/beast.txt` (§2.3's contrasting
   GPT-4/o1/o3-family prompt, partial read).
+- `packages/opencode/src/session/system.ts` (`SystemPrompt.Service`'s
+  `environment()`/`skills()`/`mcp()` functions in full, re-read fetched fresh
+  1 September 2026 for §2.6) -- the `<env>` block construction, the
+  permission-gated skills listing and its source-comment rationale, and the
+  permission-filtered `<mcp_instructions>` block; covers §2.6.
+- `packages/opencode/src/session/prompt.ts` (grepped and read in context,
+  fetched fresh 1 September 2026) -- the per-turn `Effect.all([sys.skills(...),
+  sys.environment(...), instruction.system(...), sys.mcp(...), ...])` call site
+  and the fixed concatenation order of the dynamic tier; covers §2.6.
+- `packages/opencode/src/session/llm/request.ts` (full file, fetched fresh
+  1 September 2026) -- `LLMRequestPrep.prepare()`'s join logic (agent-prompt-or-dispatch,
+  `input.system`, `input.user.system`, `.filter(Boolean).join("\n")`), the
+  `experimental.chat.system.transform` plugin hook, and the header/rest
+  cache-friendliness split; covers §2.6's assembly-chain and extensibility-point
+  paragraphs.
+- `packages/opencode/src/session/llm.ts` (grepped and read in context, fetched
+  fresh 1 September 2026) -- `StreamInput.system: string[]`'s field shape and its
+  direct pass-through into `LLMRequestPrep.prepare({ ...input })`, confirming the
+  chain from `prompt.ts`'s constructed array to `request.ts`'s consumed field;
+  covers §2.6.
+- `packages/opencode/src/agent/agent.ts` (full file, fetched fresh 1 September
+  2026) -- the `Agent.Info` schema's `prompt: Schema.optional(Schema.String)`
+  field, the built-in `build`/`plan`/`general`/`explore`/`compaction`/`title`/`summary`
+  agent table (`PROMPT_EXPLORE`/`PROMPT_COMPACTION`/`PROMPT_TITLE`/`PROMPT_SUMMARY`
+  static files versus no `prompt` field for `build`/`plan`/`general`), the
+  `cfg.agent` config-merge loop's `item.prompt = value.prompt ?? item.prompt`
+  override semantics, and the `generate()`/`PROMPT_GENERATE` agent-creation
+  interface; covers §2.6's per-agent override chain.
+- `packages/opencode/test/session/system.test.ts` (read in full, fetched fresh
+  1 September 2026) -- the `SystemPrompt.provider()` model-family-routing test
+  cases (Muse Spark/Glimmer template interpolation, Kimi-provider routing), the
+  "skills output is sorted by name and stable across calls" memoization test, and
+  the MCP-instructions permission-filtering tests; covers §2.6 and the §4.4
+  amendment.
+- `packages/web/src/content/docs/agents.mdx` (grepped and read in context, fetched
+  fresh 1 September 2026) -- the documented `agent.<name>.prompt` config key
+  (literal string or `{file:...}` reference), the Markdown-agent-file convention
+  (`~/.config/opencode/agents/`, `.opencode/agents/`, frontmatter plus body-as-prompt),
+  the interactive agent-creation flow, and the `steps`-limit special system prompt;
+  covers §2.6's operator-customization paragraph.
+- `packages/web/src/content/docs/config.mdx` (grepped and read in context, fetched
+  fresh 1 September 2026) -- the top-level `instructions` config key or
+  AGENTS.md-equivalent project-instructions loading, cited only to confirm the
+  cross-reference boundary with [configuration.md](configuration.md) and
+  [memory-management.md](memory-management.md), not re-derived in §2.6.
 
 **Claude Code (authoritative for its own behavior-change history only;
 this repo ships no implementation source):**

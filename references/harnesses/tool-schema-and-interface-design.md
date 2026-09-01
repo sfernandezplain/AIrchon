@@ -37,12 +37,16 @@ source independently rather than borrowing the other's fetch.
 
 Every claim below is tagged VERIFIED (fetched fresh this session from a
 named, authoritative source) or BEST CURRENT UNDERSTANDING,
-UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, and (added in a later
-session, §1.5/§2.4/§3.4/§4.5) pi are four separate products from four
-separate organizations; a mechanism confirmed for one is never assumed
-for another without its own citation. This page's Copilot CLI coverage
-is out of scope for this pass and remains a known gap, tracked
-separately. Sources and fetch dates are listed in full at the bottom.
+UNCONFIRMED. Claude Code, Copilot CLI (added in a later session,
+§1.6/§2.5/§3.5/§4.6), OpenCode, and (added in a still later session,
+§1.5/§2.4/§3.4/§4.5) pi are four separate products from four separate
+organizations; a mechanism confirmed for one is never assumed for
+another without its own citation. Copilot CLI ships as a closed-source
+binary -- unlike OpenCode's and pi's own real implementations, this
+page's Copilot CLI coverage is grounded entirely in GitHub's own
+published documentation surface, not a source read, per the `gh api
+repos/github/copilot-cli` check recorded in this page's own Sources
+block. Sources and fetch dates are listed in full at the bottom.
 
 ---
 
@@ -297,6 +301,85 @@ request shape, so whether `"prefer"` is honored, silently ignored, or translated
 hard guarantee on any one of those four backends is not established here -- only that pi's own tool-
 definition surface treats the feature as experimental and preference-phrased at the point tools declare it.
 
+### 1.6 GitHub Copilot CLI: opaque runtime arguments, a documented permission-approval schema, and no published `input_schema` equivalent
+
+VERIFIED, `gh api repos/github/copilot-cli`, fetched fresh this session -- the public
+`github/copilot-cli` repository contains no application source at all: its root holds only
+`LICENSE.md`, `README.md`, `changelog.md`, and `install.sh`. Copilot CLI ships as a closed-source,
+npm-distributed binary, so -- unlike OpenCode's and pi's own real implementations this page reads
+directly in §1.5/§3.4/§4.3/§4.5 -- nothing below about Copilot CLI's own tool-definition internals is a
+source read; every claim is grounded in GitHub's own published documentation surface, fetched fresh this
+session from `docs.github.com`, and tagged accordingly. This mirrors, rather than contradicts, this book's
+existing sourcing distinction for Claude Code, whose tool-definition internals are likewise undisclosed and
+whose coverage throughout this book is built the same way.
+
+The clearest documented approximation of a per-call argument contract is the hooks system's own
+`preToolUse`/`postToolUse` payload shape, VERIFIED from
+`docs.github.com/en/copilot/reference/hooks-reference`, fetched fresh this session. A `preToolUse` hook
+receives `{ sessionId, timestamp, cwd, toolName: string, toolArgs: unknown }` in the CLI's native camelCase
+format, or the same fields renamed to `tool_name`/`tool_input` when the hook is configured under the
+Claude-Code-plugin-compatible PascalCase event name (`tool_input` is documented as "parsed from JSON string
+when possible"). The load-bearing detail is the type GitHub's own docs assign to the argument payload:
+`unknown`, not a named or referenced JSON Schema. Nothing in this session's research surfaced a
+per-tool `input_schema`, `inputSchema`, or equivalent structural contract that GitHub publishes for its own
+built-in tools the way Anthropic publishes `input_schema` (§1.1) or MCP mandates `inputSchema` (§4.1) --
+a hook author (or, by extension, anything downstream of the hook layer) receives whatever shape of JSON a
+given tool happens to have been called with, and must know that tool's own argument shape out of band,
+from GitHub's prose documentation or empirical observation, rather than from a machine-readable schema
+GitHub exposes alongside it. *BEST CURRENT UNDERSTANDING, UNCONFIRMED* that no such schema exists
+internally -- only that this session's research, bounded to GitHub's own public documentation, found none
+published.
+
+Tool *results*, by the same source, are collapsed to a single string field before they reach this
+observable layer: a successful `postToolUse` payload carries `toolResult: { resultType: "success",
+textResultForLlm: string }` (or `tool_result: { result_type, text_result_for_llm }` in the VS-Code-compatible
+format), and a `postToolUse` hook may substitute a `modifiedResult` object that must itself conform to the
+same `{ resultType: "success", textResultForLlm: string }` shape, or append `additionalContext` text that
+GitHub's own docs state is appended "to `textResultForLlm` so the model sees it after the tool output on the
+same turn." Whatever a tool's own internal return value looks like -- parsed file contents, command
+stdout/stderr, a structured MCP JSON-RPC result -- this is documented evidence that it is normalized to one
+string before the hook layer can observe or rewrite it. *BEST CURRENT UNDERSTANDING, UNCONFIRMED* that the
+model's own raw context window carries the identical single-string shape; this session's sources document
+the hook-observable payload, not the literal prompt text assembled for the model, and the two are not
+asserted to be identical here.
+
+The one argument-adjacent schema GitHub does publish in full is a permission-*approval* schema, not a
+tool-invocation schema, and the two should not be conflated. VERIFIED,
+`docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference`, fetched fresh this
+session -- `~/.copilot/permissions-config.json`'s own documented schema keys its top-level `locations` object
+by absolute path, and under each location, `tool_approvals[]` entries carry a required `kind` field whose
+allowed values are `commands`, `read`, `write`, `mcp`, `mcp-sampling`, `memory`, `custom-tool`,
+`extension-management`, and `extension-permission-access`, each requiring different companion fields:
+`commands` requires a `command_identifiers` array; `mcp` requires `serverName` plus a `toolName` that may
+be the literal `null` to approve every tool on that server; `custom-tool` requires `toolName` alone. This
+schema governs whether a call is *permitted to execute*, not what shape its arguments must take -- it sits
+structurally beside, not on top of, the `input_schema`/`inputSchema` layer §1.1 and §4.1 document Anthropic
+and MCP publishing, and Copilot CLI's own documentation surface details the former exhaustively while
+disclosing nothing at the latter's level of structural detail for its own built-in tools.
+
+MCP tool ingestion, by contrast, is documented down to the JSON configuration format itself. VERIFIED,
+`docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers`, fetched fresh this
+session -- `~/.copilot/mcp-config.json`'s `mcpServers.<name>` object accepts `type: "local"` or `type:
+"stdio"` interchangeably ("Both options work the same way. STDIO is the standard MCP protocol type name,
+so choose this if you want your configuration to be compatible with VS Code, the Copilot cloud agent, and
+other MCP clients," per the same page) with `command`/`args`/`env`; the separately-fetched
+`custom-agents-configuration` page independently corroborates this `local`/`stdio` synonymy one layer up,
+for the YAML `mcp-servers` property of a custom agent profile specifically ("the `stdio` type used by
+Claude Code and VS Code is mapped to cloud agent's `local` type"). A CLI-configured server otherwise
+accepts `type: "http"`/`"sse"` with `url`/`headers`, plus a `tools` field accepting `["*"]` (default, all tools),
+an explicit array of tool names, or `[]` (none), and a `deferTools: "auto" | "never"` field this page
+returns to in §3.5. Project-level `.mcp.json`/`.github/mcp.json` configuration takes precedence over the
+user-level file when server names conflict, and the built-in GitHub MCP server is available without any of
+this configuration at all. Tool-level filtering is thus applied at the point of *ingestion* into the CLI's
+tool inventory (the `tools` field on the server entry itself), a different point in the pipeline from the
+`--allow-tool`/`--deny-tool`/`--available-tools`/`--excluded-tools` command-line layer that governs which
+already-ingested tools the model may be aware of or permitted to call (VERIFIED,
+`docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/allowing-tools` and
+`.../reference/copilot-cli-reference/cli-programmatic-reference`, both fetched fresh this session) --
+cross-referenced, not re-derived, from [built-in-tools.md](built-in-tools.md) §2.1's own prior documentation
+of the six permission *kinds* (`shell`/`write`/`read`/`url`/`memory`/`MCP-SERVER`) this command-line layer
+operates on.
+
 ---
 
 ## 2. Naming and description conventions that measurably affect tool-selection accuracy
@@ -445,6 +528,67 @@ of its tool-definitions block. *BEST CURRENT UNDERSTANDING, UNCONFIRMED* whether
 or OpenCode's own tool-registration surfaces expose a comparable second channel -- no source fetched in this
 session or cross-referenced from this book's own prior research names an equivalent mechanism for any of
 the other three harnesses, so treat its apparent absence there as unconfirmed-as-absent, not proven absent.
+
+### 2.5 GitHub Copilot CLI: a retrieval-framed naming rationale, a model-family-conditioned runtime name vocabulary, and an alias layer distinct from either
+
+VERIFIED, `docs.github.com/en/copilot/concepts/agents/copilot-cli/tool-search`, fetched fresh this
+session -- this single page closes a gap this page's own Sources block previously flagged (a targeted
+search had surfaced only custom-agent *configuration* and MCP-server *selection* guidance, not a
+schema/description-authoring craft page comparable to Anthropic's `define-tools`). GitHub's own stated
+naming/description guidance is explicit and retrieval-framed: "Tool search matches what the agent is trying
+to do against each tool's name, its description, and its parameter names and descriptions," and its two
+named recommendations are to "Name tools for what they do so that they're easier to find" and "Write
+descriptions with the words people would actually search for rather than vague ones." This is a genuinely
+different emphasis from Anthropic's own guidance (§2.1): Anthropic's namespacing and negative-boundary
+recommendations are framed around a model correctly *choosing among a visible list* of tool definitions it
+already has in context; GitHub's framing is explicitly about surviving a literal text-matching retrieval
+step (§3.5 below) that runs *before* a deferred tool's full definition ever reaches context at all -- under
+Copilot CLI's own tool search, a vaguely named or vaguely described tool risks never being retrieved for a
+relevant task, not merely being mis-selected once visible.
+
+VERIFIED, `docs.github.com/en/copilot/reference/hooks-reference`, fetched fresh this session -- the hooks
+reference's own "Tool names for hook matching" table names Copilot CLI's actual runtime built-in tool
+identifiers directly: `ask_user`, `bash`, `create`, `edit`, `glob`, `grep`, `powershell`, `task`, `view`, and
+`web_fetch`, with `web_search` and `update_todo` named separately via the same page's Claude-tool-name
+compatibility table. That compatibility table is itself a load-bearing naming finding this page's other
+three harnesses' coverage has no counterpart for: it maps `edit` *and* `str_replace_editor` *and*
+`apply_patch` to the same normalized Claude tool name `Edit`, and `grep` *and* `rg` to the same normalized
+name `Grep` -- meaning Copilot CLI's own runtime tool-name vocabulary is not a single fixed set the way
+Claude Code's, OpenCode's, or pi's own built-in tool names are (documented respectively in
+[built-in-tools.md](built-in-tools.md) §1.1, §3.1, and this page's own §3.4); it varies by which underlying
+model family's native tool-calling convention is active in a given session (`str_replace_editor` is
+Anthropic's own naming convention for a text-editing tool; `apply_patch` is OpenAI/Codex's own), and the
+hooks layer's own compatibility table exists specifically to normalize across that variation for matcher
+purposes. *BEST CURRENT UNDERSTANDING, UNCONFIRMED* beyond what this table states directly: this session's
+sources document that the mapping exists for hook-matching purposes, not the full mechanics of how or
+whether the model itself is ever shown more than one name for functionally the same tool within a single
+session.
+
+The custom-agent alias vocabulary VERIFIED in §1.6's own source read
+(`docs.github.com/en/copilot/reference/custom-agents-configuration`) is a third, structurally distinct
+naming layer worth separating cleanly from both of the above: `execute`/`shell`/`Bash`/`powershell` as
+compatible aliases resolving to "Shell tools: `bash` or `powershell`"; `read`/`Read`/`NotebookRead`
+resolving to `view`; `edit`/`Edit`/`MultiEdit`/`Write`/`NotebookEdit` resolving to "Edit tools: e.g.
+`str_replace`, `str_replace_editor`"; `search`/`Grep`/`Glob` resolving to `search`; `agent`/`custom-agent`/
+`Task` resolving to "Custom agent" tools; and `web`/`WebSearch`/`WebFetch` and `todo`/`TodoWrite`, both
+documented as "Currently not applicable for cloud agent." Unlike the runtime-name variation above, which is
+model-conditioned, this alias layer is *authoring*-facing and explicitly forgiving: the docs state aliases
+are "case insensitive" and that "all unrecognized tool names are ignored, which allows product-specific
+tools to be specified in an agent profile without causing problems" -- a distinct naming-robustness design
+from Anthropic's regex-enforced `^[a-zA-Z0-9_-]{1,64}$` tool name (§1.1) or MCP's own character rules
+(§4.1): rather than rejecting or erroring on a malformed or unrecognized name, a custom agent's `tools:`
+list degrades silently, dropping only the entry that doesn't resolve.
+
+On §2.4's own flagged, cross-harness question of whether a second tool-usage-guidance channel distinct
+from `description` exists elsewhere: this session's research narrows, without resolving, that question for
+Copilot CLI. The nearest analogous mechanism found is agent-scoped rather than tool-scoped -- a custom
+agent's Markdown body, carrying free-form behavioral instructions up to "a maximum of 30,000 characters"
+per `custom-agents-configuration`, sits distinct from that same agent profile's own required `description`
+frontmatter field, which is a structural echo of pi's `description`-versus-`promptGuidelines` separation at
+one layer higher (the *agent*, not the *tool*). No source fetched this session names a per-tool secondary
+guidance field on Copilot CLI's own built-in tool definitions comparable to pi's `promptSnippet`/
+`promptGuidelines`; treat the apparent absence as unconfirmed-as-absent for Copilot CLI specifically, same
+as §2.4 already states for the other three harnesses, not as newly proven.
 
 ---
 
@@ -658,6 +802,64 @@ once, deterministically -- but they operate on different axes of the tool surfac
 exist, versus how much one tool call can accomplish), and a harness can adopt one without the other, exactly
 as pi does here: eight narrow, un-consolidated tools at the definition level, one of which is internally
 batchable at the call level.
+
+### 3.5 GitHub Copilot CLI: tool search as a model-conditioned deferred-loading mechanism, directly comparable to Claude Code's
+
+VERIFIED, `docs.github.com/en/copilot/concepts/agents/copilot-cli/tool-search`, fetched fresh this
+session -- Copilot CLI's own "tool search" is a directly comparable, independently named and implemented
+counterpart to the deferred-schema-loading mechanism §3.3 already documents for Claude Code
+(`ToolSearch`/`WaitForMcpServers`/the `defer_loading` schema property). The mechanism is threshold-gated:
+"Below roughly 30 tools, the savings you get from tool search aren't worth it, so Copilot CLI skips tool
+search entirely and just loads everything." Above that threshold, only a defined subset stays always-loaded
+-- the CLI's own built-in tools (`grep`, `glob`, `bash`, `edit`, and so on, per §2.5's own runtime-name
+list), any MCP server's tools configured with `deferTools: "never"` in `mcp-config.json` (§1.6), and any
+tool a custom agent names explicitly in its own `tools:` frontmatter list, unless that agent additionally
+sets `deferred-tool-loading: true`, which hands its own named tools back to the search mechanism. Everything
+else is held out of context -- "the agent can see that these tools exist and roughly what they're for, but
+their full definitions aren't loaded yet" -- until a step that needs one triggers "a quick search over the
+available tools" that pulls the closest matches into context, where they then "stick around for the rest of
+the conversation." GitHub's own docs state the cost/payoff explicitly: "That first lookup costs an extra
+exchange with the model, but you get it back many times over by keeping the context small on every later
+turn" -- the identical amortized-cost logic this page's §3.3 already documents for Claude Code's own deferred
+loading, arrived at independently.
+
+A data point this page's §3.3 discussion did not have for any of its other three harnesses: Copilot CLI's
+own tool search is documented as conditional on the underlying model family's own demonstrated capability,
+not a universal property of the harness. GitHub's own supported-model table names, for Claude (Anthropic),
+"Mythos Preview, Fable, Sonnet 4.0+, Opus 4.0+ (not Haiku)," and for GPT (OpenAI), "GPT-5.4 and later" --
+"On any other model, all tools are loaded up front." This is a genuine, sourced design point neither
+Claude Code's own `defer_loading` schema property nor this page's OpenCode or pi coverage states as
+model-conditional: a harness's deferred-loading strategy can itself depend on a capability the underlying
+model must demonstrably support, rather than being a harness-level guarantee that holds regardless of which
+model a given session is running.
+
+GitHub's own stated context-cost estimate for the problem tool search solves -- "A few dozen tool
+definitions can eat 10-20K tokens before the agent has done any work," alongside "Degraded tool selection
+accuracy. Once several dozen tools are in view at once, the model is more likely to reach for the wrong
+one" -- is a second, independently-stated data point corroborating both Anthropic's own consolidation
+framing (§3.1's "agents have limited context... unlike traditional software with abundant memory") and the
+already-documented, harness-shipped 2KB MCP tool-description cap this page's §3.3 cites from
+[caching.md](caching.md)/[system-prompt-design-as-craft.md](system-prompt-design-as-craft.md) for Claude
+Code -- a third vendor, independently, naming the same context-budget-versus-tool-count tension as a real
+engineering problem rather than a hypothetical one.
+
+This operates on a different axis from, and composes with rather than replaces, the granularity decision
+this page's own §3.2 already cross-references for Copilot CLI: the curated default GitHub MCP server tool
+list (`built-in-tools.md` §2.1's own changelog quote, restated there rather than re-derived here) removes
+tools from the model's available set permanently at configuration time; tool search instead keeps every
+configured tool notionally available while deferring its schema's context cost until first use. Copilot
+CLI's own documentation describes using both simultaneously against the same tool surface -- curating which
+MCP tools are configured at all, then deferring the schemas of whichever configured tools tool search
+doesn't judge immediately relevant -- consistent with this section's own framing that consolidation, curation,
+and deferred loading are three separable responses to the same underlying tool-surface-growth problem, not
+mutually exclusive alternatives.
+
+Finally, GitHub's own authoring guidance for tool search doubles as this page's own naming/description
+guidance for Copilot CLI (§2.5, cross-referenced rather than repeated here): "Tool search matches what the
+agent is trying to do against each tool's name, its description, and its parameter names and descriptions,"
+which makes description quality under Copilot CLI's own deferred-loading regime a *retrieval* concern, not
+merely a *selection-among-visible-options* concern -- a framing distinction this page names once, fully, at
+§2.5.
 
 ---
 
@@ -1006,6 +1208,62 @@ pi's own `ToolDefinition` fields read this session -- treat that as this session
 result (no such field appears in `extensions/types.ts`'s `ToolDefinition` interface), not as a confirmed,
 documented design decision by pi's own authors to omit the vocabulary deliberately.
 
+### 4.6 GitHub Copilot CLI: a binary success/failure hook channel, an external interception point for refusal text, and no published idempotency-hint vocabulary
+
+For MCP-sourced tool calls specifically -- Copilot CLI's own built-in GitHub MCP server, and any local or
+remote MCP server a user configures per §1.6 -- nothing this session's research found in GitHub's own
+documentation restates or overrides §4.1's MCP annotation vocabulary or §4.2's protocol-error/
+tool-execution-error taxonomy; both are cross-referenced here, not re-derived, as governing MCP-sourced
+Copilot CLI tool calls the same way they govern any standards-conformant MCP client.
+
+For Copilot CLI's own non-MCP built-in tools, the clearest documented recovery-relevant mechanism found
+this session is VERIFIED, same source as §1.6/§2.5/§3.5
+(`docs.github.com/en/copilot/reference/hooks-reference`) -- the `postToolUse`/`postToolUseFailure` hook
+pair. A successful call reports `toolResult: { resultType: "success", textResultForLlm: string }`; a
+failed call instead fires a structurally distinct `postToolUseFailure` event carrying `error: string`
+rather than populating `toolResult` at all. This confirms Copilot CLI's own runtime *structurally*
+distinguishes success from failure -- a different event name fires, not merely a different field value --
+but GitHub's own public documentation, at the depth this session's research reached, does not publish a
+catalogue of specific per-tool failure-reason strings comparable to OpenCode's own six quoted `edit`-tool
+error messages (§4.3) or pi's own five named error constructors (§4.5). *BEST CURRENT UNDERSTANDING,
+UNCONFIRMED* whether Copilot CLI's own built-in `edit`/`create` tools carry a comparably granular,
+actionable failure-reason catalogue internally -- the hooks reference documents the event- and field-level
+*shape* a result or error takes, not the specific prose a given built-in tool emits inside `error` or
+`textResultForLlm` on a given failure, and no other source fetched this session closes that gap. Treat the
+apparent absence of a published catalogue as unconfirmed-as-absent, not proven absent, consistent with this
+page's own discipline for Claude Code's comparably undisclosed internals elsewhere.
+
+A second, structurally distinct mechanism worth naming on its own terms is the `preToolUse` hook's own
+`modifiedArgs` and `permissionDecision`/`permissionDecisionReason` fields, VERIFIED from the same source.
+A `preToolUse` hook can rewrite a call's arguments before execution (`modifiedArgs`) or deny it outright,
+and a denial is not documented as a silent block: GitHub's own docs state the `permissionDecisionReason`
+string is the "Reason shown to the agent," required specifically "when decision is `deny`." This is the
+same refuse-with-a-specific-reason shape this page's §5 synthesis already identifies as a convergent
+finding across Claude Code's `Edit` gate, OpenCode's `edit` tool, and pi's own `edit` tool (§4.4/§4.3/§4.5)
+-- except here the reason can originate from a user- or administrator-authored hook script external to the
+tool's own implementation, rather than only from validation logic the tool's own author wrote. This
+extends, rather than merely repeats, that convergent finding: Copilot CLI exposes an *external*
+interception point capable of producing the same actionable-refusal shape the other three harnesses'
+internal validation logic produces natively, and the CLI additionally records, in the same permission-denied
+path, any free-text feedback a user types alongside a manual denial, which GitHub's own docs state is
+appended to the message the agent receives as `"Denied by user via preToolUse hook prompt: <reason>. The
+user provided the following feedback: <feedback>."` -- a documented instance of a human-authored refusal
+reason being fed back to the model in exactly the same channel a tool's own built-in validation error would
+use.
+
+On idempotency-hint vocabulary specifically: this session's research found no Copilot-CLI-specific
+equivalent to MCP's `idempotentHint`/`destructiveHint` annotations (§4.1) published for its own built-in
+tools' definitions. The closest functional proxy is the coarser permission-*kind* taxonomy §1.6 and
+[built-in-tools.md](built-in-tools.md) §2.1 already document: `read` requests are auto-approved by default
+("read-only operations like searching, reading files, and running read-only shell commands are allowed
+automatically," per the `allowing-tools` page fetched fresh this session), while `write`/`shell`/`url`/
+`memory`/MCP-tool-kind requests require explicit approval -- a binary safe/unsafe partition enforced at the
+permission layer, not a graded per-tool annotation vocabulary of the kind MCP's own specification defines.
+*BEST CURRENT UNDERSTANDING, UNCONFIRMED* that this partition is intended by GitHub as an idempotency or
+destructiveness signal specifically -- no source fetched this session states that rationale directly; only
+that the partition is the closest documented analogue this session's research found, functioning as a
+permission gate rather than a declared risk annotation a model itself is shown.
+
 ---
 
 ## 5. Synthesis
@@ -1064,6 +1322,31 @@ tool-execution-error split and Anthropic's "actionable... not opaque"
 guidance both name from the specification and API-guidance sides
 respectively.
 
+**GitHub Copilot CLI, folded into this same picture as a data point grounded entirely in documentation
+rather than a source read, since its own implementation is closed-source (§1.6).** On schema authoring
+(§1.6), Copilot CLI publishes no `input_schema`/`inputSchema`-equivalent contract for its own built-in
+tools at all -- its own `preToolUse`/`postToolUse` hook payloads type a call's arguments as bare `unknown`
+and collapse every tool's result to a single `textResultForLlm` string, the one point on this page where a
+harness's documented interface is thinner, not just differently shaped, than the other three harnesses'.
+On naming (§2.5), Copilot CLI adds two findings none of the other three harnesses' coverage surfaced: a
+first-party naming rationale framed explicitly around *retrieval* rather than in-context selection ("Write
+descriptions with the words people would actually search for"), and a runtime tool-name vocabulary that is
+itself model-family-conditioned (`str_replace_editor` and `apply_patch` both normalizing to the same
+hook-facing `Edit` name) rather than fixed the way Claude Code's, OpenCode's, and pi's own built-in tool
+names are. On granularity (§3.5), Copilot CLI's own "tool search" is an independently-implemented,
+independently-named counterpart to Claude Code's deferred-schema-loading mechanism, corroborating its
+context-cost rationale with a second vendor-stated token estimate while adding a data point neither
+Claude Code's, OpenCode's, nor pi's coverage established for any harness: the mechanism itself is gated on
+the underlying model family's own demonstrated capability, not a universal property of the harness. On
+idempotency and errors (§4.6), Copilot CLI's own hooks reference confirms only a binary, event-level
+success/failure distinction rather than a documented catalogue of specific failure-reason strings the way
+Claude Code's `Edit` gate, OpenCode's `edit` tool, and pi's own `edit` tool all publish or expose in source
+(§4.4/§4.3/§4.5) -- but it extends this page's own three-harness refuse-with-a-reason convergence in a
+direction none of the other three exhibit, by exposing an *external*, hook-authorable interception point
+(`preToolUse`'s `modifiedArgs`/`permissionDecisionReason`) capable of producing that same actionable-refusal
+shape from outside the tool's own implementation, including a documented path for a human user's own
+free-text feedback to be appended to the model-facing denial message.
+
 **pi, folded into this same picture as a fourth, independently-implemented data point rather than a
 repeat of Claude Code's or OpenCode's own findings.** On schema authoring (§1.5), pi corroborates the
 tool-level-plus-parameter-level description discipline §1.1 and §4.3 already establish, adds a genuinely
@@ -1090,9 +1373,11 @@ would not have surfaced without reading pi's own source directly.
 
 ## Sources
 
-All fetched fresh this session (2026-08-17) unless noted otherwise. The pi sections (§1.5, §2.4, §3.4,
-§4.5, and this page's synthesis paragraph on pi) were added in a later session, fetched fresh 1 September
-2026, and are dated separately in their own Sources entry below.
+All fetched fresh this session (2026-08-17) unless noted otherwise. The GitHub Copilot CLI sections
+(§1.6, §2.5, §3.5, §4.6, and this page's synthesis paragraph on Copilot CLI) were added in a later session,
+fetched fresh 1 September 2026, and are dated separately in their own Sources entry below. The pi sections
+(§1.5, §2.4, §3.4, §4.5, and this page's synthesis paragraph on pi) were added in a still later session,
+also fetched fresh 1 September 2026, and are dated separately in their own Sources entry further below.
 
 **Anthropic (authoritative for Claude's documented tool-definition
 behavior and Anthropic's own recommended tool-design technique; not
@@ -1149,6 +1434,48 @@ fetched this session):**
   parameter validation, type/value matching) and the Function Relevance
   Detection / hallucination-on-irrelevant-functions category
   definitions, quoted directly.
+
+**GitHub Copilot CLI (authoritative for its own documented behavior; not authoritative for its own
+undisclosed internal tool implementation, since the public `github/copilot-cli` repository ships no
+application source -- see the `gh api` check below. Fetched fresh 1 September 2026.):**
+- `gh api repos/github/copilot-cli` and `gh api repos/github/copilot-cli/contents/` -- confirms the
+  public repository's root contains only `LICENSE.md`, `README.md`, `changelog.md`, and `install.sh`,
+  grounding §1.6's opening closed-source framing.
+- `https://docs.github.com/en/copilot/reference/hooks-reference` -- §1.6's `preToolUse`/`postToolUse`
+  payload shapes (`toolName`/`toolArgs: unknown`, `toolResult: {resultType, textResultForLlm}`), §2.5's
+  "Tool names for hook matching" runtime tool-name table and the Claude-tool-name compatibility mapping
+  (`str_replace_editor`/`apply_patch` -> `Edit`, `grep`/`rg` -> `Grep`), and §4.6's `postToolUseFailure`
+  event, `preToolUse`'s `modifiedArgs`/`permissionDecisionReason` decision-control fields, and the
+  user-feedback-appended-to-denial message format.
+- `https://docs.github.com/en/copilot/concepts/agents/copilot-cli/tool-search` -- §2.5's retrieval-framed
+  naming/description guidance ("words people would actually search for") and §3.5's tool-search mechanism
+  in full: the ~30-tool threshold, always-loaded exceptions (`deferTools: "never"`,
+  `deferred-tool-loading: true`), the supported-model table, and the "10-20K tokens"/degraded-selection
+  context-cost framing.
+- `https://docs.github.com/en/copilot/reference/custom-agents-configuration` -- §1.6's/§2.5's tool-alias
+  table (primary alias / compatible aliases / cloud-agent mapping), the `tools:` frontmatter property and
+  its all/specific/none enabling modes, the "unrecognized tool names are ignored" robustness note, the
+  30,000-character agent-prompt-body cap, and the `mcp-servers` YAML-frontmatter property's relationship to
+  the repository-level MCP JSON configuration format (including the `stdio`-to-`local`-type mapping quote).
+- `https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers` -- §1.6's
+  `mcp-config.json` schema (`type`/`command`/`args`/`env`/`url`/`headers`/`tools`/`deferTools`), the
+  `/mcp add` and `copilot mcp add` ingestion paths, and the project-level-overrides-user-level precedence
+  rule.
+- `https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference` -- §1.6's
+  full `permissions-config.json` schema (the `locations`/`tool_approvals[]` structure, the `kind` enum and
+  its per-kind required companion fields) and the `~/.copilot` directory's `mcp-config.json`/
+  `permissions-config.json`/`settings.json` file inventory.
+- `https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/allowing-tools` -- §1.6's/§4.6's
+  read-tools-auto-approved-by-default framing, the `--available-tools`/`--excluded-tools`/`--allow-tool`/
+  `--deny-tool` layering, and the `--allow-tool='My MCP(create_issue)'`-style filter syntax.
+- `https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference` --
+  §1.6's tool-kind table (`shell`/`write`/`read`/`url`/`memory`/`MCP-SERVER`) and filter-pattern examples,
+  cross-referenced against [built-in-tools.md](built-in-tools.md) §2.1's own prior documentation of the
+  same vocabulary rather than re-derived as a fresh finding.
+- `https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks` and
+  `https://docs.github.com/en/copilot/concepts/agents/copilot-cli/about-copilot-cli` -- consulted for
+  context on hook configuration and CLI modes of use; not directly cited for a specific claim above beyond
+  confirming the hooks-reference page's own pointer and the interactive/programmatic mode distinction.
 
 **OpenCode (authoritative for its own documented behavior AND, unlike
 Claude Code and Copilot CLI, its own real implementation; `dev` branch,
@@ -1221,11 +1548,15 @@ project's own cross-reference discipline):**
 grounding for any specific claim:** BFCL's underlying paper
 (`proceedings.mlr.press/v267/patil25a.html`) and its live per-category
 leaderboard scores (seen only as search-result titles, not fetched);
-any Copilot-CLI-specific first-party guidance on tool-schema or
-tool-description authoring technique (a targeted search this session
-surfaced only custom-agent *configuration* and MCP-server *selection*
-guidance -- e.g. `docs.github.com/en/copilot/reference/custom-agents-configuration`
--- not a schema/description-authoring craft page comparable to
-Anthropic's `define-tools`/`writing-tools-for-agents`; treat the
-apparent absence of such a page as BEST CURRENT UNDERSTANDING,
-UNCONFIRMED-as-absent, not proven absent).
+a specific, exhaustive catalogue of Copilot CLI's own built-in
+per-tool failure-reason strings comparable to OpenCode's or pi's own
+quoted `edit`-tool error messages (§4.6) -- GitHub's own hooks
+reference documents the event/field-level shape a result or error
+takes, not each built-in tool's own emitted prose, and the CLI's own
+implementation is closed-source, so this gap is treated as BEST
+CURRENT UNDERSTANDING, UNCONFIRMED-as-absent, not proven absent. (An
+earlier pass of this page's own research had also flagged, and this
+session's fetch of `docs.github.com/en/copilot/concepts/agents/
+copilot-cli/tool-search` has since closed, the previously-open
+question of whether any Copilot-CLI-specific first-party
+tool-naming/description-authoring guidance exists at all -- see §2.5.)
