@@ -1,4 +1,4 @@
-# Memory management -- Claude Code, GitHub Copilot CLI, OpenCode, pi, and Hermes Agent
+# Memory management -- Claude Code, GitHub Copilot CLI, OpenCode, pi, Hermes Agent, and DeepSeek Harness
 
 How each harness persists information across sessions, how that
 information gets back into context, and what happens to it when a long
@@ -7,18 +7,29 @@ session compacts.
 Every claim below is tagged VERIFIED (fetched this session from the
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Sources and
 fetch dates at the bottom. Claude Code, Copilot CLI, OpenCode, pi
-(Earendil Works), and Hermes Agent are separate products from separate
-organizations -- nothing confirmed for one is assumed for another. §3
-(OpenCode) was added 2026-08-24 as a gap-fill: an earlier 2026-08-24
-update to this page had added Hermes Agent as a third harness section,
-but the page still had never covered OpenCode -- one of this book's own
-three named target harnesses -- leaving a real gap this update closes.
-§4 (pi) was added 1 September 2026, slotted in ahead of Hermes Agent to
-match the harness ordering already established for pages that cover
-both (see e.g. [Permissions & sandboxing](permissions-and-sandboxing.md),
+(Earendil Works), Hermes Agent, and DeepSeek Harness are separate
+products from separate organizations -- nothing confirmed for one is
+assumed for another. §3 (OpenCode) was added 2026-08-24 as a gap-fill: an
+earlier 2026-08-24 update to this page had added Hermes Agent as a third
+harness section, but the page still had never covered OpenCode -- one of
+this book's own three named target harnesses -- leaving a real gap this
+update closes. §4 (pi) was added 1 September 2026, slotted in ahead of
+Hermes Agent to match the harness ordering already established for pages
+that cover both (see e.g.
+[Permissions & sandboxing](permissions-and-sandboxing.md),
 [Session & transcript persistence](session-persistence.md)); Hermes
 Agent moves from §4 to §5 and Synthesis from §5 to §6 as a result, with
-no other change to either section's own content.
+no other change to either section's own content. §6 (DeepSeek Harness)
+was added the same day, as part of this book's DeepSeek-Harness
+full-parity rollout; it is appended after Hermes Agent rather than
+inserted before pi, matching the ordering this same rollout already used
+for [context-compression.md](context-compression.md) §6 (DeepSeek
+appended last on that page too) rather than the earlier
+Claude/Copilot/OpenCode/DeepSeek/pi/Hermes ordering established on
+[hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) and
+[session-persistence.md](session-persistence.md) -- cross-harness
+section order is a per-page write-history artifact, not a claim about
+any harness's own importance.
 
 **The one-line answer to "is it a memory tool or file convention?":**
 Claude Code is entirely file-based and machine-local -- plain markdown
@@ -39,7 +50,15 @@ real, source-verified absence as OpenCode -- but sits between Claude
 Code and OpenCode on the mid-session-edit question: neither frozen
 until restart (Claude Code) nor re-read every turn with no command
 needed (OpenCode), but reloadable on demand via one named,
-user-invoked slash command, `/reload`. All claims VERIFIED, see below.
+user-invoked slash command, `/reload`. DeepSeek Harness is the sharpest
+outlier of the six: it ships **no `AGENTS.md`/`CLAUDE.md`-style
+project-instruction-file convention at all** -- its deployment persona
+is a Cordis config string (`persona:` under the `dsh-system-prompt`
+plugin), not a markdown file discovered on disk -- and, like OpenCode
+and pi, **no native agent-authored memory tool**; its own docs instead
+frame third-party memory MCP servers (Memorix, MCP Reference Memory,
+Engram) as default-off, explicitly-not-endorsed reference
+configurations a deployer opts into. All claims VERIFIED, see below.
 
 ```mermaid
 flowchart LR
@@ -63,6 +82,11 @@ flowchart LR
         SOUL["SOUL.md (identity, prompt slot #1) +\ncontext-file discovery (.hermes.md, AGENTS.md,\nCLAUDE.md, .cursorrules)"] --> Ctx3[Context window]
         HMEM["MEMORY.md + USER.md\n(agent-authored, hard character caps)"] --> Ctx3
         HMEM -->|"post-turn closed learning loop"| HMEM
+    end
+    subgraph DS["DeepSeek Harness"]
+        PERS["persona: config string\n(dsh-system-prompt plugin, NOT a project file)"] --> Ctx3d[Context window]
+        NOMEM["No native agent-authored memory tool"] -.->|"not shipped"| Ctx3d
+        MCPMEM["Third-party memory MCP servers\n(Memorix / MCP Reference Memory / Engram)"] -.->|"default-off reference config"| Ctx3d
     end
 ```
 
@@ -1064,28 +1088,166 @@ storage mechanism.
 
 ---
 
-## 6. Synthesis
+## 6. DeepSeek Harness
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
-|---|---|---|---|---|---|
-| Human-authored persistent instructions | `CLAUDE.md` hierarchy (managed → user → project → local), `.claude/rules/` | `.github/copilot-instructions.md`, `.github/instructions/**/*.instructions.md`, `AGENTS.md`, `~/.copilot/instructions/**/*.instructions.md` | `AGENTS.md` (project + global), config `instructions[]` (local globs + remote URLs), `CLAUDE.md`/deprecated `CONTEXT.md` as compat fallbacks | `AGENTS.md`/`CLAUDE.md` (global `~/.pi/agent/AGENTS.md` + ancestor walk to cwd, first-match-per-directory), `AGENTS.override.md` (exclusive per-directory substitute), `SYSTEM.md`/`APPEND_SYSTEM.md` at the system-prompt layer | `SOUL.md` (identity, prompt slot #1) plus auto-discovered Context Files (`.hermes.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`) |
-| Reads the *other* harness's file? | No -- `AGENTS.md` not read at runtime; `/init` only mines it at authoring time | Yes -- `CLAUDE.md` is read and `@`-import-expanded (changelog) | Yes -- both `CLAUDE.md` and `AGENTS.md` named directly in its own Context Files discovery list | Yes -- both `AGENTS.md` and `CLAUDE.md` loaded natively, `AGENTS.md` winning first-match when both exist in one directory (§4.2) | Yes -- both `CLAUDE.md` and `AGENTS.md` named directly in its own Context Files discovery list, alongside its native `.hermes.md`/`SOUL.md` (§5.5) |
-| Path-scoped instruction tier | `.claude/rules/` with `paths:` frontmatter | `.github/instructions/**/*.instructions.md` (bodies no longer always in system prompt) | Not found in the docs pages fetched this session (see [instruction-context-budget.md](instruction-context-budget.md) §3.2) | Not found in the docs/source fetched this session | Not found in the one docs page fetched this session |
-| `@`-import expansion | Yes, 4-hop cap, launch-time | Yes (changelog: AGENTS.md, CLAUDE.md, Copilot instruction files) | Not applicable -- no `@`-import-expansion mechanism found; a manual, agent-followed "read this file when needed" convention exists instead (§3.2) | Not found for context files; a distinct `@`-fuzzy-file-reference syntax exists in the editor/CLI for pasting file contents into a message, not for importing into `AGENTS.md`/`CLAUDE.md` itself | A distinct `@`-syntax exists, but for **Context References** (inline message injection), not documented as an import mechanism inside `SOUL.md`/Context Files themselves |
-| Agent-authored memory | Auto memory: local markdown at `~/.claude/projects/<project>/memory/`, `MEMORY.md` index (200 lines / 25KB) + on-demand topic files | Copilot Memory: **server-side**, repo-level facts + user-level preferences, citation-validated, 28-day unused-expiry | **None, natively** -- no dedicated agent-authored memory tool found; cross-session persistent memory exists only via a third-party plugin (`opencode-supermemory`, §3.1) | **None, natively** -- the same real, source-verified absence as OpenCode (§4.1); a false cognate ("Memory" as one of three session-storage backends in the separate `pi-agent-core` package) is not this and is explicitly not counted | `MEMORY.md` (2,200-char cap) + `USER.md` (1,375-char cap), both always loaded whole, no on-demand topic-file tier |
-| Written how | Ordinary file tools; no dedicated memory tool | Dedicated model-facing tools `store_memory` / `vote_memory`, permission-prompted per write, scope shown | Ordinary file tools on `AGENTS.md`, same as Claude Code's own instruction-file tier; no dedicated memory-writing tool of its own | Ordinary file tools on `AGENTS.md`/`CLAUDE.md`, same as Claude Code's and OpenCode's own instruction-file tier; no dedicated memory-writing tool of its own | A `memory` tool plus a dedicated **post-turn closed learning loop** review pass, distinct from ordinary in-loop tool calls |
-| Overflow behavior | Error + reminder to shorten near/at the limit (v2.1.210+), no silent truncation | Not documented on pages fetched | Not applicable -- no bounded memory store to overflow | Not applicable -- no bounded memory store to overflow | Hard error on overflow, no auto-compaction, by original design (not a later hardening) |
-| Memory sharing | Machine-local; shared across worktrees of one repo; never across machines | Repo facts shared with repo collaborators; user prefs private to the user/billing entity; server-side so cross-machine by construction | `AGENTS.md` at project scope is team-shared via Git (docs explicitly recommend committing it); global scope is machine-local and explicitly recommended for personal-only rules | `AGENTS.md`/`CLAUDE.md` at project scope team-shared via Git like OpenCode's own; `~/.pi/agent/AGENTS.md` global scope machine-local; worktree-shadow dedup (§4.2) prevents a linked worktree double-loading the main repo's own copy | Machine-local (`~/.hermes/memories/`), profile-isolated under `HERMES_HOME` |
-| Enable/disable | `autoMemoryEnabled`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `/memory` toggle | `/memory on\|off\|show`, GitHub Copilot settings (per user; admin gate on Enterprise) | Not applicable to memory (none exists); Claude-compat *fallback* specifically is disableable via `OPENCODE_DISABLE_CLAUDE_CODE`/`_PROMPT`/`_SKILLS` | Not applicable to memory (none exists); the context-file *tier itself* is disableable via `--no-context-files`/`-nc`, or programmatically via `agentsFilesOverride` returning an empty list (§4.3) | Not documented on pages fetched; `skills.write_approval`-style gating exists for skills, and a comparable `write_approval` flag is named for memory writes generally |
-| Injection timing | Session start (system prompt then a *user message* carrying CLAUDE.md; `MEMORY.md` early in startup) | Session start prompt injection, **plus refresh after 30 minutes** in long-lived sessions | **Every turn** -- `Instruction.system()` re-reads and reassembles tier 1 on each iteration of the main session loop, source-verified (§3.2) | Session start; re-hydrated on demand via `/reload` (§4.5), not automatically | Session start, as a **frozen snapshot** explicitly to preserve prefix-cache reuse |
-| Cross-session recall beyond the loaded tier | Not found as a distinct feature (session resume is the mechanism, §1.9) | Experimental cross-session memory + `/chronicle search` | Not native; the third-party `opencode-supermemory` plugin is the only documented answer (§3.1) | Not found as a distinct feature on the docs/source fetched this session | FTS5 full-text search across the SQLite conversation database, "without consuming tokens in the current session" |
-| Mid-session re-read of an *edited* instruction file | No documented watcher/hot-reload; launch-loaded tier is a session-start read. Off-disk re-reads happen only at compaction (root CLAUDE.md, unscoped rules, auto memory) and on trigger-file reads (nested CLAUDE.md, `paths:` rules). Restart or `--continue` is the sure path | Undocumented either way; reload primitives exist for MCP/LSP/plugins but not instruction files. `/instructions` can toggle which files are active in-session | **Yes, every turn** -- the strongest, most directly source-verified "yes" of the five harnesses on this page (§3.2); a nearby-file auto-attach mechanism (§3.3) additionally re-surfaces subdirectory instruction files on each new matching `read` call | **On demand, one command** -- `/reload` re-discovers `AGENTS.md`/`CLAUDE.md` (alongside extensions/skills/prompts/themes) without a restart (§4.5); neither automatic nor restart-only, the one harness on this page with an explicit, named, user-invoked lever for exactly this question | Not documented on pages fetched -- `SOUL.md`/Context Files are described as loaded, not as watched |
-| Auto-compaction trigger | Documented behaviorally (evict tool outputs, then summarize); no % on fetched pages | **95% of token limit**, background, non-blocking | Token-budget-based (see [context-compression.md](context-compression.md) §3 for the source-verified `overflow.ts` mechanics; not re-derived here) | Token-budget-based; see [context-compression.md](context-compression.md) §4 for pi's own compaction mechanics, not re-derived here | Not documented on pages fetched; **Checkpoints** ("automatic snapshots for rollback protection") are named but not confirmed as the same mechanism |
-| Focused manual compaction | `/compact focus on ...`, plus "Compact Instructions" section in CLAUDE.md | `/compact [FOCUS-INSTRUCTIONS]` | Not investigated on this page; see [context-compression.md](context-compression.md) §3 | `/compact [prompt]`, per [context-compression.md](context-compression.md) §4, not re-derived here | Not documented on pages fetched |
-| Post-compaction re-injection | Documented per-mechanism table (root CLAUDE.md + auto memory re-injected; path-scoped rules and nested CLAUDE.md lost until retriggered; skill bodies capped 5K/25K) | Skills survive; instruction-file re-injection **undocumented** | Moot in the usual sense -- tier 1 is rebuilt from disk every turn regardless of compaction state (§3.2), so there is nothing distinct to "re-inject" | Not investigated on this page; context files are not part of the message tree §4.6 describes compaction operating over, so likely unaffected either way -- BEST CURRENT UNDERSTANDING, UNCONFIRMED | Not documented on pages fetched |
-| Pre-compaction hook | `PreCompact`, can block (exit 2 / `{"decision":"block"}`) | `preCompact` exists; blocking capability unconfirmed | Not investigated on this page; see [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §3 for OpenCode's own hook catalogue | Not investigated on this page; see [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §5 for pi's own extension-event catalogue | Not documented on pages fetched (contrast its own shell-hook `pre_tool_call` blocking, [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §6) |
-| Session transcripts | Plaintext JSONL under `~/.claude/projects/` | Session databases under `~/.copilot/` (`COPILOT_HOME`); "session SQL" | SQLite database (`opencode.db`, Drizzle ORM, WAL mode) per [session-persistence.md](session-persistence.md) §3, not re-derived here | Tree-structured, `id`/`parentId`-linked JSONL under `~/.pi/agent/sessions/`, per [session-persistence.md](session-persistence.md) §5, not re-derived here | SQLite with FTS5 full-text indexing |
-| Resume / continue | `claude --continue`, `--resume`, `--fork-session` / `/branch` | `--continue`, `--resume` / `/resume` (mutually exclusive), `--session-id` | `--fork` (`Session.fork()`), `SessionRevert`; see [session-persistence.md](session-persistence.md) §3 for the full, source-verified mechanics | `pi -c`/`pi -r`/`--session`, `/resume`, `/tree`, `/fork`, `/clone`; see [session-persistence.md](session-persistence.md) §5 for the full, source-verified mechanics | Not independently researched on this page; see [session-persistence.md](session-persistence.md) for this book's general resume/fork coverage |
+Sources for this section: VERIFIED, fetched 1 September 2026 directly from
+`github.com/deepseek-ai/deepseek-harness` (`master` branch, developer
+preview -- see [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md)
+§4 for this book's fuller architectural introduction to the harness
+itself, not repeated here) -- `docs/user/guide/mcp-memory.md`,
+`packages/core/system-prompt/README.md`, `docs/subsystems/system-prompt.md`,
+and `docs/subsystems/persistence.md`, all full-file `gh api` fetches.
+
+### 6.1 No project instruction-file convention at all -- persona is a config string, not a discovered markdown file
+
+This is the sharpest divergence from every other harness on this page.
+VERIFIED, `packages/core/system-prompt/README.md`: the `dsh-system-prompt`
+plugin owns "the fixed harness identity and the global deployment
+persona," and the persona itself is a single config field --
+`persona: 'You are the deployment assistant.'` under the plugin's own
+YAML configuration -- rendered at prompt order `0`, immediately after a
+fixed, non-configurable "You are an AI agent powered by DeepSeek Harness."
+opener rendered at order `-1000`. The docs are explicit that this is a
+closed surface, not an extension point a deployer's own repository
+populates: "Deployment-authored prompt text is config/composition
+only... there is no end-user prompt-editing API." There is no
+`AGENTS.md`, no `CLAUDE.md`, no equivalent walked-directory discovery of
+a project-local instruction file anywhere in the `dsh-system-prompt`
+package or its generated subsystem doc -- a repository search for
+`AGENTS.md`/`CLAUDE.md` across the DeepSeek Harness codebase turns up
+only the *project's own* contributor-facing files (`docs/AGENTS.md`,
+`CLAUDE.md` at the repo root, and similar files scattered per-package --
+instructions for humans and coding assistants working *on* DeepSeek
+Harness's own source), not a runtime feature of the shipped product
+reading an equivalent file out of whatever repository the harness itself
+is deployed against. Every other harness this page documents -- Claude
+Code's `CLAUDE.md` hierarchy (§1.2), Copilot CLI's `copilot-instructions.md`/
+`AGENTS.md` (§2.1), OpenCode's `AGENTS.md` (§3.2), pi's
+`AGENTS.md`/`CLAUDE.md` walk (§4.2), and Hermes' Context Files discovery
+(§5.5) -- gives an end user a project-committed, human-authored markdown
+file the harness itself discovers and loads. DeepSeek Harness gives a
+*deployer* (someone composing the Cordis overlay the product boots from)
+a config string instead; there is no path from an ordinary end user
+editing a file in their working directory to a change in what the model
+is told about that project, short of a plugin author adding a new
+`ctx.systemPrompt.section(...)` registration in code (§6.1's own
+`README.md` example: `ctx.systemPrompt.section({ name: 'tool:bash', order:
+100, text: 'Prefer bash for file and process operations.' })`) or a
+runtime-context contribution.
+
+Sections do resolve dynamically per assembly (a `text` field may be a
+function of the current `AssembleContext`, per `docs/subsystems/system-prompt.md`),
+so a plugin *could* read a project file and surface its contents as a
+prompt section at runtime -- but that would be new plugin code, not a
+convention the shipped harness itself implements the way the other five
+harnesses' own instruction-file loaders do. This is a real, checked
+architectural absence, not an assumption from silence: the package's own
+"Known Limitations and Deferred Work" section states the config-only
+constraint as a stated design boundary, not an oversight the maintainers
+are unaware of.
+
+### 6.2 No native agent-authored memory tool -- third-party MCP memory servers, shipped disabled, explicitly not endorsed
+
+VERIFIED, `docs/user/guide/mcp-memory.md`: DeepSeek Harness ships no
+built-in analogue to Claude Code's auto memory (§1.5), Copilot Memory's
+server-side `store_memory`/`vote_memory` service (§2.2), or Hermes'
+`MEMORY.md`/`USER.md` pair (§5.1) -- the same real, source-verified
+absence this page's own §3.1 (OpenCode) and §4.1 (pi) already document,
+now confirmed a third time for a third harness. What the docs describe
+instead is a guide to wiring in one of three **third-party** memory MCP
+servers -- Memorix, MCP Reference Memory (the Model Context Protocol
+project's own reference implementation), and Engram -- each connected
+through the generic `@deepseek-ai/dsh-mcp-client` plugin and each
+explicitly framed as a "default-off reference configuration": "No memory
+server is present in the shipped composition, so omitting `--patch`
+keeps all three disabled." The doc's own disclaimer is unusually direct
+for a first-party page: "These third-party configurations are provided
+as interoperability examples only. Their inclusion does not imply
+endorsement, recommendation, partnership, or ongoing support by
+DeepSeek." DSH's own role is limited to generic MCP plumbing -- it
+"parses the selected Cordis overlay, starts a configured stdio command or
+connects to a configured Streamable HTTP URL, discovers MCP tools, and
+exposes them as `mcp__<serverName>__<tool>`" -- and does *not* "download
+the server, initialize its database, choose its model or embedding
+provider, create a cloud account, migrate vendor data, or supervise a
+separate HTTP service." Storage, retrieval strategy (the reference-memory
+server's own docs are explicit that its search is "case-insensitive
+substring matching... not semantic retrieval," with "no embeddings,
+automatic summarization, conflict resolution, or a forgetting policy"),
+and any forgetting/expiry policy are entirely the third-party server's
+own concern -- there is no DeepSeek-owned equivalent of Copilot Memory's
+28-day-unused-expiry policy (§2.2) or Hermes' hard character caps (§5.1)
+for any of the three example integrations, because DeepSeek Harness
+itself owns none of that logic.
+
+This is architecturally consistent with the capability-seam design this
+book documents elsewhere for DeepSeek Harness (compaction as a swappable
+plugin, [context-compression.md](context-compression.md) §6.1; no
+persistence backend shipped in core at all,
+[session-persistence.md](session-persistence.md) §4.2): where the other
+five harnesses on this page each bundle *some* first-party
+agent-authored-memory mechanism (even OpenCode and pi's own "none, but
+here's how you'd add one via a plugin" answer stops at documenting a
+gap, not at publishing a guided integration path), DeepSeek Harness goes
+one step further and ships an explicit, maintained integration guide for
+plugging in someone else's memory system -- treating "which memory
+system, if any" as a deployment-time composition decision on the same
+footing as choosing a model adapter or a filesystem backend, rather than
+a feature the harness itself opts to own.
+
+### 6.3 Session-level persistence and instruction-adjacent config -- cross-referenced, not re-derived
+
+Two closely related mechanisms are already documented in full elsewhere
+in this book and are not repeated here: the durable, event-sourced
+`SessionPersistence` seam (locate/create/append/load/inspect over the
+append-only `SessionEvent` log, the JSONL-backed default provider storing
+Zstandard-compressed frames, and `fork()`'s inclusive-boundary semantics)
+is documented in [Session & transcript persistence](session-persistence.md)
+§4, and DeepSeek's plugin-composed compaction pipeline (which is what
+answers "what happens to conversational content, as opposed to
+instruction content, when a long session grows too large") is documented
+in [context-compression.md](context-compression.md) §6. One detail
+surfaced this session and worth naming here because it bears directly on
+this page's own memory-vs-transcript distinction: `SessionHeader` (the
+metadata record persisted beside, not inside, the event log) carries an
+optional `agentPreset` field -- "Id of the agent preset this session's
+agent was composed from, when the deployment composes per session...
+Durable because the preset decides the session's tools and prompt: a
+resume that restored a different composition would replay history the
+model can no longer act on" -- which is the closest thing DeepSeek
+Harness has to "which persona/instruction-set was this session's model
+originally given," and it lives in storage metadata, not in a
+project-repo file the way every other harness's own instruction tier
+does (§6.1). [Configuration](configuration.md)'s own DeepSeek section
+(added the same day as this one) covers the Cordis overlay-composition
+model (profiles -> bundles -> patches) this `persona:` field and
+`agentPreset` both draw from, in full, and is not re-derived here
+either.
+
+---
+
+## 7. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent | DeepSeek Harness |
+|---|---|---|---|---|---|---|
+| Human-authored persistent instructions | `CLAUDE.md` hierarchy (managed → user → project → local), `.claude/rules/` | `.github/copilot-instructions.md`, `.github/instructions/**/*.instructions.md`, `AGENTS.md`, `~/.copilot/instructions/**/*.instructions.md` | `AGENTS.md` (project + global), config `instructions[]` (local globs + remote URLs), `CLAUDE.md`/deprecated `CONTEXT.md` as compat fallbacks | `AGENTS.md`/`CLAUDE.md` (global `~/.pi/agent/AGENTS.md` + ancestor walk to cwd, first-match-per-directory), `AGENTS.override.md` (exclusive per-directory substitute), `SYSTEM.md`/`APPEND_SYSTEM.md` at the system-prompt layer | `SOUL.md` (identity, prompt slot #1) plus auto-discovered Context Files (`.hermes.md`, `AGENTS.md`, `CLAUDE.md`, `.cursorrules`) | **None** -- no project instruction-file convention at all; persona is a single config string (`persona:` field, `dsh-system-prompt` plugin), not a discovered markdown file (§6.1) |
+| Reads the *other* harness's file? | No -- `AGENTS.md` not read at runtime; `/init` only mines it at authoring time | Yes -- `CLAUDE.md` is read and `@`-import-expanded (changelog) | Yes -- both `CLAUDE.md` and `AGENTS.md` named directly in its own Context Files discovery list | Yes -- both `AGENTS.md` and `CLAUDE.md` loaded natively, `AGENTS.md` winning first-match when both exist in one directory (§4.2) | Yes -- both `CLAUDE.md` and `AGENTS.md` named directly in its own Context Files discovery list, alongside its native `.hermes.md`/`SOUL.md` (§5.5) | No -- no runtime discovery of any project file at all; the harness's own repo uses `AGENTS.md`/`CLAUDE.md` filenames only as contributor-facing docs about developing DeepSeek Harness itself, not a shipped feature reading an equivalent file from a deployed project (§6.1) |
+| Path-scoped instruction tier | `.claude/rules/` with `paths:` frontmatter | `.github/instructions/**/*.instructions.md` (bodies no longer always in system prompt) | Not found in the docs pages fetched this session (see [instruction-context-budget.md](instruction-context-budget.md) §3.2) | Not found in the docs/source fetched this session | Not found in the one docs page fetched this session | Not applicable -- no instruction-file tier exists to scope (§6.1) |
+| `@`-import expansion | Yes, 4-hop cap, launch-time | Yes (changelog: AGENTS.md, CLAUDE.md, Copilot instruction files) | Not applicable -- no `@`-import-expansion mechanism found; a manual, agent-followed "read this file when needed" convention exists instead (§3.2) | Not found for context files; a distinct `@`-fuzzy-file-reference syntax exists in the editor/CLI for pasting file contents into a message, not for importing into `AGENTS.md`/`CLAUDE.md` itself | A distinct `@`-syntax exists, but for **Context References** (inline message injection), not documented as an import mechanism inside `SOUL.md`/Context Files themselves | Not applicable -- no instruction-file tier to import into (§6.1) |
+| Agent-authored memory | Auto memory: local markdown at `~/.claude/projects/<project>/memory/`, `MEMORY.md` index (200 lines / 25KB) + on-demand topic files | Copilot Memory: **server-side**, repo-level facts + user-level preferences, citation-validated, 28-day unused-expiry | **None, natively** -- no dedicated agent-authored memory tool found; cross-session persistent memory exists only via a third-party plugin (`opencode-supermemory`, §3.1) | **None, natively** -- the same real, source-verified absence as OpenCode (§4.1); a false cognate ("Memory" as one of three session-storage backends in the separate `pi-agent-core` package) is not this and is explicitly not counted | `MEMORY.md` (2,200-char cap) + `USER.md` (1,375-char cap), both always loaded whole, no on-demand topic-file tier | **None, natively** -- the same real, source-verified absence as OpenCode and pi, now a third time; docs instead ship a guide to wiring in third-party memory MCP servers (Memorix, MCP Reference Memory, Engram), all default-off and explicitly not endorsed (§6.2) |
+| Written how | Ordinary file tools; no dedicated memory tool | Dedicated model-facing tools `store_memory` / `vote_memory`, permission-prompted per write, scope shown | Ordinary file tools on `AGENTS.md`, same as Claude Code's own instruction-file tier; no dedicated memory-writing tool of its own | Ordinary file tools on `AGENTS.md`/`CLAUDE.md`, same as Claude Code's and OpenCode's own instruction-file tier; no dedicated memory-writing tool of its own | A `memory` tool plus a dedicated **post-turn closed learning loop** review pass, distinct from ordinary in-loop tool calls | Not applicable in core -- writing, if any, is entirely owned by whichever third-party MCP memory server a deployer wires in; DSH itself only discovers the server's tools and exposes them as `mcp__<serverName>__<tool>` (§6.2) |
+| Overflow behavior | Error + reminder to shorten near/at the limit (v2.1.210+), no silent truncation | Not documented on pages fetched | Not applicable -- no bounded memory store to overflow | Not applicable -- no bounded memory store to overflow | Hard error on overflow, no auto-compaction, by original design (not a later hardening) | Not applicable -- no bounded memory store shipped in core; any overflow policy is the wired-in third-party server's own concern (§6.2) |
+| Memory sharing | Machine-local; shared across worktrees of one repo; never across machines | Repo facts shared with repo collaborators; user prefs private to the user/billing entity; server-side so cross-machine by construction | `AGENTS.md` at project scope is team-shared via Git (docs explicitly recommend committing it); global scope is machine-local and explicitly recommended for personal-only rules | `AGENTS.md`/`CLAUDE.md` at project scope team-shared via Git like OpenCode's own; `~/.pi/agent/AGENTS.md` global scope machine-local; worktree-shadow dedup (§4.2) prevents a linked worktree double-loading the main repo's own copy | Machine-local (`~/.hermes/memories/`), profile-isolated under `HERMES_HOME` | Not applicable -- no first-party memory store; sharing scope for a wired-in third-party MCP memory server is entirely that server's own concern, not documented by DSH (§6.2) |
+| Enable/disable | `autoMemoryEnabled`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `/memory` toggle | `/memory on\|off\|show`, GitHub Copilot settings (per user; admin gate on Enterprise) | Not applicable to memory (none exists); Claude-compat *fallback* specifically is disableable via `OPENCODE_DISABLE_CLAUDE_CODE`/`_PROMPT`/`_SKILLS` | Not applicable to memory (none exists); the context-file *tier itself* is disableable via `--no-context-files`/`-nc`, or programmatically via `agentsFilesOverride` returning an empty list (§4.3) | Not documented on pages fetched; `skills.write_approval`-style gating exists for skills, and a comparable `write_approval` flag is named for memory writes generally | Not applicable to memory in core (none shipped); a third-party MCP memory server is enabled/disabled entirely via the deploying Cordis overlay's own `--patch` composition -- "omitting `--patch` keeps all three [example servers] disabled" (§6.2) |
+| Injection timing | Session start (system prompt then a *user message* carrying CLAUDE.md; `MEMORY.md` early in startup) | Session start prompt injection, **plus refresh after 30 minutes** in long-lived sessions | **Every turn** -- `Instruction.system()` re-reads and reassembles tier 1 on each iteration of the main session loop, source-verified (§3.2) | Session start; re-hydrated on demand via `/reload` (§4.5), not automatically | Session start, as a **frozen snapshot** explicitly to preserve prefix-cache reuse | Composition time -- persona rendered at fixed prompt order `0`, a non-configurable harness-identity opener at order `-1000`; a section's own `text` may resolve dynamically per assembly from the current `AssembleContext`, so plugin-authored sections can vary per turn even though the persona string itself is static deploy-time config (§6.1) |
+| Cross-session recall beyond the loaded tier | Not found as a distinct feature (session resume is the mechanism, §1.9) | Experimental cross-session memory + `/chronicle search` | Not native; the third-party `opencode-supermemory` plugin is the only documented answer (§3.1) | Not found as a distinct feature on the docs/source fetched this session | FTS5 full-text search across the SQLite conversation database, "without consuming tokens in the current session" | Not found as a first-party feature; any such recall depends entirely on a wired-in third-party MCP memory server's own capabilities (e.g. Memorix or Engram), not on anything DSH itself implements (§6.2) |
+| Mid-session re-read of an *edited* instruction file | No documented watcher/hot-reload; launch-loaded tier is a session-start read. Off-disk re-reads happen only at compaction (root CLAUDE.md, unscoped rules, auto memory) and on trigger-file reads (nested CLAUDE.md, `paths:` rules). Restart or `--continue` is the sure path | Undocumented either way; reload primitives exist for MCP/LSP/plugins but not instruction files. `/instructions` can toggle which files are active in-session | **Yes, every turn** -- the strongest, most directly source-verified "yes" of the five harnesses on this page (§3.2); a nearby-file auto-attach mechanism (§3.3) additionally re-surfaces subdirectory instruction files on each new matching `read` call | **On demand, one command** -- `/reload` re-discovers `AGENTS.md`/`CLAUDE.md` (alongside extensions/skills/prompts/themes) without a restart (§4.5); neither automatic nor restart-only, the one harness on this page with an explicit, named, user-invoked lever for exactly this question | Not documented on pages fetched -- `SOUL.md`/Context Files are described as loaded, not as watched | Not applicable -- there is no project instruction file to edit; the persona string only changes by a deployer recomposing and redeploying the Cordis overlay (§6.1) |
+| Auto-compaction trigger | Documented behaviorally (evict tool outputs, then summarize); no % on fetched pages | **95% of token limit**, background, non-blocking | Token-budget-based (see [context-compression.md](context-compression.md) §3 for the source-verified `overflow.ts` mechanics; not re-derived here) | Token-budget-based; see [context-compression.md](context-compression.md) §4 for pi's own compaction mechanics, not re-derived here | Not documented on pages fetched; **Checkpoints** ("automatic snapshots for rollback protection") are named but not confirmed as the same mechanism | A swappable Cordis **plugin**, not core-loop code; see [context-compression.md](context-compression.md) §6 for the full mechanism, not re-derived here |
+| Focused manual compaction | `/compact focus on ...`, plus "Compact Instructions" section in CLAUDE.md | `/compact [FOCUS-INSTRUCTIONS]` | Not investigated on this page; see [context-compression.md](context-compression.md) §3 | `/compact [prompt]`, per [context-compression.md](context-compression.md) §4, not re-derived here | Not documented on pages fetched | Not investigated on this page; see [context-compression.md](context-compression.md) §6 for DeepSeek's own plugin-composed compaction mechanics |
+| Post-compaction re-injection | Documented per-mechanism table (root CLAUDE.md + auto memory re-injected; path-scoped rules and nested CLAUDE.md lost until retriggered; skill bodies capped 5K/25K) | Skills survive; instruction-file re-injection **undocumented** | Moot in the usual sense -- tier 1 is rebuilt from disk every turn regardless of compaction state (§3.2), so there is nothing distinct to "re-inject" | Not investigated on this page; context files are not part of the message tree §4.6 describes compaction operating over, so likely unaffected either way -- BEST CURRENT UNDERSTANDING, UNCONFIRMED | Not documented on pages fetched | Moot in the same sense as OpenCode -- the persona string (§6.1) is composition-time config, not message history, so it is never part of what a compaction plugin summarizes or evicts in the first place |
+| Pre-compaction hook | `PreCompact`, can block (exit 2 / `{"decision":"block"}`) | `preCompact` exists; blocking capability unconfirmed | Not investigated on this page; see [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §3 for OpenCode's own hook catalogue | Not investigated on this page; see [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §5 for pi's own extension-event catalogue | Not documented on pages fetched (contrast its own shell-hook `pre_tool_call` blocking, [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §6) | Not investigated on this page; see [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §4 for DeepSeek's own plugin-lifecycle-event catalogue |
+| Session transcripts | Plaintext JSONL under `~/.claude/projects/` | Session databases under `~/.copilot/` (`COPILOT_HOME`); "session SQL" | SQLite database (`opencode.db`, Drizzle ORM, WAL mode) per [session-persistence.md](session-persistence.md) §3, not re-derived here | Tree-structured, `id`/`parentId`-linked JSONL under `~/.pi/agent/sessions/`, per [session-persistence.md](session-persistence.md) §5, not re-derived here | SQLite with FTS5 full-text indexing | Durable, event-sourced `SessionEvent` log (JSONL-backed default provider, Zstandard-compressed frames); see [session-persistence.md](session-persistence.md) §4, not re-derived here |
+| Resume / continue | `claude --continue`, `--resume`, `--fork-session` / `/branch` | `--continue`, `--resume` / `/resume` (mutually exclusive), `--session-id` | `--fork` (`Session.fork()`), `SessionRevert`; see [session-persistence.md](session-persistence.md) §3 for the full, source-verified mechanics | `pi -c`/`pi -r`/`--session`, `/resume`, `/tree`, `/fork`, `/clone`; see [session-persistence.md](session-persistence.md) §5 for the full, source-verified mechanics | Not independently researched on this page; see [session-persistence.md](session-persistence.md) for this book's general resume/fork coverage | `fork()` with inclusive-boundary semantics over the session-event log; see [session-persistence.md](session-persistence.md) §4, not re-derived here |
 
 **The design lesson.** All harnesses on this page converge on some
 version of a *two-tier* shape -- a small always-loaded index plus a
@@ -1129,7 +1291,21 @@ but land at different points on it: OpenCode answers "yes,
 unconditionally, every turn"; pi answers "yes, but only when you ask
 it to" -- neither answer that Claude Code's, Copilot CLI's, or Hermes'
 own documented mechanisms give for their respective launch-loaded
-tiers.
+tiers. DeepSeek Harness is the sharpest outlier of the six, and on a
+different axis again: it does not merely lack an agent-authored memory
+tier (the same real absence §3.1/§4.1 already establish for OpenCode
+and pi) -- it lacks the *human-authored instruction-file tier itself*,
+the one thing every other harness on this page converges on regardless
+of its memory story. Its persona is composition-time Cordis config
+(`persona:`, §6.1), not a discovered project file at all, so the
+two-tier shape this paragraph opens with genuinely does not apply to
+DeepSeek Harness's *own* core -- both tiers are either absent or pushed
+out to a deployer's plugin composition. Where DeepSeek Harness does
+converge with the field is in treating third-party integration as a
+first-class, documented path rather than silence: its own docs name
+and explain wiring in Memorix, MCP Reference Memory, or Engram (§6.2),
+a maintained integration guide neither OpenCode's nor pi's own
+"a plugin exists" one-line docs mention rises to.
 
 **Consequences for anything that must work across harnesses** (directly
 relevant to this project's cross-harness requirement):
@@ -1204,14 +1380,29 @@ relevant to this project's cross-harness requirement):
    persistent-instruction tier programmatically rather than through
    on-disk files or CLI flags alone -- relevant for anyone embedding pi
    rather than running it interactively.
+7. DeepSeek Harness is likewise not a deploy target of this project
+   (`apm.yml` names `claude, copilot` only), but its own absence is the
+   most consequential one to internalize for anyone extending this
+   project's reach there: there is no `AGENTS.md`/`CLAUDE.md`-equivalent
+   file to keep in sync at all (§6.1), so the "kept-in-sync `AGENTS.md`"
+   strategy point 1 above recommends for Claude Code/Copilot CLI has no
+   DeepSeek Harness side to extend to. A project-specific persona for
+   DeepSeek Harness is deployer-owned Cordis config, set once at
+   composition time, not a file an end user or a runtime hook edits --
+   and genuine agent-authored memory there means adopting one of the
+   three named third-party MCP servers (§6.2), the same "build it
+   yourself or adopt a named plugin" honesty point 5 above already
+   states for OpenCode and pi, but with the harness's own docs actively
+   pointing at named candidates rather than leaving the gap to be
+   discovered.
 
 ---
 
 ## Sources
 
 Claude Code and Copilot CLI sections fetched 2026-07-30; the OpenCode
-and Hermes Agent sections fetched 2026-08-24; the pi section fetched
-2026-09-01 (see below).
+and Hermes Agent sections fetched 2026-08-24; the pi and DeepSeek
+Harness sections both fetched 1 September 2026 (see below).
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `https://code.claude.com/docs/en/memory` -- CLAUDE.md hierarchy, load order, imports, AGENTS.md non-support, `.claude/rules/`, auto memory storage/limits/settings, `/memory`, compaction troubleshooting.
@@ -1271,3 +1462,33 @@ behavior, `earendil-works/pi` `main` branch, via `gh api`):**
   agent-authored memory file or tool; the only "memory"-adjacent hit of substance was
   `packages/agent/docs/harness.md`'s own unrelated use of "Memory" as a session-storage
   backend name, explicitly not counted (§4.1).
+
+**DeepSeek Harness (fetched 1 September 2026; authoritative for its own documented and
+real-source behavior, `github.com/deepseek-ai/deepseek-harness` `master` branch,
+developer preview, via `gh api`):**
+- `docs/user/guide/mcp-memory.md` (in full) -- the third-party memory-MCP integration
+  guide naming Memorix, MCP Reference Memory, and Engram, the "default-off reference
+  configuration" framing and its explicit non-endorsement disclaimer, DSH's own
+  generic-MCP-plumbing scope (`mcp__<serverName>__<tool>` exposure, no database/model/
+  account provisioning), and the reference-memory server's own "case-insensitive
+  substring matching... not semantic retrieval" caveat (§6.2).
+- `packages/core/system-prompt/README.md` (in full) -- the `dsh-system-prompt` plugin's
+  own `persona:` config field and its rendered prompt order (`0`), the fixed non-
+  configurable harness-identity opener at order `-1000`, the "no end-user
+  prompt-editing API" statement, and the `ctx.systemPrompt.section(...)` plugin-authored
+  registration example (§6.1).
+- `docs/subsystems/system-prompt.md` (in full) -- the generated subsystem doc confirming
+  section assembly and a section's `text` field resolving dynamically per assembly from
+  the current `AssembleContext` (§6.1).
+- `docs/subsystems/persistence.md` (in full) -- checked for and cross-referenced against
+  the `SessionHeader` metadata record's optional `agentPreset` field, the closest DSH
+  analogue to "which persona/instruction-set a session's model was originally composed
+  with," living in storage metadata rather than a project-repo file (§6.3); the full
+  `SessionPersistence` seam itself is documented in
+  [Session & transcript persistence](session-persistence.md) §4 and not re-derived here.
+- A repository-wide search for `AGENTS.md`/`CLAUDE.md` filenames across
+  `deepseek-ai/deepseek-harness`, same session -- confirmed the only hits are the
+  project's own contributor-facing files (`docs/AGENTS.md`, root `CLAUDE.md`, and
+  per-package equivalents, instructing humans/coding assistants working *on* DSH's own
+  source), not a runtime project-instruction-file feature of the shipped harness itself,
+  grounding §6.1's central negative finding.

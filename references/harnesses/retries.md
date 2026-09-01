@@ -1,4 +1,4 @@
-# Retries -- Claude Code, GitHub Copilot CLI, and OpenCode
+# Retries -- Claude Code, GitHub Copilot CLI, OpenCode, pi, Hermes Agent, and DeepSeek Harness
 
 **Scope note.** This page is about **failure recovery on a single outbound
 model-provider request** -- what counts as a transient failure worth
@@ -17,9 +17,10 @@ every retry policy this page found rather than treated as a retryable
 failure.
 
 Every claim is tagged VERIFIED (fetched this session) or BEST CURRENT
-UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, and OpenCode are
-three separate products; a retry rule confirmed for one is never assumed
-to hold for another without its own citation.
+UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, pi,
+Hermes Agent, and DeepSeek Harness are six separate products; a retry
+rule confirmed for one is never assumed to hold for another without its
+own citation.
 
 ---
 
@@ -1236,24 +1237,444 @@ the retry budget itself being absent or unbounded.
 
 ---
 
-## 6. Synthesis
+## 6. DeepSeek Harness
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
-|---|---|---|---|---|---|
-| Verifiability | Docs + changelog; no public implementation | Changelog only; docs page found is generic platform guidance, not CLI-specific | Source-verified (`packages/llm`, `packages/opencode`), `dev` branch (caveat applies) | Source-verified across all three sibling packages (`pi-ai`, `pi-coding-agent`, `pi-agent-core`), `main` branch, plus its own settings docs and a regression-test file | Source-verified (`agent/retry_utils.py`, `agent/error_classifier.py`, `agent/conversation_loop.py`, `agent/turn_retry_state.py`, `agent/nous_rate_guard.py`, `run_agent.py`), `main` branch, plus its own docs and five issue-numbered regression tests |
-| Architecture | One documented, named policy ("Automatic Retries") | Not documented as one named mechanism; changelog implies per-subsystem fixes (MCP, streaming, HTTP/2) rather than one shared module (BEST CURRENT UNDERSTANDING, UNCONFIRMED) | Two explicit, source-verified layers: bounded transport retry (`RequestExecutor`) wrapped by a separately-classified, effectively unbounded session-turn retry (`SessionRetry`) | Two explicit, source-verified layers with deliberately different classifiers (status-code-based inner `retryProviderRequest`, string-pattern-based outer `retryAssistantCall`), plus a third, durable crash-recovery state machine in `pi-agent-core` tracking retry state across process restarts | One loop (`while retry_count < max_retries` in `conversation_loop.py`) wrapping a nine-`FailoverReason` taxonomy with four independent per-branch recovery flags (`retryable`/`should_compress`/`should_rotate_credential`/`should_fallback`), plus one-shot `TurnRetryState` guards for credential rotation, per-provider OAuth refresh, and format recovery, and a resettable budget that restarts at each new target (recovered primary, then each fallback) |
-| Default attempt cap | 10 (`CLAUDE_CODE_MAX_RETRIES`), capped at 15 unless `CLAUDE_CODE_RETRY_WATCHDOG` is set (then ~300 or unlimited for capacity errors) | Not documented | Inner layer: 2 retries (3 attempts). Outer layer: **no cap** in the `Schedule` itself | Outer layer: 3 (`retry.maxRetries`, configurable). Inner layer: 0 -- **off by default** (`retry.provider.maxRetries`), and `pi-agent-core`'s own framework-level default is also `{enabled: false}` | 3 (`agent.api_max_retries`, configurable) -- **four attempts total** before fallback-provider switching engages; extended dynamically (to a computed ceiling) only for one narrow Z.AI Coding Plan overload signature |
-| Backoff formula | Exponential, with the client-computed value enforced as a *minimum* even against a small server `Retry-After` (v2.1.98 fix) | Not documented for the CLI's own requests (cookbook page shows only example client code) | Inner: exponential with ±20% jitter, capped at 10s. Outer: `retry-after(-ms)` header if present (capped only by ~24.8-day 32-bit ceiling), else 2s×2^(attempt-1) capped at 30s if no headers at all | Outer: `baseDelayMs * 2^(attempt-1)` (default 2s, 4s, 8s), **no jitter**. Inner: `retry-after(-ms)` header if present (capped at `maxRetryDelayMs`, default 60s, or throws if exceeded rather than waiting), else `min(0.5*2^i, 8s)` with **negative-only** (-0 to -25%) jitter | `jittered_backoff()`: `min(base_delay * 2^(attempt-1), max_delay) + uniform(0, jitter_ratio*delay)` -- **positive-only** jitter (0-50% at the default 0.5 ratio), decorrelated across concurrent callers via a locked counter XORed into the RNG seed; `Retry-After` honored and capped at 600s; a separate provider-specific carve-out (Z.AI GLM-5.2 overload) escalates to a fixed 30/60/90/120s long-wait table after 3 short retries |
-| Non-retryable carve-outs | TLS cert validation, Bedrock content-type mismatch, mid-response partial failures (kept, not retried) | Not documented at this granularity | Auth (401/403), quota-exceeded, content-policy, invalid-request/context-overflow, transport errors -- all `retryable: false` at the inner layer; context-overflow additionally hard-excluded at the outer layer | Quota/billing/Go-usage-limit text (checked first, wins ties) at the outer layer; aborts are terminal at both layers; overflow is checked before retryable-error classification and routed to compaction instead, confirmed independently from both `custom-provider.md` and `pi-agent-core`'s own state-machine doc | 401/402/403-billing/404-billing/content-policy-blocked/most-other-4xx are `retryable=False`; 413/429(non-billing)/408/500-502/503-529/context-overflow-as-5xx are `retryable=True`; a request-validation-signal carve-out on 500/502 fails fast instead of retrying a deterministic rejection |
-| User-visible retry UX | Spinner countdown `Retrying in Ns · attempt x/y`; reason label revealed at attempt 3 (v2.1.198); stall banner at 20s (90s during advisor calls) | Not documented in mechanism-level detail; changelog confirms "user-friendly" rate-limit timing messages exist (0.0.389) | Session-status object (`{type:"retry", attempt, message, action, next}`) rendered by the TUI's/app's own `SessionRetry` component | `onRetryScheduled`/`onRetryAttemptStart`/`onRetryFinished` callbacks drive UI countdown; the identical mechanism is reused for compaction under a `summarization_retry_*` event name instead | Buffered/emitted status lines (`⏳ Retrying in Ns (attempt x/y)...`, a distinct `⏱️ Provider overloaded` / `Rate limited` label plus an adaptive-policy note) with 200ms-granularity interrupt checks during the sleep and a periodic activity touch every ~30s so the gateway's inactivity monitor doesn't misreport a live backoff wait as a stall |
-| Alternative-to-retry mitigation | `fallbackModel`: up to 3 ordered fallback models, retried once on an unexpected non-retryable error (auth/rate-limit/request-size/transport excluded) | `continueOnAutoMode`: auto-switches to auto model-selection on rate limit instead of pausing | Free-tier/Go-usage-limit responses surface a subscribe/upgrade action link rather than only backing off | None found; quota/billing text is classified non-retryable and fails fast instead | `fallback_providers`: an ordered chain, turn-scoped (resets to primary every new message) and reset-aware (skips a doomed retry and stays on the fallback when a known subscription reset time hasn't elapsed yet); documented cost is a forced prompt-cache invalidation on every switch in and back out |
-| User-facing config lever | `CLAUDE_CODE_MAX_RETRIES`, `CLAUDE_CODE_RETRY_WATCHDOG`, `API_TIMEOUT_MS` | None found | None found on the docs config page; two open feature requests ask for exactly this (§3.4) | `retry.enabled`, `retry.maxRetries`, `retry.baseDelayMs`, `retry.provider.timeoutMs`, `retry.provider.maxRetries`, `retry.provider.maxRetryDelayMs` -- the most granular documented lever of the four harnesses examined | `agent.api_max_retries` (single lever for the whole primary-call budget); `fallback_providers` / `hermes fallback` for the chain itself; no separate backoff-shape config found |
-| Known failure mode, self-reported | Historical: v2.1.110's retry cap had to be reverted one version later for trading hangs for outright failures; voice-mode retry loop was unbounded until fixed (v2.1.204) | A remote-session heartbeat loop retried a rejected request "every few seconds forever" until fixed in 1.0.66 | Live, open issue (#17648, fetched this session): 173 consecutive retries over 2.5 hours, backoff growing past 7 minutes with no circuit breaker, corroborated by several further open issues/feature requests found (not independently fetched) | Historical: compaction's summarization call previously ran an unretried single call at all (`#6647`, fixed by wiring it into the shared `retry.*` policy); no equivalent open unbounded-retry issue found this session | Historical, all fixed with a named regression test: `#31273` (a 402 billing wall was wrongly retried, "~$40 burned in 48h"); `#18028` (a status-code-less content-policy refusal burned all retries as `unknown`); `#14038` (a Z.AI server-overload 429 wrongly rotated a healthy credential); `#32646` (a fallback-index race silently disabled the fallback chain post-recovery); plus a documented, still-relevant amplification on the Nous Portal path specifically (SDK retries not disabled there): up to 9 calls per turn (3 SDK x 3 Hermes) against one rate limit, mitigated by a cross-session on-disk guard rather than a code fix to the multiplication itself |
+Primary sources, all VERIFIED and fetched fresh this session (1
+September 2026): `github.com/deepseek-ai/deepseek-harness`, `master`
+branch -- `packages/llm/llm/src/retry-policy.ts` (the policy schema and
+resolver), `packages/llm/llm/src/error.ts` (the `LlmError`/`LlmFailure`
+types and canonical error codes), `packages/llm/llm-retry/src/index.ts`
+(the retry executor plugin), `packages/llm/llm-retry/src/types.ts`
+(durable event payloads), `packages/llm/llm-retry/src/invariant.ts`
+(in-session retry invariant validation), `packages/llm/llm-retry/src/
+history.ts` (durable provider-route lookup), `packages/llm/llm-retry/
+README.md` (the package's own user/maintainer reference), `.agents/
+notes/implemented/feature/2026-07-24-provider-retry-policies.md` (the
+architectural decision record), `.agents/notes/implemented/
+simplification/2026-07-27-request-error-retry-action.md` (the recovery
+control flow), `packages/util/timeout/src/index.ts` (`MAX_TIMER_DELAY_MS`
+= 2,147,483,647), `packages/llm/llm-retry/tests/retry.spec.ts` (the
+comprehensive unit test suite, 20+ cases), and `packages/llm/llm-retry/
+tests/transport-recovery.spec.ts` (wire-level recovery integration
+tests through the real DeepSeek HTTP/SSE adapter). DeepSeek Harness
+("DSH") is a developer-preview, plugin-architecture agent platform;
+its retry mechanism is genuinely source-verified end to end, from the
+configurable per-provider policy through the durable executor to the
+invariant checker, plus two independent test suites.
 
-**The design lesson.** All five harnesses draw the same basic
+### 6.1 Architecture: provider-owned policy, plugin-owned execution, durable before wait
+
+```mermaid
+flowchart TD
+    Fail["Model request fails\n(agent/request-error waterfall)"] --> HasPolicy{"failure.retryPolicy\ndefined? (bound to\nserving registration at\ncall time)"}
+    HasPolicy -->|"undefined\n(no adapter served)"| Delegate1["return next()\ndelegates downstream"]
+    HasPolicy -->|"defined"| Mode{"policy.mode?"}
+    Mode -->|"'always'"| AlwaysDownstream["settleDownstream(next())\nfirst; if downstream\nreturns {kind:'retry'}\nhonor it immediately"]
+    AlwaysDownstream -->|"downstream fails\nor returns non-retry"| CodeCheckA{"failure.providerRetryAfterMs\n> policy.maxDelayMs?"}
+    CodeCheckA -->|"yes"| UseLocalA["localDelay(policy, retry, random)\nwith jitter and cap"]
+    CodeCheckA -->|"no, header valid"| UseHeaderA["delayMs = providerRetryAfterMs\nexact, unjittered"]
+    CodeCheckA -->|"no header"| UseLocalA
+    UseLocalA --> AppendA["append llm/retry event\n(durable before wait)\ncancellableDelay(delayMs, signal)"]
+    UseHeaderA --> AppendA
+    AppendA -->|wait completes| AppendStartedA["append llm/retry-started\nreturn {kind:'retry'}\nloop re-runs same step"]
+    Mode -->|"'normal'"| CodeEligible{"failure.code in\npolicy.retryableCodes?"}
+    CodeEligible -->|"no"| Delegate2["return next()\n(non-retryable)"]
+    CodeEligible -->|"yes"| BudgetCheck{"previousRetry >=\npolicy.maxRetries?"}
+    BudgetCheck -->|"yes"| Delegate3["return next()\n(budget exhausted)"]
+    BudgetCheck -->|"no"| HeaderCheck{"failure.providerRetryAfterMs\n> policy.maxDelayMs?"}
+    HeaderCheck -->|"yes (over-cap)"| Delegate4["return next()\n(over-cap = non-retryable for normal)"]
+    HeaderCheck -->|"no, header valid"| UseHeaderN["delayMs = providerRetryAfterMs\nexact, unjittered"]
+    HeaderCheck -->|"no header"| UseLocalN["localDelay(policy, retry, random)\nwith jitter and cap"]
+    UseHeaderN --> AppendN["append llm/retry event\n(durable before wait)\ncancellableDelay(delayMs, signal)"]
+    UseLocalN --> AppendN
+    AppendN -->|wait completes| AppendStartedN["append llm/retry-started\nreturn {kind:'retry'}\nloop re-runs same step"]
+```
+
+The critical architectural fact this diagram makes explicit: DeepSeek
+Harness splits retry into two distinct, cleanly separated concerns. The
+**policy** is owned by each concrete provider adapter's configuration
+and resolved at adapter-registration time into an immutable
+`ResolvedRetryPolicy` object captured in the serving registration. The
+**execution** is owned by the optional `@deepseek-ai/dsh-llm-retry`
+plugin, a Cordis function plugin with **zero configuration of its own**
+-- the README states this plainly: "This policy executor has no config;
+providers own `retryPolicy`." A `validateConfig()` guard even rejects
+the typo of placing `retryPolicy` on the executor itself with the
+message "retryPolicy belongs under each provider configuration." The
+plugin operates entirely on the resolved policy already bound to the
+failed step's serving registration -- it never re-resolves from the
+mutable provider registry, so an adapter swap while a request is in
+flight cannot retroactively change the recovery contract.
+
+Another distinguishing property: every scheduled retry is **durable
+before its wait**. The plugin appends a non-surface `llm/retry` event
+to the session log *before* starting the backoff timer, and a matching
+`llm/retry-started` event immediately before the retry executes. The
+provider-retry-policies Agent Note states this as the core design rule:
+"durable before wait, open-step boundaries. A retry is scheduled through
+the session log before any timer starts, so a crash or cancellation
+never leaves an invisible pending retry." This is a session-log
+durability guarantee -- not the same as pi's agent-core process-crash
+recovery (§4.6), which persists retry state as a first-class operation
+state in its own state machine -- but it shares the same design goal:
+no invisible or un-reconstructable retry. The invariant companion
+(`packages/llm/llm-retry/src/invariant.ts`) validates each `llm/retry`
+and `llm/retry-started` event at load time and on every append,
+binding the provider to the failed step's durable `request/header`,
+requiring monotonically increasing retry counts keyed by provider and
+canonical policy hash, and ensuring each `llm/retry-started` pairs one
+prior scheduled attempt with the same `retryId`.
+
+### 6.2 Two policy modes: `normal` (bounded, code-gated) and `always` (unbounded, downstream-first)
+
+VERIFIED, `packages/llm/llm/src/retry-policy.ts` and `packages/llm/
+llm-retry/README.md`. The schema defines exactly two modes via a
+discriminated union on `mode`:
+
+**Normal mode** (`mode: 'normal'`). Retries only failures whose
+`failure.code` appears in the configured `retryableCodes` list, up to
+`maxRetries` retries (so `maxRetries` + 1 total attempts). When the
+failure code is not in the eligible set, or when the budget is
+exhausted, the plugin calls `next()` and delegates to whatever later
+policy sits in the `agent/request-error` waterfall. A provider-sent
+`Retry-After` value exceeding `maxDelayMs` causes **immediate
+delegation** rather than waiting -- normal mode treats an over-cap
+server delay the same way it treats an exhausted budget or a
+non-retryable code: the failure is not this policy's to recover from.
+
+The default `retryableCodes`, source-verified as `DEFAULT_RETRYABLE_CODES`
+in `retry-policy.ts`:
+
+| Code | Meaning |
+|---|---|
+| `EMPTY_RESPONSE` | A provider completion that returned zero content blocks -- "Providers occasionally emit a degenerate completion (a terminal stop with zero output); adapters classify it as this failure... The attempt produced nothing durable, so retry policy treats it as safe to repeat." (`error.ts` doc comment) |
+| `RATE_LIMIT` | A HTTP 429 (transient capacity throttle), distinguished by adapter-level classification from the non-retryable `QUOTA` code |
+| `SERVER` | A HTTP 5xx server error |
+| `TIMEOUT` | A per-request timeout, classified by the harness's idle-watchdog layer (`packages/util/timeout/src/index.ts`) |
+| `TRANSPORT` | A raw connection failure, reset, or dropped stream |
+
+The default `maxRetries` is `5` (so six total attempts), a deliberate
+decision documented in the Agent Note: "Omission selects the shared core
+normal default of five retries for every composition, including Web,
+headless, and custom profiles."
+
+**Always mode** (`mode: 'always'`). Retries **every** model-request
+failure with no attempt limit, stopping only on success, turn
+cancellation, or plugin disposal. Before applying its own retry,
+always mode first awaits downstream recovery (`settleDownstream(next())`)
+and honors a downstream `{kind: 'retry'}` decision -- this lets a
+specialized later policy (such as context-overflow compaction) make
+progress rather than being bypassed by an always-mode retry that would
+simply repeat the same overflowing request. If downstream returns a
+non-retry decision or throws, always mode falls back to its own
+unbounded retry. An over-cap `Retry-After` header does **not** cause
+delegation in always mode -- instead, the plugin uses its configured
+local backoff computed by `localDelay()`, preserving the guarantee that
+always mode keeps trying. The README's Known Limitations section states
+this trade-off plainly: "Always mode retries permanent failures --
+authentication, quota, invalid-request, protocol, and unrecoverable
+context errors continue until success, cancellation, or disposal;
+deployments own provider-specific cost and latency controls."
+
+This two-mode design is architecturally distinct from every other
+harness on this page. Claude Code has one bounded policy with a
+watchdog override (§1). Copilot CLI has undocumented per-subsystem
+retry (§2). OpenCode has two layers with different classifiers but both
+bounded-or-not at the layer level (§3). pi has a deliberately-off inner
+layer and an outer string-pattern layer (§4). Hermes has a bounded loop
+with `FailoverReason`-gated recovery (§5). DeepSeek Harness alone makes
+the bounded/unbounded choice a **per-provider-route configuration
+decision** -- the same deployment can run a DeepSeek endpoint in normal
+mode with 5 retries while running an internal self-hosted endpoint in
+always mode, and both policies execute through the same plugin on the
+same waterfall. The canonical YAML example in the Agent Note illustrates
+exactly this:
+
+```yaml
+providers:
+  - provider: deepseek
+    retryPolicy:
+      mode: normal
+      maxRetries: 2
+      retryableCodes: [EMPTY_RESPONSE, RATE_LIMIT, SERVER, TIMEOUT, TRANSPORT]
+      backoff:
+        initialDelayMs: 500
+        maxDelayMs: 10000
+        jitterRatio: 0.1
+  - provider: internal
+    retryPolicy:
+      mode: always
+      backoff:
+        initialDelayMs: 1000
+        maxDelayMs: 30000
+        jitterRatio: 0.2
+```
+
+### 6.3 Backoff: symmetric jitter around exponential, server `Retry-After` honored exactly when under cap
+
+VERIFIED, `packages/llm/llm-retry/src/index.ts` (`localDelay()`
+function) and `retry-policy.ts` (defaults, schema, and resolver).
+
+`localDelay()` computes the exponential term as `Math.min(config.
+initialDelayMs * 2 ** Math.min(retry - 1, 1024), config.maxDelayMs)`
+-- the exponent is itself capped at 1024 to prevent `Infinity` on very
+large retry counts, then the result is capped at `maxDelayMs`. Jitter
+is then applied as `1 - config.jitterRatio + 2 * config.jitterRatio *
+random()`, a symmetric multiplier around 1.0 in the range `[1 -
+jitterRatio, 1 + jitterRatio]` -- the test suite confirms both bounds:
+the `jitterRatio: 1` case with `random() => 0` produces a zero-delay
+schedule (`1 - 1 + 0 = 0`), and the `jitterRatio: 0.1` case with
+`random() => 0` produces a 10% shortening (`1 - 0.1 + 0 = 0.9`), while
+`random() => 1` produces a 10% lengthening (`1 - 0.1 + 0.2 = 1.1`).
+The final value is again capped at `maxDelayMs`.
+
+This is a **symmetric jitter** shape -- different from Hermes' positive-
+only jitter (§5.3), pi's negative-only jitter (§4.2), and OpenCode's
+symmetric ±20% band (§3.2). The default `jitterRatio` is `0.1` (±10%),
+smaller than any of those three.
+
+When the `LlmFailure` carries a `providerRetryAfterMs` field (set by
+the adapter from a `Retry-After` or `retry-after-ms` HTTP header), the
+delay logic branches by mode:
+
+- **Normal mode**: if `providerRetryAfterMs > policy.maxDelayMs`, the
+  request is **delegated** (not retried by this policy) -- an over-cap
+  server delay is treated as equivalent to a non-retryable code. If the
+  value fits, it is used **verbatim and unjittered**.
+- **Always mode**: if `providerRetryAfterMs > policy.maxDelayMs`, the
+  plugin falls back to `localDelay()` (the jittered local backoff)
+  rather than delegating. If the value fits, it is used verbatim and
+  unjittered, same as normal.
+
+The test suite verifies both branches precisely: `normalConfig({
+backoff: { jitterRatio: 1 } })` with `providerRetryAfterMs: 2_000`
+and `maxDelayMs: 10_000` produces `delayMs: 2_000` (exact, no jitter);
+`normalConfig()` with `providerRetryAfterMs: 10_001` and the default
+`maxDelayMs: 10_000` produces no `llm/retry` event at all (delegated);
+and `alwaysConfig()` with `providerRetryAfterMs: 10` and `maxDelayMs:
+4` produces the local backoff delay `3` (random `=> 1`, `2 * 1.5 *
+1 = 3`, capped at 4).
+
+Default backoff constants, all source-verified: `initialDelayMs: 500`,
+`maxDelayMs: 10_000` (10 seconds), `jitterRatio: 0.1`, all validated
+against `MAX_TIMER_DELAY_MS = 2_147_483_647` from `@deepseek-ai/
+dsh-timeout`.
+
+### 6.4 The `agent/request-error` waterfall and `RequestErrorAction`
+
+VERIFIED, `.agents/notes/implemented/simplification/2026-07-27-
+request-error-retry-action.md`, `packages/llm/llm-retry/src/index.ts`
+(the `recover()` function), and the test suite.
+
+The retry plugin is one listener in the `agent/request-error` Cordis
+waterfall. When it receives a failure, its `recover()` function decides
+whether to retry (returning `{kind: 'retry'}`) or delegate (calling
+`next()` to pass to the next listener). The control flow is:
+
+1. If `retryPolicy === undefined` (no adapter served the request), call
+   `next()` immediately.
+2. In **always mode**: `await settleDownstream(next())` first. If the
+   downstream result is a `{kind: 'retry'}` decision, return it
+   immediately without scheduling the plugin's own retry. If the
+   downstream throws or returns a non-retry decision, fall through to
+   the plugin's own retry scheduling. (A source comment warns: "A later
+   policy that ignores cancellation and never settles also prevents
+   fallback, turn quiescence, and plugin disposal from completing.")
+3. In **normal mode**: if `failure.code` is not in `retryableCodes`,
+   call `next()`. If the budget is exhausted (`previousRetry >=
+   maxRetries`), call `next()`.
+
+If the decision is to retry, the plugin computes the delay, appends the
+`llm/retry` event, waits on a `cancellableDelay()` (a `setTimeout`
+wrapped in `AbortSignal.any([signal, lifetime.signal])` for both turn
+cancellation and plugin-disposal awareness), appends `llm/retry-started`,
+and returns `{kind: 'retry'}`. The loop then closes the failed step and
+re-runs the same step inside the same open turn over the same durable
+history.
+
+Disposal correctness is precisely specified: the plugin's `ctx.effect()`
+cleanup aborts the lifetime `AbortController`, then `await Promise.
+allSettled([...active])` drains every in-flight recovery. The test
+suite verifies this in four disposal/cancellation scenarios: (a) abort
+during backoff (`retryFiber.dispose()` while a timer is pending --
+adapter gets exactly one request, no second step opens), (b) delegated
+recovery blocks disposal until it settles (a downstream listener holds
+a promise; disposal does not complete until it resolves), (c)
+cancellation during delegated recovery (user cancel reaches idle only
+after the downstream settles), and (d) a callback captured before
+disposal, invoked after disposal, is rejected silently without entering
+any downstream policy.
+
+### 6.5 Retry history: keyed by provider and canonical policy hash
+
+VERIFIED, `packages/llm/llm-retry/src/index.ts` and `packages/llm/
+llm-retry/src/invariant.ts`. The retry counter does not accrue
+globally -- it accrues per-provider-per-policy-key. `retryPolicyKey()`
+derives a canonical key by serializing `[mode, maxRetries,
+[...retryableCodes].sort(), initialDelayMs, maxDelayMs, jitterRatio]`
+for normal mode and `[mode, initialDelayMs, maxDelayMs, jitterRatio]`
+for always mode. The sorted codes ensure that set-membership-based
+eligibility checks are order-independent. The session-projection state
+(`llmRetry`) maps `JSON.stringify([provider, policyKey])` to `{retry,
+retryId}`, so a route replacement that changes the policy (different
+backoff constants, different eligible codes, or a different mode) starts
+a fresh retry count and initial delay even though the provider name is
+the same.
+
+The `RetryId` is a branded UUID (`randomUUID()`) stable across all
+attempts in one retry chain. The invariant checker verifies that
+consecutive `llm/retry` events with the same provider and policy key
+carry the same `retryId`, that `retry` increments monotonically from 1,
+and that each `llm/retry-started` pairs one prior scheduled attempt by
+`retryId` and retry number.
+
+The test suite verifies this scoping end to end: a test where the
+provider switches from `mock` to `other` after the first failure shows
+two independent retry counters -- `{provider: 'mock', retry: 1}` and
+`{provider: 'other', retry: 1}` -- and the adapter's `requests.map(r
+=> r.provider)` confirms the sequence `['mock', 'other', 'other']`.
+
+### 6.6 Error codes and non-retryable carve-outs
+
+VERIFIED, `packages/llm/llm/src/error.ts` and `packages/llm/llm/src/
+retry-policy.ts`. DSH uses a flat, provider-neutral `code` string on
+every `LlmFailure` -- the error.ts doc comment states: "Stable
+machine-routable failure class (e.g. `RATE_LIMIT`); route on this,
+never by parsing `message`." The five default retryable codes listed in
+§6.2 are the full set; any code not in a provider's `retryableCodes` is
+non-retryable for that provider's normal mode.
+
+Two specific codes are explicitly carved out and worth naming because
+they parallel the same carve-outs every other harness on this page
+applies:
+
+- **`CONTEXT_WINDOW_EXCEEDED_CODE`** (`'CONTEXT_WINDOW_EXCEEDED'`): not
+  in the default `retryableCodes`. DSH handles context overflow through
+  a separate compaction subsystem (the `@deepseek-ai/dsh-compaction`
+  seam), not through the request-retry path -- the same architectural
+  separation Claude Code (§1.1), OpenCode (§3.2-3.3), pi (§4.5), and
+  Hermes (§5.2) all enforce. The `error.ts` module exports dedicated
+  classifier functions (`isContextWindowExceededError()` and
+  `isQuotaExceededError()`) that test for the provider-specific wording
+  patterns by which OpenAI-compatible providers deliver these errors,
+  so adapters can reliably normalize them to the correct code.
+- **`QUOTA_EXCEEDED_CODE`** (`'QUOTA'`): not in the default
+  `retryableCodes`, and the twin classifier `isQuotaExceededError()`
+  recognizes phrase patterns like `"insufficient_quota"`,
+  `"quota_exceeded"`, `"balance_depleted"`, and `"out of budget"`.
+  This is the same 429-with-quota-body distinction Claude Code (§1.1),
+  OpenCode (§3.2), pi (§4.3), and Hermes (§5.2) all draw -- a 429 whose
+  body names an exhausted account balance is terminal, not transient.
+- **`INVALID_CREDENTIAL_CODE`** (`'INVALID_CREDENTIAL'`): the error.ts
+  doc comment states this is "Deliberately outside the default retryable
+  set -- a malformed credential fails identically on every attempt." The
+  same non-retryable outcome every harness this page documents applies
+  to authentication failures.
+
+In always mode, none of these carve-outs apply -- `AUTH`, `QUOTA`,
+`CONTEXT_WINDOW_EXCEEDED`, and every other code are retried
+unconditionally. The README's Known Limitations section calls this out
+explicitly: "Always mode retries permanent failures -- authentication,
+quota, invalid-request, protocol, and unrecoverable context errors
+continue until success, cancellation, or disposal; deployments own
+provider-specific cost and latency controls."
+
+### 6.7 What the model sees: nothing
+
+VERIFIED, `packages/llm/llm-retry/README.md`, the error.ts `errorChain()`
+function, and the test suite. The README's "Model Experience" section
+states this in four parts:
+
+1. **No retry event, delay, provider error, or failed partial output
+   is model-visible.** The retried step reconstructs the same explicit
+   provider/model request from durable surface history (the same
+   `deriveMessages()` output the original attempt would have produced)
+   unless a downstream recovery policy deliberately changes that
+   surface.
+2. **Each retry is a new provider request and may repeat input-token
+   billing.** Normal mode has a finite budget; always mode can consume
+   unbounded requests until success or cancellation.
+3. **The reconstructed request preserves the prior prefix and is
+   eligible for provider cache reuse** under that provider's own rules.
+   The non-surface `llm/retry` event does not change cache identity.
+4. **Failed chunks never enter derived messages.** The test suite
+   exercises this directly: a `partialToolFailure` that emits text and
+   a tool-call block before throwing a `TRANSPORT` error results in
+   zero `tool/call` events, zero `assistant/message` events referencing
+   the failed chunks' seq numbers, and the recovered response contains
+   neither the provider diagnostic text nor the discarded partial
+   output. The test asserts: `retriedContext = JSON.stringify(
+   adapter.requests[1]?.messages)` does not contain the diagnostic
+   string or the discarded partial text, while the `llm/retry` event
+   itself does carry the failure message (in the durable log, for
+   debugging and invariants, not in model context).
+
+This is a stronger isolation guarantee than pi's or Hermes' own retry
+mechanisms document: DSH's design explicitly rejects "put the error
+into model context" as a considered and rejected alternative (the Agent
+Note states: "rejected because a transport or provider diagnostic is
+operational state, not conversation content. It can expose sensitive
+provider details and changes the retried request instead of repeating
+the failed request").
+
+### 6.8 Wire-level verification: the transport-recovery integration test
+
+VERIFIED, `packages/llm/llm-retry/tests/transport-recovery.spec.ts`.
+These tests exercise the retry executor through the **real DeepSeek
+HTTP/SSE adapter** and a `startMockLlmServer()`, not through a scripted
+adapter -- the shortest end-to-end path from HTTP transport failure
+through `LlmError` normalization, policy application, durable event
+append, backoff, and recovery. Six cases worth naming:
+
+- **Refused-connection recovery**: the server is not running when the
+  first attempt fires; a `llm/retry` event with `failure.code:
+  'TRANSPORT'` is appended; the test then starts the server during
+  backoff, and the second attempt succeeds. This proves the
+  `cancellableDelay` scheduling works for a genuinely refused TCP
+  connection, not just a simulated error.
+- **Stream-disconnect and partial-disconnect recovery**: the mock server
+  drops the connection mid-stream; the adapter classifies this as
+  `TRANSPORT`; the retried request sends the same body, and the
+  `assistant/chunk` events from the failed attempt are excluded from
+  the final `assistant/message`.
+- **Empty-completion recovery**: the mock server returns a wire-valid
+  completion with zero content; the adapter classifies this as
+  `EMPTY_RESPONSE` (the same `EMPTY_RESPONSE_CODE` the unit test
+  exercises); retry succeeds.
+- **Clean partial EOF is non-default-retryable**: a mock `partial_eof`
+  behavior produces an SSE stream that ends cleanly without `[DONE]`;
+  the adapter classifies this as `STREAM_CLOSED`, which is **not** in
+  the default `retryableCodes`. The test confirms no `llm/retry` event
+  appears and the turn ends with an error -- verifying that the
+  default code list is genuinely bounded, not universal.
+- **Stall-to-timeout recovery**: a mock stalled body triggers the
+  adapter's idle-watchdog timeout, classified as `TIMEOUT`; retry
+  succeeds on the next request.
+- **Budget exhaustion**: three consecutive `connection_reset` behaviors
+  exhaust a `maxRetries: 2` budget; the test confirms exactly two
+  `llm/retry` events, exactly three adapter requests, and a terminal
+  `turn/end` with `error.code: 'TRANSPORT'`.
+
+---
+
+## 7. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent | DeepSeek Harness |
+|---|---|---|---|---|---|---|
+| Verifiability | Docs + changelog; no public implementation | Changelog only; docs page found is generic platform guidance, not CLI-specific | Source-verified (`packages/llm`, `packages/opencode`), `dev` branch (caveat applies) | Source-verified across all three sibling packages (`pi-ai`, `pi-coding-agent`, `pi-agent-core`), `main` branch, plus its own settings docs and a regression-test file | Source-verified (`agent/retry_utils.py`, `agent/error_classifier.py`, `agent/conversation_loop.py`, `agent/turn_retry_state.py`, `agent/nous_rate_guard.py`, `run_agent.py`), `main` branch, plus its own docs and five issue-numbered regression tests | Source-verified end to end (`packages/llm/llm/src/retry-policy.ts`, `packages/llm/llm-retry/src/index.ts`, `types.ts`, `invariant.ts`, `history.ts`, `error.ts`, `README.md`, architectural decision record, two independent test suites including wire-level integration against the real DeepSeek HTTP/SSE adapter), `master` branch |
+| Architecture | One documented, named policy ("Automatic Retries") | Not documented as one named mechanism; changelog implies per-subsystem fixes (MCP, streaming, HTTP/2) rather than one shared module (BEST CURRENT UNDERSTANDING, UNCONFIRMED) | Two explicit, source-verified layers: bounded transport retry (`RequestExecutor`) wrapped by a separately-classified, effectively unbounded session-turn retry (`SessionRetry`) | Two explicit, source-verified layers with deliberately different classifiers (status-code-based inner `retryProviderRequest`, string-pattern-based outer `retryAssistantCall`), plus a third, durable crash-recovery state machine in `pi-agent-core` tracking retry state across process restarts | One loop (`while retry_count < max_retries` in `conversation_loop.py`) wrapping a nine-`FailoverReason` taxonomy with four independent per-branch recovery flags (`retryable`/`should_compress`/`should_rotate_credential`/`should_fallback`), plus one-shot `TurnRetryState` guards for credential rotation, per-provider OAuth refresh, and format recovery, and a resettable budget that restarts at each new target (recovered primary, then each fallback) | One plugin (`@deepseek-ai/dsh-llm-retry`) executing per-provider-route policies on the `agent/request-error` waterfall; two modes (`normal` bounded/code-gated, `always` unbounded/downstream-first); policy owned by provider adapter config, executor owns no config; durable `llm/retry` events appended before wait; invariant companion validates events at load and append time |
+| Default attempt cap | 10 (`CLAUDE_CODE_MAX_RETRIES`), capped at 15 unless `CLAUDE_CODE_RETRY_WATCHDOG` is set (then ~300 or unlimited for capacity errors) | Not documented | Inner layer: 2 retries (3 attempts). Outer layer: **no cap** in the `Schedule` itself | Outer layer: 3 (`retry.maxRetries`, configurable). Inner layer: 0 -- **off by default** (`retry.provider.maxRetries`), and `pi-agent-core`'s own framework-level default is also `{enabled: false}` | 3 (`agent.api_max_retries`, configurable) -- **four attempts total** before fallback-provider switching engages; extended dynamically (to a computed ceiling) only for one narrow Z.AI Coding Plan overload signature | Normal mode: 5 (`maxRetries`, configurable per-provider). Always mode: **no cap** -- retries every failure until success, cancellation, or plugin disposal |
+| Backoff formula | Exponential, with the client-computed value enforced as a *minimum* even against a small server `Retry-After` (v2.1.98 fix) | Not documented for the CLI's own requests (cookbook page shows only example client code) | Inner: exponential with ±20% jitter, capped at 10s. Outer: `retry-after(-ms)` header if present (capped only by ~24.8-day 32-bit ceiling), else 2s×2^(attempt-1) capped at 30s if no headers at all | Outer: `baseDelayMs * 2^(attempt-1)` (default 2s, 4s, 8s), **no jitter**. Inner: `retry-after(-ms)` header if present (capped at `maxRetryDelayMs`, default 60s, or throws if exceeded rather than waiting), else `min(0.5*2^i, 8s)` with **negative-only** (-0 to -25%) jitter | `jittered_backoff()`: `min(base_delay * 2^(attempt-1), max_delay) + uniform(0, jitter_ratio*delay)` -- **positive-only** jitter (0-50% at the default 0.5 ratio), decorrelated across concurrent callers via a locked counter XORed into the RNG seed; `Retry-After` honored and capped at 600s; a separate provider-specific carve-out (Z.AI GLM-5.2 overload) escalates to a fixed 30/60/90/120s long-wait table after 3 short retries | `localDelay()`: `min(initialDelayMs * 2^(min(retry-1, 1024)), maxDelayMs) * [1 - jitterRatio + 2 * jitterRatio * random()]`, capped at `maxDelayMs` -- **symmetric** jitter (default ±10%); defaults 500ms initial, 10s max. `providerRetryAfterMs` used exact and unjittered when under `maxDelayMs`; over-cap causes **normal mode to delegate** and **always mode to fall back to local backoff** |
+| Non-retryable carve-outs | TLS cert validation, Bedrock content-type mismatch, mid-response partial failures (kept, not retried) | Not documented at this granularity | Auth (401/403), quota-exceeded, content-policy, invalid-request/context-overflow, transport errors -- all `retryable: false` at the inner layer; context-overflow additionally hard-excluded at the outer layer | Quota/billing/Go-usage-limit text (checked first, wins ties) at the outer layer; aborts are terminal at both layers; overflow is checked before retryable-error classification and routed to compaction instead, confirmed independently from both `custom-provider.md` and `pi-agent-core`'s own state-machine doc | 401/402/403-billing/404-billing/content-policy-blocked/most-other-4xx are `retryable=False`; 413/429(non-billing)/408/500-502/503-529/context-overflow-as-5xx are `retryable=True`; a request-validation-signal carve-out on 500/502 fails fast instead of retrying a deterministic rejection | Normal mode: only configured `retryableCodes` are retried (default: `EMPTY_RESPONSE`, `RATE_LIMIT`, `SERVER`, `TIMEOUT`, `TRANSPORT`); everything else delegates (including `AUTH`, `QUOTA`, `CONTEXT_WINDOW_EXCEEDED`, `INVALID_CREDENTIAL`, `STREAM_CLOSED`). Always mode: **no carve-outs** -- every code is retried until success, cancellation, or disposal. Over-cap `Retry-After` causes delegation in normal mode, local backoff fallback in always mode |
+| User-visible retry UX | Spinner countdown `Retrying in Ns · attempt x/y`; reason label revealed at attempt 3 (v2.1.198); stall banner at 20s (90s during advisor calls) | Not documented in mechanism-level detail; changelog confirms "user-friendly" rate-limit timing messages exist (0.0.389) | Session-status object (`{type:"retry", attempt, message, action, next}`) rendered by the TUI's/app's own `SessionRetry` component | `onRetryScheduled`/`onRetryAttemptStart`/`onRetryFinished` callbacks drive UI countdown; the identical mechanism is reused for compaction under a `summarization_retry_*` event name instead | Buffered/emitted status lines (`⏳ Retrying in Ns (attempt x/y)...`, a distinct `⏱️ Provider overloaded` / `Rate limited` label plus an adaptive-policy note) with 200ms-granularity interrupt checks during the sleep and a periodic activity touch every ~30s so the gateway's inactivity monitor doesn't misreport a live backoff wait as a stall | Non-surface `llm/retry` and `llm/retry-started` events in the session log drive TUI rendering; normal events carry finite `maxRetries`, always events omit it (UIs render the limit as `∞`). No retry event, delay, provider error, or failed partial output is model-visible |
+| Alternative-to-retry mitigation | `fallbackModel`: up to 3 ordered fallback models, retried once on an unexpected non-retryable error (auth/rate-limit/request-size/transport excluded) | `continueOnAutoMode`: auto-switches to auto model-selection on rate limit instead of pausing | Free-tier/Go-usage-limit responses surface a subscribe/upgrade action link rather than only backing off | None found; quota/billing text is classified non-retryable and fails fast instead | `fallback_providers`: an ordered chain, turn-scoped (resets to primary every new message) and reset-aware (skips a doomed retry and stays on the fallback when a known subscription reset time hasn't elapsed yet); documented cost is a forced prompt-cache invalidation on every switch in and back out | Always mode's downstream-first posture lets later policies (e.g. compaction, model-switch) act before retry applies; no dedicated fallback-provider chain in the `llm-retry` plugin itself (composability via the waterfall replaces a built-in chain) |
+| User-facing config lever | `CLAUDE_CODE_MAX_RETRIES`, `CLAUDE_CODE_RETRY_WATCHDOG`, `API_TIMEOUT_MS` | None found | None found on the docs config page; two open feature requests ask for exactly this (§3.4) | `retry.enabled`, `retry.maxRetries`, `retry.baseDelayMs`, `retry.provider.timeoutMs`, `retry.provider.maxRetries`, `retry.provider.maxRetryDelayMs` -- the most granular documented lever of the four harnesses examined | `agent.api_max_retries` (single lever for the whole primary-call budget); `fallback_providers` / `hermes fallback` for the chain itself; no separate backoff-shape config found | Per-provider `retryPolicy` in adapter config: `mode`, `maxRetries`, `retryableCodes`, and `backoff.{initialDelayMs, maxDelayMs, jitterRatio}`. Executor plugin has **no config** -- `validateConfig()` rejects misdirected keys. Minimal example in README shows a two-provider YAML with different modes |
+| Known failure mode, self-reported | Historical: v2.1.110's retry cap had to be reverted one version later for trading hangs for outright failures; voice-mode retry loop was unbounded until fixed (v2.1.204) | A remote-session heartbeat loop retried a rejected request "every few seconds forever" until fixed in 1.0.66 | Live, open issue (#17648, fetched this session): 173 consecutive retries over 2.5 hours, backoff growing past 7 minutes with no circuit breaker, corroborated by several further open issues/feature requests found (not independently fetched) | Historical: compaction's summarization call previously ran an unretried single call at all (`#6647`, fixed by wiring it into the shared `retry.*` policy); no equivalent open unbounded-retry issue found this session | Historical, all fixed with a named regression test: `#31273` (a 402 billing wall was wrongly retried, "~$40 burned in 48h"); `#18028` (a status-code-less content-policy refusal burned all retries as `unknown`); `#14038` (a Z.AI server-overload 429 wrongly rotated a healthy credential); `#32646` (a fallback-index race silently disabled the fallback chain post-recovery); plus a documented, still-relevant amplification on the Nous Portal path specifically (SDK retries not disabled there): up to 9 calls per turn (3 SDK x 3 Hermes) against one rate limit, mitigated by a cross-session on-disk guard rather than a code fix to the multiplication itself | Always mode is explicitly documented as retrying permanent failures (auth, quota, context overflow) until success, cancellation, or disposal -- a known limitation, not a bug, with the README stating "deployments own provider-specific cost and latency controls." A non-default-retryable code (`STREAM_CLOSED` for clean partial EOF) correctly surfaces as a terminal error, verified by integration test. No historical misclassification bugs found in the fetched sources; the invariant companion catches classification errors at load and append time |
+
+**The design lesson.** All six harnesses draw the same basic
 distinction -- a status-code/error-type taxonomy that separates
 "try again, this is transient" from "stop, this needs a human or a
-different request" -- and all five exclude authentication failures,
+different request" -- and all six exclude authentication failures,
 malformed requests, and (where the concept applies) context-overflow from
 retry outright. Where they diverge sharply is in how tightly the *retry
 budget itself* is bounded once a failure is classified as transient.
@@ -1265,7 +1686,7 @@ Copilot CLI's changelog reads as a series of independent, per-subsystem
 retry hardenings rather than evidence of one shared, named policy, with
 at least one instance (the 1.0.66 heartbeat loop) of a genuinely unbounded
 retry shipping and later being fixed. OpenCode is the one harness of the
-five whose *current*, still-open state is a documented-by-its-own-users
+six whose *current*, still-open state is a documented-by-its-own-users
 unbounded retry: its inner transport layer is tightly bounded (2 retries,
 10-second cap, jittered), but that bound is not the retry budget a user
 actually experiences, because the outer, whole-turn-wrapping
@@ -1274,7 +1695,7 @@ common case of a provider that returns rate-limit or overload headers on
 every attempt, is bounded only by a 32-bit integer overflow point roughly
 24.8 days away -- a gap this page's own source-reading and its
 cross-referenced, live-fetched GitHub Issue agree on independently. pi is
-the one harness of the five that inverts the usual bounding direction: its
+the one harness of the six that inverts the usual bounding direction: its
 inner, SDK-mirroring layer is the one left effectively unbounded-by-default
 in the sense of being *off* (`maxRetries: 0`), specifically because its own
 docs identify a correctness risk in turning it on (an SDK-level retry could
@@ -1285,11 +1706,11 @@ default), and a third, independent concern -- surviving a process crash
 mid-backoff -- is handled by a wholly separate, source-verified durable
 state machine in `pi-agent-core` that snapshots the retry policy inline into
 crash-recoverable operation state, a property this page found no equivalent
-of, confirmed or claimed, in any of the other three harnesses examined
+of, confirmed or claimed, in any of the other five harnesses examined
 before it. Hermes Agent is the harness on this page with the richest,
 most explicitly multi-dimensional error taxonomy (a `FailoverReason` enum
 with four independent recovery-hint booleans on every classification) and
-the tightest default primary-call budget of any of the five (three
+the tightest default primary-call budget of any of the six (three
 retries, four attempts, before fallback engages) -- but it is also the one
 harness whose own self-reported bug history is consistently about
 *misclassification* rather than an absent or unbounded budget: `#31273`
@@ -1298,7 +1719,7 @@ into a retryable bucket and burned real money or real time before being
 fixed, and `#14038` is the mirror case, a genuinely transient error
 initially routed into the wrong *recovery action* (credential rotation
 instead of same-key backoff) rather than the wrong retry/no-retry
-verdict. Hermes is also the only harness of the five this page finds
+verdict. Hermes is also the only harness of the six this page finds
 disabling an underlying SDK's own retry loop *inconsistently rather than
 uniformly* -- `max_retries=0` on the OpenAI-wire request path for the
 same double-counting reason pi's own docs state explicitly (§4.4;
@@ -1307,8 +1728,39 @@ resulting compounding (3 SDK retries x 3 Hermes retries per rate-limited
 turn) is significant enough that Hermes ships a dedicated, persisted,
 cross-session file (`agent/nous_rate_guard.py`) purely to blunt it rather
 than closing the gap at its source -- a real, if narrow, architectural
-inconsistency this page's reading of the other four harnesses' retry
+inconsistency this page's reading of the other five harnesses' retry
 mechanisms did not surface an equivalent of.
+
+DeepSeek Harness is the newest and architecturally most articulated of
+the six: its separation of policy ownership (each provider adapter
+configuration) from execution ownership (a single zero-config plugin on the
+`agent/request-error` waterfall) is the cleanest policy/executor split on
+this page, and its `normal`/`always` mode choice makes the
+bounded-versus-unbounded decision a per-route deployment concern rather
+than a per-harness or per-layer global. The default 5-retry normal policy
+(with `EMPTY_RESPONSE` as a retryable code, a category no other harness on
+this page includes by default) sits between Claude Code's 10 and Hermes'/pi's
+3. The always mode's downstream-first posture is a genuinely different
+compositional strategy from any other harness: it gives later waterfall
+listeners (compaction, model-switch, specialized recovery) a chance to act
+before retry applies, rather than having retry short-circuit them. The
+durable-before-wait discipline (appending the `llm/retry` event before
+starting the timer, plus an invariant companion that validates the entire
+retry sequence at load time and on append) provides a log-level
+accountability guarantee none of the other five harnesses document an
+equivalent of at this level of precision (pi's durable crash-recovery
+state machine in `pi-agent-core` is the closest analog, but it serves a
+different concern: surviving process crashes mid-retry, not validating
+invariant correctness of the retry log itself). The one design trade-off
+that carries operational weight is the same one OpenCode's still-open
+unbounded-retry issues surface: always mode has no attempt cap on
+permanent failures, and the README explicitly documents this as the
+deployer's responsibility, not the executor's. Whether the "composability
+via waterfall replaces a built-in fallback chain" design proves more or
+less robust in practice than Hermes' dedicated `fallback_providers` chain
+or Claude Code's `fallbackModel` is a question this page's source-level
+analysis cannot yet answer -- it would require production-incident data
+from real DSH deployments, none of which exist at developer-preview time.
 
 ---
 
@@ -1480,3 +1932,78 @@ hermes-agent`, `main` branch):**
   cited in §5.1-5.2 and §5.7's self-reported-failure-mode summary, and the
   `jittered_backoff()`/Z.AI-overload-ceiling unit tests corroborating §5.3's
   formula and dead-code-bug narrative.
+
+**DeepSeek Harness (authoritative for its own documented behavior AND its
+own real implementation; fetched 1 September 2026 from
+`github.com/deepseek-ai/deepseek-harness`, `master` branch):**
+- `packages/llm/llm/src/retry-policy.ts` (via `gh api`, full 193-line file)
+  -- §6.2's two-mode policy schema (`NormalRetryPolicyConfig`/
+  `AlwaysRetryPolicyConfig`), the `resolveRetryPolicy()` resolver, all
+  default constants (`DEFAULT_MAX_RETRIES = 5`, `DEFAULT_INITIAL_DELAY_MS =
+  500`, `DEFAULT_MAX_DELAY_MS = 10_000`, `DEFAULT_JITTER_RATIO = 0.1`,
+  `DEFAULT_RETRYABLE_CODES`), validation rules, and the
+  `RetryPolicySchema` embedded in adapter configuration.
+- `packages/llm/llm/src/error.ts` (via `gh api`, full file) -- §6.6's
+  `HarnessError` base class, `LlmError` subclass, `LlmFailure` type,
+  canonical codes (`CONTEXT_WINDOW_EXCEEDED_CODE`, `QUOTA_EXCEEDED_CODE`,
+  `EMPTY_RESPONSE_CODE`, `INVALID_CREDENTIAL_CODE`), the
+  `isContextWindowExceededError()` and `isQuotaExceededError()` classifier
+  functions, and the `errorChain()` renderer.
+- `packages/llm/llm-retry/src/index.ts` (via `gh api`, full 279-line file)
+  -- §6.1 and §6.3-6.4's retry executor plugin: `apply()`, `recover()`,
+  `localDelay()`, `retryPolicyKey()`, `backoff()`, `cancellableDelay()`,
+  `settleDownstream()`, the `validateConfig()` guard rejecting misdirected
+  keys, the session-projection state (`llmRetry`), the disposal/drain
+  cleanup, and the `RetryInternals` test-injection interface.
+- `packages/llm/llm-retry/src/types.ts` (via `gh api`, full file) --
+  §6.1's `LlmRetryEventData` discriminated union (normal vs. always
+  mode payloads) and `LlmRetryStartedEventData`, declared as session
+  event types.
+- `packages/llm/llm-retry/src/invariant.ts` (via `gh api`, full file) --
+  §6.1 and §6.5's invariant companion: `validateRetry()`, `validateStarted()`,
+  `validateSession()`, provider-identity binding against `request/header`,
+  retry-number monotonicity, `retryId` stability, and timer-delay bounds.
+- `packages/llm/llm-retry/src/history.ts` (via `gh api`, full file) --
+  §6.1's `providerForOpenStep()` durable request-route lookup.
+- `packages/llm/llm-retry/src/brand.ts` (via `gh api`, full file) -- the
+  `RetryId` branded type and constructor.
+- `packages/llm/llm-retry/README.md` (via `gh api`, full file) --
+  §6.1-6.7's user/maintainer reference: the Summary, Use this package,
+  Understand the implementation, Model Experience, and Known Limitations
+  and Deferred Work sections, including the "retryPolicy belongs under
+  each provider configuration" guard, the normal/always mode descriptions,
+  the `EMPTY_RESPONSE` retry rationale, and the always-mode permanent-
+  failure limitation.
+- `.agents/notes/implemented/feature/2026-07-24-provider-retry-policies.md`
+  (via `gh api`, full file) -- §6.1-6.7's architectural decision record:
+  the per-provider-route policy decision, the "durable before wait, open-
+  step boundaries" design rule, the normal/always mode semantics, the
+  `Retry-After` over-cap behavior, the considered-and-rejected alternatives
+  (one executor-level switch, separate provider list, very large finite
+  count, adapter-specific omission defaults, LLM deployment-level default,
+  UI-written profiles, provider-SDK retries, put the error into model
+  context), and the verification summary.
+- `.agents/notes/implemented/simplification/2026-07-27-request-error-
+  retry-action.md` (via `gh api`, full file) -- §6.4's `RequestErrorAction`
+  waterfall control flow: the `{kind: 'retry'}` action, `next()` delegation,
+  and the removal of `Agent.retry()`.
+- `packages/util/timeout/src/index.ts` (via `gh api`, full file) --
+  `MAX_TIMER_DELAY_MS = 2_147_483_647` and the `deadline()`/`idleWatchdog()`
+  timeout utilities used by the adapter layer.
+- `packages/llm/llm-retry/tests/retry.spec.ts` (via `gh api`, full
+  630+ line file) -- §6.2-6.7's comprehensive unit test suite: 20+ cases
+  covering normal-mode bounded retry with jitter pinning, `EMPTY_RESPONSE`
+  default-code retry, partial-failure chunk isolation, exhausted-budget
+  terminal failure, zero-delay jitter bound, `Retry-After` accepted and
+  rejected, always-mode unbounded retry, always-mode over-cap `Retry-After`
+  fallback to local backoff, non-retryable delegation, provider-select
+  policy, serving-registration capture, changed-policy history reset,
+  finite budget per-provider scope, downstream-first composition,
+  disposal drain and abort, cancellation drain, captured-callback rejection,
+  and misdirected-config rejection.
+- `packages/llm/llm-retry/tests/transport-recovery.spec.ts` (via `gh api`,
+  full file) -- §6.8's wire-level integration tests through the real
+  DeepSeek HTTP/SSE adapter: refused-connection recovery, stream-disconnect
+  and partial-disconnect recovery, empty-completion recovery, clean partial
+  EOF as non-default-retryable `STREAM_CLOSED`, stall-to-timeout recovery,
+  and budget exhaustion.

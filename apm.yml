@@ -5,6 +5,7 @@ author: Sergi Fernandez
 targets:
   - claude
   - copilot
+  - opencode
 dependencies:
   apm:
     - danielmeppiel/genesis

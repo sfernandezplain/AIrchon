@@ -16,7 +16,7 @@ model call reviews actions at all) -- this page adds only the classifier's own
 model-selection fact, not repeated there, and cross-references back for the rest.
 
 Every factual claim below is tagged VERIFIED (fetched this session from a named
-authoritative source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. All five harnesses
+authoritative source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. All six harnesses
 covered here make a live model-routing decision on every request, but
 the shape of that decision differs sharply: Claude Code's is a rich, deeply configurable
 precedence stack around a single frontier-model family; Copilot CLI's is a genuine
@@ -28,7 +28,13 @@ choice with no automatic routing, fallback, or carve-out of any kind; Hermes Age
 (§5, added 24 August 2026) sits closest to Copilot CLI's own shape among the five --
 an explicit, user-configurable per-task model-slot surface with independent fallback
 chains and credential-pool rotation, but exposed as flat configuration rather than a
-health/complexity-scored router.
+health/complexity-scored router; DeepSeek Harness's (§6, added 1 September 2026) is the
+odd one out among all six -- its core ships no precedence stack and no bundled router at
+all, only a named-route model (`GenerateOptions.provider`/`.model`) plus two Cordis
+plugin waterfalls (`agent/request`, `llm/stream`) that make an external routing plugin
+possible without shipping one, a design axiom this book's DeepSeek-Harness rollout has
+already documented for compaction and system-prompt assembly and now finds a third time
+here.
 
 ## 1. Claude Code
 
@@ -631,7 +637,228 @@ explicit chain rather than the stated default itself.
 
 ---
 
-## 6. Synthesis
+## 6. DeepSeek Harness
+
+Sources for this section: VERIFIED, fetched 1 September 2026 directly from
+`github.com/deepseek-ai/deepseek-harness`'s `master` branch (raw-source reads via
+`raw.githubusercontent.com` and `gh api`) -- `docs/user/guide/providers.md`,
+`docs/architecture.md`, `docs/subsystems/llm-streaming.md` (via the rendered docs site,
+`deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/`),
+`packages/llm/llm-pi-ai/README.md`, and `packages/llm/llm-deepseek/README.md` -- plus one
+third-party ecosystem plugin, `github.com/welsione/dsh-model-router` (via its
+`dshhub.org` listing), clearly separated below from DeepSeek Harness's own core behavior
+per this book's AUTHORITY OVERREACH discipline. DeepSeek Harness is a sixth, independent,
+Cordis-plugin-architecture product ("everything is a plugin") -- see
+[Permissions & sandboxing](permissions-and-sandboxing.md) for this book's fuller
+architectural introduction, not repeated here.
+
+### 6.1 A named-route model, not a precedence stack: `GenerateOptions.provider`/`.model`
+
+Where Claude Code (§1), Copilot CLI (§2), and OpenCode (§3) each resolve "the model" through
+an ordered fallback stack of flags/env-vars/settings, DeepSeek Harness's core has no
+analogous stack at all. Every model request carries an explicit `GenerateOptions.provider`
+(a route name) and `.model` (a model id) pair, assembled by whatever produced the request --
+the main agent loop, a subagent, a workflow step, or a plugin -- and resolved by the
+harness's own `ctx.llm` runtime service (`LlmRuntime`, documented in
+`docs/subsystems/llm-streaming.md`) rather than walked through a priority list of
+configuration sources. There is no `--model` CLI flag, environment variable, or settings
+key this session found that *overrides* a route once the request is assembled; instead,
+the surface a user actually touches is the **provider/route catalogue** itself
+(`docs/user/guide/providers.md`):
+
+- **DeepSeek's own card** in Settings -> Models -- one API-key field, routed through the
+  harness's own first-party adapter (§6.3 below), not through the generic catalogue.
+- **Catalogue providers** ("Add provider," e.g. Anthropic, OpenAI) -- the installed
+  catalogue supplies endpoint, protocol, and model list; providers with native
+  authentication (Bedrock, Vertex, Azure, Codex) need their own native credential shapes,
+  not a bare API key.
+- **Custom providers** ("Add a custom provider," for a company gateway or self-hosted
+  server) -- a lowercase, **permanent** Provider ID (requests, saved sessions, model
+  defaults, and credential references all key off it; renaming means adding a new
+  provider and deleting the old one), base URL, API protocol, credential, and at least
+  one model, configured under `llm-pi-ai: providers: <route-name>:` in
+  `$DSH_HOME/settings.yaml`.
+
+VERIFIED, quoted directly (`providers.md`): "Configured providers appear in the model
+picker. Selecting a model also makes it the default for new sessions. **A session that
+has already sent a request retains the model recorded in its own log.**" This is a direct
+consequence of DeepSeek Harness's event-sourced session architecture (this book's own
+[Session & transcript persistence](session-persistence.md) documents the durable,
+log-backed model in full): the resolved `provider`/`model`/`reasoningEffort`/sampling
+values for a request are captured into an `LlmCallConfig` "at the epoch level for request
+reconstruction from session logs" (`llm-streaming.md`), so a session's model choice is an
+immutable fact recorded once per epoch, not a live-mutable setting a later configuration
+change can silently retarget -- a materially different persistence guarantee from any of
+the other five harnesses' own model-selection state, none of which this book has found to
+tie model choice to an append-only, replay-authoritative log entry the way DeepSeek
+Harness does.
+
+### 6.2 Wire-protocol discriminator and the three-tier catalogue-resolution model
+
+VERIFIED (`packages/llm/llm-pi-ai/README.md`): `@deepseek-ai/dsh-llm-pi-ai` -- one of two
+coexisting adapter packages, see §6.3 -- wraps Earendil Works' own `@earendil-works/pi-ai`
+library (the same library this book's pi sections, §4 above, document from pi's own side)
+as its generic multi-provider adapter, and resolves a configured route through a
+three-tier model:
+
+1. **Installed catalogue routes** -- pi-ai ships endpoint, protocol, and model metadata for
+   its bundled providers; no `api` field is required.
+2. **Catalogue with overrides** -- a `modelOverrides` block reshapes individual catalogue
+   entries (for example, narrowing which modalities a specific model accepts) "without
+   wholesale replacement," each entry "defaulting its unset fields from the installed
+   model of the same id."
+3. **Hand-declared routes** -- a custom/self-hosted gateway requires an explicit `api`
+   wire-protocol discriminator (`openai-completions`, `openai-responses`, and an
+   Anthropic-messages-shaped protocol among the catalogue-supplied options), `baseURL`,
+   and a non-empty `models` list.
+
+A `compat` block (route-level default, overridable per model) corrects request-shape
+mismatches pi-ai's endpoint-URL-based protocol inference gets wrong for an unrecognized
+gateway -- `supportsDeveloperRole: false` and `maxTokensField: max_tokens` are the two the
+docs call out as covering "most of" the failure cases, alongside a `thinkingFormat`
+override for how a reasoning model's thinking content is framed on the wire. This is the
+same wire-protocol-shape concern this page's pi section (§4.2, citing
+[llm-api-contract.md](llm-api-contract.md)) documents pi's own `compat` surface handling --
+DeepSeek Harness's version is per-route/per-model rather than per-provider-entry, but
+addresses the identical class of problem (a gateway that holds a valid key at a reachable
+address and still refuses every request because its wire shape differs from what the
+adapter assumes). A `reasoningEfforts` map lets a route rename the seven-level
+`off`/`minimal`/`low`/`medium`/`high`/`xhigh`/`max` scale to a gateway's own vocabulary
+(for example, remapping `max` to a gateway-specific string like `ultra`) rather than
+requiring the gateway to speak the harness's own naming.
+
+### 6.3 Two coexisting first-class adapters on one runtime, not one generic layer
+
+This is DeepSeek Harness's sharpest architectural distinctive on this page. VERIFIED
+(`packages/llm/llm-deepseek/README.md`, quoted): "`@deepseek-ai/dsh-llm-deepseek` is the
+direct DeepSeek adapter for the harness LLM service," and it "specifically owns and
+registers the `deepseek-official` provider route, converting DeepSeek's chat-completions
+format into the harness stream-chunk protocol" directly -- bypassing pi-ai's generic
+OpenAI-shape-inference layer entirely for DeepSeek's own models. The README states the
+distinction directly: "It is one of two structurally different adapters for DeepSeek: the
+pi-ai twin serves its own route names through a library and additional providers," and
+"both can be mounted side by side" because their route names do not collide -- but the
+`ctx.llm` runtime's `registerAdapter(providers, adapter)` call is atomic and route-scoped,
+so a *third* plugin attempting to register anything else for the `deepseek-official` route
+name fails outright with a `DUPLICATE_ADAPTER` error. Multi-provider routing in DeepSeek
+Harness is therefore, at the core-architecture level, literally a question of **which
+plugin registered which named route** on a shared runtime service, resolved once at
+plugin-composition time (Cordis's own boot sequence), not a runtime precedence walk over
+several possible sources the way §1-§3's stacks are.
+
+```mermaid
+flowchart TD
+    subgraph Runtime["ctx.llm (LlmRuntime service)"]
+        Reg["registerAdapter(providers, adapter)\n-- atomic, route-scoped"]
+    end
+    A["@deepseek-ai/dsh-llm-deepseek\n(first-party adapter)"] -->|"registers route:\ndeepseek-official"| Reg
+    B["@deepseek-ai/dsh-llm-pi-ai\n(wraps @earendil-works/pi-ai)"] -->|"registers routes:\ncatalogue providers +\nhand-declared gateways"| Reg
+    C["Any third adapter plugin\nfor 'deepseek-official'"] -->|"DUPLICATE_ADAPTER error"| Reg
+    Reg --> D["GenerateOptions.provider = <route name>\nresolves to exactly one\nregistered adapter"]
+```
+
+### 6.4 The plugin seam where automatic routing actually lives: `agent/request` and `llm/stream`
+
+VERIFIED (`docs/architecture.md`, quoted from the documented turn/step lifecycle):
+every model call in DeepSeek Harness's agent loop passes through this fixed sequence --
+`... -> agent/pre-step -> step/start -> user/message -> model history -> agent/request ->
+llm/stream -> assistant/chunk* -> assistant/message -> tool/call* -> ...` -- and
+`agent/pre-step`, `agent/request`, and `llm/stream` are named directly as **waterfall**
+events, "whose listeners must call `next()` to delegate." Two of those waterfalls are the
+concrete hook points a routing plugin uses:
+
+- **`agent/request`** fires with the "frozen call configuration" -- `AgentOptions`,
+  carrying `provider`, `model`, `reasoningEffort`, and `maxTokens` -- built and ready to
+  dispatch; a listener plugin can inspect it and **replace** it before the request
+  proceeds, the natural point to swap in a different provider/model based on the calling
+  agent's identity, session state, or a plugin's own health/cost bookkeeping.
+- **`llm/stream`** fires immediately before adapter selection on the resolved
+  `ctx.llm` runtime, and "intercepts every model call": a listener may short-circuit with
+  its own stream chunks entirely, or call `next()` to let the request proceed to the
+  adapter `registerAdapter` resolved for that route (§6.3).
+
+VERIFIED (`docs/subsystems/llm-streaming.md`): the runtime also exposes
+`registerAdapter(providers, adapter)` (atomic, all-or-nothing across the named routes it
+covers), `discoverModels()` (interrogates an endpoint for models when no catalogue entry
+exists), `resolveModelInfo()` (returns context capacity and reasoning options for a route),
+and an `llm/adapters-updated` event fired whenever "provider topology changes"
+(registration, disposal, or a configuration update), letting other plugins re-query
+provider/model metadata live rather than caching a stale list.
+
+The load-bearing point for this page's own question -- **does DeepSeek Harness's core
+ship an automatic model router at all?** -- is that it does not: no fetched source this
+session describes a bundled, health-scored, or task-complexity-based routing algorithm
+analogous to Claude Code's `fallbackModel` chain (§1.5) or Copilot CLI's Auto model
+selection (§2.3) running inside `packages/core`/`packages/llm` themselves. What the core
+ships instead is the *seam* -- `agent/request` and `llm/stream` as documented,
+composition-time-pluggable waterfall hooks -- and leaves "route this task to a different
+model based on health or cost" to whatever plugin a deployer chooses to mount on that
+seam. This is the same "capability factored into a swappable plugin rather than
+core-loop code" pattern this book's DeepSeek-Harness rollout has already documented
+for compaction ([context-compression.md](context-compression.md) §6) and system-prompt
+assembly (`dsh-system-prompt`, [memory-management.md](memory-management.md) §6) -- model
+routing is a third instance of the same design axiom, not a special case.
+
+### 6.5 The ecosystem's own worked example: `dsh-model-router` (third-party, not core)
+
+A concrete plugin exists that does exactly what §6.4 describes as architecturally
+possible, and it is worth naming precisely because it demonstrates the seam rather than
+because it ships with DeepSeek Harness. VERIFIED (`dshhub.org`'s listing for
+`github.com/welsione/dsh-model-router`, a third-party, MIT-licensed community plugin
+by GitHub user `welsione` -- **not** a `deepseek-ai`-published package, and not bundled
+with `deepseek-harness` itself): the plugin implements "unified ModelID routing,"
+abstracting several provider/model candidates behind one logical identifier a caller
+requests instead of a specific route, with:
+
+- **First-token failover with cooldown** -- a primary candidate that fails before its
+  first streamed token (rate limit, quota, auth, network, or model-unavailable) triggers
+  an automatic switch to the next candidate in a configured chain, with a cooldown period
+  before that candidate is retried.
+- **Health-aware candidate ranking** -- a sliding-window success/failure count per
+  candidate lets consistently-successful candidates rise in priority and frequently-failing
+  ones fall, rather than a fixed static order.
+- **Three-tier auto-classification** (`tier1` lightweight / `tier2` standard / `tier3`
+  powerful) -- tasks route to the appropriate tier automatically, cascading to a lower
+  tier if the assigned one is unavailable.
+- **Per-candidate reasoning effort** -- each candidate in a chain can declare its own
+  effort level, validated at save time rather than at request time.
+
+This is architecturally the closest thing this page has found in the DeepSeek Harness
+ecosystem to Claude Code's `fallbackModel` chain (§1.5) or Copilot CLI's Auto model
+selection (§2.3) -- but the honest, load-bearing distinction is that it is an
+**ecosystem plugin consuming the `agent/request`/`llm/stream` seam from outside**, not a
+core-shipped feature, the same "the gap is filled by a named third-party project rather
+than a first-party feature" shape this book's own
+[memory-management.md](memory-management.md) §6 already documents for DeepSeek Harness's
+memory story (third-party MCP servers, default-off) and
+[context-retrieval-and-agentic-search.md](context-retrieval-and-agentic-search.md)/
+[memory-management.md](memory-management.md) document for OpenCode's own third-party
+memory/RAG gap-fillers. Treat every claim in this subsection as sourced to the plugin's
+own `dshhub.org` listing, not to `deepseek-ai/deepseek-harness` itself -- the plugin's
+existence and documented behavior are real and fetched this session, but its design
+choices are `welsione`'s, not DeepSeek's.
+
+### 6.6 No documented content-triggered or capability-ranked second-opinion mechanism
+
+No fetched source this session describes a DeepSeek-Harness-core analogue to Claude
+Code's advisor tool (§1.4, a capability-ranked second model consulted mid-task) or its
+safety-classifier fallback (§1.5), nor a phase-keyed routing rule comparable to
+`opusplan`. `GenerateOptions`' documented "purpose classification" field (named in
+`llm-streaming.md`'s own summary of the request-assembly surface, alongside session
+identity) is the one adjacent hint this session found that a request's *purpose*
+(main-loop turn vs. title generation vs. compaction summary vs. subagent delegation, by
+analogy with the per-task carve-outs §1.2/§1.3/§3.3/§5.1 document for the other five
+harnesses) is a first-class, inspectable property available to an `agent/request`
+listener -- but no fetched source states that DeepSeek Harness's *core* itself reads that
+field to make an automatic routing decision; BEST CURRENT UNDERSTANDING, UNCONFIRMED is
+that this is exactly the kind of signal a plugin such as §6.5's `dsh-model-router` would
+consume to implement its own tier auto-classification, since the plugin's own
+documentation (fetched via its `dshhub.org` listing, not its own source) does not state
+which request property its tier classifier reads.
+
+---
+
+## 7. Synthesis
 
 ```mermaid
 flowchart LR
@@ -671,16 +898,23 @@ flowchart LR
         HM3["Per-slot fallback chains +\ncredential-pool rotation (fill_first/round_robin/\nleast_used/random)"]
         HM4["Subagent delegation inherits parent\nmodel/provider/credentials by default when 'auto'"]
     end
+    subgraph DS["DeepSeek Harness"]
+        direction TB
+        DS1["GenerateOptions.provider/.model: named route,\nno precedence stack -- resolved by ctx.llm runtime"]
+        DS2["Two coexisting adapters on one runtime:\ndsh-llm-deepseek owns 'deepseek-official';\ndsh-llm-pi-ai owns catalogue + custom routes"]
+        DS3["Core ships the seam, not a router:\nagent/request + llm/stream waterfalls,\nno bundled fallback/health algorithm"]
+        DS4["dsh-model-router (3rd-party plugin):\nfailover+cooldown, health ranking,\n3-tier auto-classification"]
+    end
 ```
 
-| Routing dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
-|---|---|---|---|---|---|
-| Main-loop model selection | `/model` > `--model`/`ANTHROPIC_MODEL` > settings `model`, plus org default and `availableModels` allowlist layers | Custom agent definition > `--model` > `COPILOT_MODEL` > settings.json `model` > built-in default | `model` config key > last-used (`model.json`) > first provider's first model by family priority | `/model` (mid-session) > `--model`/`--provider` (launch) > `settings.json`'s `defaultModel`/`defaultProvider` | `hermes chat --model` > `config.yaml` > built-in default |
-| Auto/classification-based routing for the main loop itself | `opusplan` phase-keyed switch (plan vs. execute); no per-message task-complexity router for the main loop | Auto model selection: real-time health + task-complexity routing across four named models, GA on CLI | None found for the main loop; `small_model` scoped only to the auxiliary title agent | None documented -- model selection is always an explicit user/flag choice, never content- or health-routed | None documented for the main loop -- auxiliary slots default to `"auto"` (route to the main model), not a health/complexity router |
-| Per-subtask/subagent override | `model` frontmatter, resolved `env > invocation > frontmatter > inherit`; built-in subagents carry fixed model assignments | `model` frontmatter field (string only; array support requested in open issues #2133/#3070) | `model` config per agent; subagent inherits invoking primary agent's model unless overridden | Not applicable -- pi ships no built-in subagent concept (see [orchestration.md](orchestration.md)'s own pi section) | Named auxiliary model slots (vision, web-extraction, compression, ...), each independently configurable; `delegate_task` subagents inherit parent model/provider/credentials by default |
-| Second-model consultation mid-task | Advisor tool: capability-ranked pairing table, server-side, Claude decides timing | None found | None found | None found -- `session_before_compact`'s documented custom-model-for-summarization pattern ([context-compression.md](context-compression.md) §4.4) is the closest analog, and is extension-authored, not a built-in feature | None found as a distinct "second opinion" feature -- auxiliary slots serve fixed side-tasks (vision, extraction), not ad hoc consultation |
-| Availability/content-triggered fallback to a different model | `fallbackModel` (up to 3, availability-triggered, retried once per turn) + automatic safety-classifier fallback (content-triggered) | `continueOnAutoMode` reroutes to Auto on rate limit (see retries.md) | None found (see retries.md's same-model retry architecture instead) | None found -- an unavailable model surfaces as an ordinary stream error, left to retry-with-backoff or a manual `/model` switch | Per-model-slot fallback chains, each independently configurable, plus credential-pool rotation across multiple keys for the same provider |
-| Quick-swap/cycling mechanism | Not found as a distinct feature from `/model` itself | Not found | Not found | `--models "pattern,pattern"` / `/scoped-models` narrows a `Ctrl+P`/`Shift+Ctrl+P` interactive cycling list -- no equivalent named for the other three harnesses | Not found on the one docs page fetched |
+| Routing dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent | DeepSeek Harness |
+|---|---|---|---|---|---|---|
+| Main-loop model selection | `/model` > `--model`/`ANTHROPIC_MODEL` > settings `model`, plus org default and `availableModels` allowlist layers | Custom agent definition > `--model` > `COPILOT_MODEL` > settings.json `model` > built-in default | `model` config key > last-used (`model.json`) > first provider's first model by family priority | `/model` (mid-session) > `--model`/`--provider` (launch) > `settings.json`'s `defaultModel`/`defaultProvider` | `hermes chat --model` > `config.yaml` > built-in default | No precedence stack -- `GenerateOptions.provider`/`.model` names a route directly, resolved by the `ctx.llm` runtime; a session's chosen model is captured immutably into its own event-sourced log |
+| Auto/classification-based routing for the main loop itself | `opusplan` phase-keyed switch (plan vs. execute); no per-message task-complexity router for the main loop | Auto model selection: real-time health + task-complexity routing across four named models, GA on CLI | None found for the main loop; `small_model` scoped only to the auxiliary title agent | None documented -- model selection is always an explicit user/flag choice, never content- or health-routed | None documented for the main loop -- auxiliary slots default to `"auto"` (route to the main model), not a health/complexity router | None in core -- the `agent/request`/`llm/stream` Cordis waterfalls are the seam a router plugin hooks; core itself ships no bundled algorithm |
+| Per-subtask/subagent override | `model` frontmatter, resolved `env > invocation > frontmatter > inherit`; built-in subagents carry fixed model assignments | `model` frontmatter field (string only; array support requested in open issues #2133/#3070) | `model` config per agent; subagent inherits invoking primary agent's model unless overridden | Not applicable -- pi ships no built-in subagent concept (see [orchestration.md](orchestration.md)'s own pi section) | Named auxiliary model slots (vision, web-extraction, compression, ...), each independently configurable; `delegate_task` subagents inherit parent model/provider/credentials by default | Any request assembler (main loop, subagent, workflow step) sets `GenerateOptions.provider`/`.model` directly; an `agent/request` listener may replace it before dispatch |
+| Second-model consultation mid-task | Advisor tool: capability-ranked pairing table, server-side, Claude decides timing | None found | None found | None found -- `session_before_compact`'s documented custom-model-for-summarization pattern ([context-compression.md](context-compression.md) §4.4) is the closest analog, and is extension-authored, not a built-in feature | None found as a distinct "second opinion" feature -- auxiliary slots serve fixed side-tasks (vision, extraction), not ad hoc consultation | None found in core |
+| Availability/content-triggered fallback to a different model | `fallbackModel` (up to 3, availability-triggered, retried once per turn) + automatic safety-classifier fallback (content-triggered) | `continueOnAutoMode` reroutes to Auto on rate limit (see retries.md) | None found (see retries.md's same-model retry architecture instead) | None found -- an unavailable model surfaces as an ordinary stream error, left to retry-with-backoff or a manual `/model` switch | Per-model-slot fallback chains, each independently configurable, plus credential-pool rotation across multiple keys for the same provider | None in core (adapter-level `retryPolicy` retries the *same* route, see retries.md); first-token failover/cooldown exists only in the third-party `dsh-model-router` plugin |
+| Quick-swap/cycling mechanism | Not found as a distinct feature from `/model` itself | Not found | Not found | `--models "pattern,pattern"` / `/scoped-models` narrows a `Ctrl+P`/`Shift+Ctrl+P` interactive cycling list -- no equivalent named for the other three harnesses | Not found on the one docs page fetched | Not found in core; the model picker lists every registered route but no cycling shortcut was documented on the pages fetched |
 
 The throughline: Claude Code's design spends the most configuration surface on
 *precedence and overrides within one model family*, plus two narrow, purpose-built
@@ -707,13 +941,25 @@ among these five harnesses, and treating fallback as a per-slot, independently
 configurable property rather than a single fixed chain (Claude Code's `fallbackModel`)
 or an absent feature (pi, OpenCode). A harness comparing "how much should the system
 decide about which model answers a given request, versus leaving that entirely to the
-operator" now has five genuinely different real-world answers to look at, not four:
+operator" now has six genuinely different real-world answers to look at, not five:
 Copilot CLI's full automatic router, Claude Code's rich-but-still-manual precedence
 stack with narrow automatic carve-outs, OpenCode's per-agent config with one auxiliary
-carve-out, pi's fully manual, no-carve-outs-at-all baseline, and Hermes' explicit,
+carve-out, pi's fully manual, no-carve-outs-at-all baseline, Hermes' explicit,
 per-slot configuration surface with fallback and credential rotation as user-visible,
 independently-tunable knobs rather than either an automatic router or their complete
-absence.
+absence, and DeepSeek Harness's own sixth answer, which is really an answer about
+*where the decision is allowed to live* rather than what the decision is: core ships no
+precedence stack, no health/complexity router, and no bundled fallback chain at all --
+only two named Cordis waterfall hooks (`agent/request`, `llm/stream`) and two
+first-class adapters distinguished purely by which route name each one registers on the
+shared `ctx.llm` runtime. Whether DeepSeek Harness ends up looking more like Copilot
+CLI's automatic router or more like pi's fully manual baseline is, by design, a question
+answered per-deployment by whichever plugin (if any) a deployer chooses to mount on that
+seam -- the ecosystem's own `dsh-model-router` (§6.5, third-party, not core) is the
+concrete proof that the router shape Copilot CLI bakes into its core is achievable as an
+opt-in plugin instead, consistent with this book's own already-documented finding that
+DeepSeek Harness factors compaction, system-prompt assembly, and now model routing alike
+into swappable plugins rather than core-loop code.
 
 ## Sources
 
@@ -815,6 +1061,37 @@ throughout this section, since it is not a stable release tag):**
   credential-pool rotation strategies, always-on prompt-caching behavior and TTL
   tiers, configuration precedence order, and the auto-inherit-from-parent subagent
   delegation note.
+
+**DeepSeek Harness (authoritative for its own documented behavior and, for the `master`
+branch specifically, its own real implementation; fetched 1 September 2026 from
+`github.com/deepseek-ai/deepseek-harness`, `master` branch):**
+- `docs/user/guide/providers.md` (raw source, fetched via `raw.githubusercontent.com`) --
+  §6.1's full provider-configuration surface: DeepSeek's own card vs. catalogue providers
+  vs. custom providers, the permanent lowercase Provider ID, `$DSH_HOME/settings.yaml`'s
+  `llm-pi-ai: providers:` block, the model-picker-sets-session-default fact, and the
+  `MISSING_CREDENTIAL`/`UNKNOWN_MODEL` troubleshooting codes.
+- `docs/architecture.md` (raw source, fetched via `raw.githubusercontent.com`) -- §6.4's
+  documented turn/step lifecycle sequence and the `agent/pre-step`/`agent/request`/
+  `llm/stream` waterfall-event list, quoted directly.
+- `docs/subsystems/llm-streaming.md` (fetched via the rendered docs site,
+  `deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/`) -- §6.4's
+  `LlmRuntime`/`ctx.llm` service surface (`registerAdapter`, `discoverModels`,
+  `resolveModelInfo`, the `llm/stream` waterfall, the `llm/adapters-updated` event) and
+  §6.1's `LlmCallConfig`/epoch-level session-log capture detail.
+- `packages/llm/llm-pi-ai/README.md` (raw source, fetched via
+  `raw.githubusercontent.com`) -- §6.2's three-tier catalogue-resolution model, the
+  `api`/`compat`/`reasoningEfforts` fields, credential-reference resolution, and the
+  documented error-code table.
+- `packages/llm/llm-deepseek/README.md` (raw source, fetched via
+  `raw.githubusercontent.com`) -- §6.3's two-coexisting-adapters architecture, the
+  `deepseek-official` reserved route, and the `DUPLICATE_ADAPTER` error, quoted directly.
+- `github.com/welsione/dsh-model-router`, as listed on `dshhub.org` (WebFetch of the
+  `dshhub.org` listing page, not the plugin's own repository) -- §6.5's entire
+  treatment of the plugin's failover/cooldown, health-ranking, three-tier
+  auto-classification, and per-candidate reasoning-effort behavior. Cited per this
+  project's source-authority rule for third-party ecosystem plugins: authoritative for
+  the plugin's own documented behavior, never blended with `deepseek-ai/deepseek-harness`
+  core claims, and explicitly named as third-party throughout §6.5-§6.6.
 
 **Cross-referenced, not re-derived, pages in this book:** [fan-out.md](fan-out.md) and
 [orchestration.md](orchestration.md) (where a subagent's `model` field is mentioned only

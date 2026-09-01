@@ -2,7 +2,7 @@
 
 **Scope note.** This page treats the harness's own binary/package -- not
 the model it talks to, not the tools it exposes -- as the subject: how
-`claude`, `copilot`, and `opencode` themselves get onto a machine, how a
+`claude`, `copilot`, `opencode`, and `dsh` themselves get onto a machine, how a
 build is produced for each operating system and CPU architecture, and how
 a running installation discovers and applies a newer version of itself.
 No other page in this book owns this ground. The only prior trace is a
@@ -38,16 +38,25 @@ flowchart TD
 ```
 
 Claude Code, Copilot CLI, and OpenCode arrived at the diagram above
-independently -- see §6's synthesis for exactly how each one's own docs,
+independently -- see §7's synthesis for exactly how each one's own docs,
 changelog, or source confirms its own piece of it. pi (§4) is the one
 harness in this book that does **not** fit this diagram for its primary
 npm package -- its own docs describe it as "distributed as an npm
 package" outright, with no per-platform `optionalDependencies` binary
-swap in the main package at all; §4.2 and §6's synthesis both return to
+swap in the main package at all; §4.2 and §7's synthesis both return to
 exactly where pi's own distribution shape diverges from the other
 three's. Hermes Agent (§5) is a second, differently-shaped outlier again:
 it ships no npm/pip package for the harness itself at all, distributing
 instead as a git checkout inside a managed Python virtual environment.
+DeepSeek Harness (§6) partially fits this diagram: its main `@deepseek-ai/dsh`
+npm package has no per-platform `optionalDependencies` map at all (it is a
+pure-JavaScript package requiring Node.js at runtime), but a *sibling*
+npm package within the same monorepo -- `@deepseek-ai/node-addon-landlock-run`,
+the Linux-only Landlock sandboxing launcher -- does follow the entry-plus-
+platform-`optionalDependencies` pattern independently. The Python SDK
+distribution (`deepseek-harness-sdk` / `deepseek-harness-runtime-bin` on PyPI)
+bundles a precompiled platform-specific `dsh` executable inside a per-platform
+wheel, another separate shape from any channel on this page.
 
 ---
 

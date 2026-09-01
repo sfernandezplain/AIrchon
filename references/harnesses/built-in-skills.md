@@ -1,4 +1,4 @@
-# Built-in skills -- Claude Code, GitHub Copilot CLI, OpenCode, pi, and Hermes Agent
+# Built-in skills -- Claude Code, GitHub Copilot CLI, OpenCode, pi, Hermes Agent, and DeepSeek Harness
 
 What ships as a *skill* out of the box in each harness -- as distinct
 from a skill a user or repo author writes themselves -- and how each
@@ -17,9 +17,9 @@ see [Handoff mechanism](handoff-mechanism.md).
 
 Every claim below is tagged VERIFIED (fetched this session from the
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code,
-Copilot CLI, OpenCode, pi, and Hermes Agent are five separate products
-from five separate organizations -- nothing confirmed for one is
-assumed for another. Sources and fetch dates at the bottom.
+Copilot CLI, OpenCode, pi, Hermes Agent, and DeepSeek Harness are six
+separate products from six separate organizations -- nothing confirmed
+for one is assumed for another. Sources and fetch dates at the bottom.
 
 ---
 
@@ -521,7 +521,361 @@ it.
 
 ---
 
-## 6. Synthesis -- five different meanings of "built-in"
+## 6. DeepSeek Harness (DeepSeek AI)
+
+Sources for this section: VERIFIED, fetched 1 September 2026 directly from
+`github.com/deepseek-ai/deepseek-harness` (the `master` branch), via
+`gh api` content reads. Files fetched: `README.md`, `docs/subsystems/skills.md`,
+`packages/skill/README.md`, `packages/skill/tool-skill/README.md`,
+`packages/skill/skill-filesystem/README.md`, `packages/skill/skill-badge/README.md`,
+`packages/skill/skill-badge/assets/dsh-badge.md`, the eleven `SKILL.md` files
+under `.agents/skills/`, the two `SKILL.md` files under
+`packages/preset/agent-presets/presets/cordis/skills/`, and the relevant
+Agent Notes under `.agents/notes/implemented/feature/` and
+`.agents/notes/implemented/architecture/` (five notes in total).
+
+DeepSeek Harness (abbreviated `dsh`) is an open-source, MIT-licensed agent
+harness developed by DeepSeek AI, currently in developer preview with
+explicit compatibility-breaking change warnings per its own `README.md`
+(VERIFIED). Its architecture is "everything-is-a-plugin" built on the
+Cordis framework -- a design choice that shapes its skill system more
+deeply than any other harness this page documents, because skills are not
+a special-cased surface but one more plugin-provided capability composed
+alongside tools, persistence, and all other harness functions through the
+same `cordis.yml` composition mechanism.
+
+### 6.1 Three-layers-of-package architecture: registry, provider, consumer
+
+The skill system is not one package but four, each independently
+composable, and this split is architecturally load-bearing in a way
+none of the other five harnesses' own skill systems mirror:
+
+| Package | npm name | Role | ctx key |
+|---|---|---|---|
+| `skill/` | `@deepseek-ai/dsh-skill` | Pure provider registry that merges skill catalogs from any number of providers and resolves the winning skill for a name | `ctx.skills` |
+| `skill-filesystem/` | `@deepseek-ai/dsh-skill-filesystem` | Discovers skills from project, custom, and user directories and watches them for changes; one implementation of the provider contract | registers on `ctx.skills` |
+| `skill-badge/` | `@deepseek-ai/dsh-skill-badge` | Bundles the official "powered by dsh" badge skill as an immutable provider; disabled by default in the shipped CLI composition | registers on `ctx.skills` |
+| `tool-skill/` | `@deepseek-ai/dsh-tool-skill` | Publishes the session skill catalog and the model-facing `skill` loader tool | registers on `ctx.tools` |
+
+This table is VERIFIED from `packages/skill/README.md` (the group-level
+README). The separation means a deployment can compose the registry and a
+remote provider without the filesystem provider, or mount the registry and
+filesystem provider without the consumer (in which case skills exist in
+`ctx.skills` but no model-facing catalog or `skill` tool is rendered), or
+disable the badge provider specifically while keeping everything else --
+all by editing the composition rather than the code. The skill-system
+Agent Note (`.agents/notes/implemented/feature/2026-07-05-skill-system.md`,
+VERIFIED) explicitly names this split: "`dsh-base` loads the registry,
+local provider, and consumer as separate rows so its profiles get the
+same behavior while embedded or remote providers contribute skills without
+changing the registry or consumer."
+
+The registry is *host-held and layered per scope*, the same shape the
+tools registry uses: host-plane and repository-plugin registrations land
+in the global layer, while a preset's own skill-filesystem registration
+lands in that preset's layer. A read merges the global layer with the
+viewing scope's chain, and **the nearest layer wins a duplicate name
+outright** -- rank order decides only within one layer. This is a
+meaningfully different deduplication rule from any other harness this page
+documents: in Claude Code, Copilot CLI, OpenCode, and pi, same-name
+conflicts are resolved by discovery-path priority or first-wins ordering,
+not by a scope-chain shadowing rule inherited from a framework-level
+registry pattern. The layered-registry Agent Note
+(`.agents/notes/implemented/architecture/2026-08-09-layered-skill-registry.md`,
+VERIFIED) owns this design: "rank-pooling across layers was considered
+and rejected: ranks were designed to order sources that know about each
+other, and under a global pool a later-installed repository plugin could
+silently displace a preset's own same-named skill by registration-order
+tiebreak, changing a preset's behavior remotely."
+
+### 6.2 Bundled skills -- a single opt-in badge, not a feature suite
+
+DeepSeek Harness is the first harness in this book where "bundled skill"
+means something structurally different from "a skill shipped inside the
+product that is present in every session." The badge note
+(`.agents/notes/archived/feature/2026-08-06-bundled-dsh-badge-skill.md`,
+VERIFIED) and the badge package README (VERIFIED) together confirm:
+
+- `@deepseek-ai/dsh-skill-badge` is the one bundled skill shipped with
+  the harness. It contributes a single immutable skill named `dsh-badge`
+  that provides official "powered by dsh" attribution markup and a
+  packaged PNG asset. Its instruction body and PNG live under
+  `packages/skill/skill-badge/assets/` (VERIFIED from direct content
+  read of `assets/dsh-badge.md`).
+- The shipped CLI composition declares `skill-badge` as **disabled by
+  default**: "the shipped CLI composition includes the plugin disabled,
+  so deployments enable it explicitly" (badge README, VERIFIED). Enabling
+  the composition row is the opt-in mechanism; a disabled installation
+  advertises no badge skill and gains no model-visible content.
+- The badge provider registers at the bundled rank (600), after project
+  (100), project-agents (200), custom (300), user-dsh (400), and
+  user-agents (500) -- so a user-owned `dsh-badge` definition can
+  override it through the ordinary registry precedence contract (badge
+  note, VERIFIED).
+
+This is a single, narrow, opt-in attribution skill -- not a skill suite
+the way Claude Code's twelve bundled skills (§1) or Copilot CLI's
+cloud-agent environment guide (§2) are. The skill-system Agent Note
+(VERIFIED) explicitly states the design intent: "the local provider does
+not synthesize built-in system skills; deployments supply packaged skills
+through configured bundled roots or dedicated providers." And the
+materialize-built-in alternative was explicitly rejected: "Materialize
+built-in DSH authoring skills under `~/.dsh/skills/.system`. Rejected
+because bundled skills do not write user home on startup, and embedded
+or remote providers supply configured skills."
+
+### 6.3 Repository-shipped skills in `.agents/skills/` -- first-party but not "bundled" by the CLI's own definition
+
+The repo's own `.agents/skills/` directory contains eleven `SKILL.md`
+files, each a first-party skill authored and maintained alongside the
+harness source. They are:
+
+| Skill name | Frontmatter `disable-model-invocation` | Frontmatter `user-invocable` | Purpose |
+|---|---|---|---|
+| `dsh-code-review` | absent (defaults true) | absent (defaults true) | PR review guidance for the deepseek-harness repo itself |
+| `dsh-ci-test-reliability` | absent | absent | CI test isolation, flake diagnosis, and reliability guidance |
+| `dsh-doc` | absent | absent | Documentation authoring, restructuring, and bilingual alignment |
+| `dsh-prose-standard` | absent | absent | Prose review, trimming, and required-coverage judgment |
+| `dsh-trim-cot-leakage` | absent | absent | Hunting and fixing reasoning-transcript leakage in prose |
+| `dsh-pre-push-checks` | absent | absent | Selecting the smallest test/check set for an outgoing push |
+| `dsh-find-simplifications` | absent | absent | Finding dead, duplicated, speculative, or over-built surface area to remove |
+| `dsh-archive-agent-notes` | absent | absent | Lifecycle management for the repo's Agent Note corpus |
+| `dsh-merging-stacked-prs` | absent | absent | Landing GitHub PR stacks through the official `gh stack merge` flow |
+| `dsh-translate-docs` | **true** | **true** | Extended bilingual document workflow; user-explicit invocation only |
+| `record-browser-gif` | absent | absent | Recording browser interaction demos as GIFs for PR evidence |
+
+These are VERIFIED from direct content reads of each `SKILL.md` file in
+`.agents/skills/`. The critical distinction for this page is that these
+skills live under the **project** root `.agents/skills/` path, alongside
+the same `.agents/skills/` discovery path Copilot CLI and OpenCode also
+read. They are *repository-shipped*, meaning a developer working inside a
+clone of the `deepseek-harness` repo itself will discover them through
+the project-dsh path at rank 100 -- but they are not "bundled" in the
+sense the harness's own architecture uses that word (the `dsh-skill-badge`
+provider at rank 600 is the bundled tier, and it is disabled by default).
+Someone using a published `dsh` installation on their own project will
+not see these skills unless they copy them into their own
+`.agents/skills/` or `.dsh/skills/` directory.
+
+Additionally, the repo's `.claude/skills` directory is a **symlink** to
+`../.agents/skills` (VERIFIED from the GitHub API response, which
+records `type: "symlink"`, `target: "../.agents/skills"`). This makes
+these eleven skills also discoverable when Claude Code is used on the
+deepseek-harness repo itself -- the same cross-harness directory-sharing
+convergence documented in §7's synthesis, realized here as an explicit
+repository-maintained symlink rather than a harness-level discovery path.
+
+The Cordis preset at
+`packages/preset/agent-presets/presets/cordis/skills/` ships two
+additional skills scoped to the `cordis` agent preset:
+`cordis-plugin-development` (420-line skill for creating, modifying, and
+debugging dynamic Cordis plugins) and `editing-cordis-compositions` (165
+lines for authoring and validating `cordis.yml` compositions). These are
+VERIFIED from direct content reads. They follow the same `SKILL.md`
+format and would be discovered by the skill-filesystem provider when the
+`cordis` preset is active in a session whose cwd is the repo root -- but
+they live under the Cordis preset's own composition, not the project's
+general `.agents/skills/` directory, so they are scoped to that preset's
+agent layer rather than the global catalog.
+
+### 6.4 The independent invocation-policy model -- all four quadrants, enforced at every boundary
+
+DeepSeek Harness implements an invocation-control model structurally
+different from any other harness this page has sourced. Where Claude
+Code's `disableBundledSkills`/`skillOverrides` is a per-skill visibility
+toggle, Copilot CLI's `disable-model-invocation` is a single-boolean
+hint, and pi's is the same single-boolean pattern, DSH's
+`SkillInvocationPolicy` is a **two-dimensional, positive-boolean model
+with four deliberate quadrants**, explicitly documented as such in the
+invocation-policy Agent Note (VERIFIED):
+
+| `modelInvocable` | `userInvocable` | Effect |
+|---|---|---|
+| `true` | `true` | Catalog + `skill` tool + `/name` gesture |
+| `true` | `false` | Catalog + `skill` tool only; excluded from `/name` |
+| `false` | `true` | `/name` gesture only; absent from catalog and `skill` tool |
+| `false` | `false` | Neither surface; accessible only through trusted `ctx.skills.get()` callers |
+
+The frontmatter keys are the exact kebab-case forms `disable-model-invocation`
+and `user-invocable` -- matching the field names Claude Code and Copilot
+CLI also use -- but the *domain model* they project into is different:
+the parser rejects the old camel-case spellings outright ("the external
+format is the kebab-case Claude skills contract and the repository has no
+released compatibility obligation. Failing loud avoids silently preserving
+a nonstandard spelling" -- invocation-policy Agent Note, VERIFIED), and
+projects them into the typed `{ modelInvocable, userInvocable }` object
+rather than leaving them as raw frontmatter values that each consumer
+interprets independently.
+
+The model-facing `skill` tool enforces `isModelInvocable` before and
+after loading (the policy is rechecked on the loaded definition, so a
+policy change between discovery and load cannot expose the body). The
+TUI `/name` gesture enforces `isUserInvocable`. The browser `skills/list`
+RPC exposes only the intersection of both predicates. Trusted internal
+callers can read any skill through `ctx.skills.get()` regardless of
+policy, because the registry is policy-neutral -- enforcement is at the
+*consuming boundary*, not at the storage boundary. This separation of
+policy-neutral registry from consumer-enforced predicates is explicitly
+named in the invocation-policy Agent Note (VERIFIED) as a rejection of
+both the "keep `list()` model-filtered and add a second user list" and
+the "enforce invocation policy inside `ctx.skills.get()`" alternatives.
+
+The one live shipped example of the `modelInvocable: false` /
+`userInvocable: true` quadrant is `dsh-translate-docs` (§6.3 above),
+which sets `disable-model-invocation: true` and `user-invocable: true`
+in its frontmatter. Its own invocation-boundary section states: "Run this
+extended workflow only when the user explicitly invokes `dsh-translate-docs`
+by name. Never select or load it for ordinary documentation work, from
+another skill, or from an inferred translation need." The user-explicit
+invocation Agent Note (VERIFIED) names this mechanism directly: its
+decision section describes how the pre-step gesture boundary scans
+claimed user messages for whitespace-bounded `/name` tokens, loads the
+definition, checks `isUserInvocable`, and injects the full rendered
+content -- "this is the only entry point for `disable-model-invocation`
+skills, which the catalog and the `skill` tool never expose."
+
+### 6.5 Local discovery priority -- six ranked tiers, including the cross-harness `.agents/skills` path
+
+```mermaid
+flowchart TD
+    P["Skill name requested<br/>or catalog built"] --> R{Registry resolves<br/>name across scope layers}
+    R --> L["Winning layer selected<br/>(nearest-wins across layers)"]
+    L --> RK["Within one layer,<br/>rank resolves duplicates"]
+    RK --> R1["Rank 100: project .dsh/skills"]
+    RK --> R2["Rank 200: project .agents/skills"]
+    RK --> R3["Rank 300: customSkillDirs"]
+    RK --> R4["Rank 400: user ~/.dsh/skills"]
+    RK --> R5["Rank 500: user ~/.agents/skills"]
+    RK --> R6["Rank 600: bundledSkillDir"]
+```
+
+The local filesystem provider scans six ranked tiers (VERIFIED from
+`docs/subsystems/skills.md` and `packages/skill/skill-filesystem/README.md`):
+
+| Rank | Source label | Root |
+|---|---|---|
+| 100 | `project-dsh` | `<projectRoot>/.dsh/skills` |
+| 200 | `project-agents` | `<projectRoot>/.agents/skills` |
+| 300 | `custom` | `Config.customSkillDirs` |
+| 400 | `user-dsh` | `<dshHome>/skills` (skips `.system` child) |
+| 500 | `user-agents` | `<agentsHome>/skills` |
+| 600 | `bundled` | `Config.bundledSkillDir` when configured |
+
+Lower ranks win duplicate names. The project root is the nearest ancestor
+containing `.git`; without one, the supplied cwd is used. When `ctx.fs`
+is available, the `.git` probe goes through the filesystem service so
+remote or sandboxed workspaces do not fall back to the host filesystem
+boundary. The user `~/.dsh/skills` scan skips its `.system` child "so a
+system-owned directory is not treated as normal user content" (skills.md,
+VERIFIED). The `bundledSkillDir` at rank 600 is the one the badge
+provider uses; it can also be set via the `DSH_BUNDLED_SKILL_DIR`
+environment variable.
+
+The `.agents/skills` path at ranks 200 and 500 is the same cross-harness
+convergence documented for Copilot CLI (§2.4), OpenCode (§3.2), and pi
+(§4.3) -- DSH reads from it at both project and user levels. The `.dsh/skills`
+path at ranks 100 and 400 is DSH's own primary path, analogous to Claude
+Code's `.claude/skills` and OpenCode's `.opencode/skills`. DSH does not
+read from `.claude/skills` or `.opencode/skills` by default -- the
+`.agents/skills` tier is the shared convergence point, exactly as it is
+for the other harnesses that read it.
+
+Skill files are discovered either as directory bundles (`<name>/SKILL.md`)
+or flat Markdown files (`<name>.md`). Nested recursive `**/SKILL.md`
+discovery is deliberately not supported and the alternative was explicitly
+rejected (skill-system Agent Note, VERIFIED: "Rejected. Flat files and
+one-level directory bundles cover the configured roots while keeping
+duplicate handling and catalog order easy to reason about.").
+
+### 6.6 Frontmatter surface and provider contract
+
+A DSH skill's YAML frontmatter requires `name` (kebab-case, matching the
+regex `^[a-z0-9]+(?:-[a-z0-9]+)*$`) and `description`. Optional fields
+are `whenToUse`, `metadata` (an arbitrary `Record<string, unknown>`),
+`disable-model-invocation` (boolean), and `user-invocable` (boolean).
+This is VERIFIED from `docs/subsystems/skills.md`'s "Skill identity"
+section and the skill-system Agent Note. Unknown frontmatter fields are
+parsed into the `metadata` object (the YAML parser reads the full
+frontmatter as an open `Record<string, unknown>`) and then projected
+into the typed domain model; only the recognized fields above are
+consumed by the registry, while the raw `metadata` is carried through
+to consumers without interpretation.
+
+Fields that are specific to other harnesses but not part of DSH's own
+contract -- `allowed-tools`, `argument-hint`, `context: fork`, `agent`,
+`background`, `hooks`, `paths`, `shell`, string substitutions -- are
+neither parsed nor enforced. The skill-system Agent Note (VERIFIED)
+names them as deferred: "Forked skill contexts (`context: fork`),
+parameter declarations and hints (`arguments` and `argument-hint`), and
+per-skill tool constraints (`allowed-tools` and `disallowed-tools`) are
+outside the shipped contract. The registry, local provider, and
+model-facing tool do not parse, advertise, or enforce these fields."
+This is the most explicit "intentionally deferred" statement found for
+any cross-harness frontmatter feature across all six harnesses this page
+documents.
+
+The `SkillProvider` contract (VERIFIED from `docs/subsystems/skills.md`)
+is a typed TypeScript interface: `list()` returns ranked candidates or
+an explicit `SkillProviderObservation` carrying a `complete` boolean, and
+`get()` loads a full `SkillDefinition` for a previously listed candidate.
+The registry is not limited to the filesystem provider; any Cordis
+plugin can register its own `SkillProvider` synchronously during `apply()`,
+contributing skills from remote registries, embedded data, or any other
+source. The runtime `ctx.skills.register()` path adds in-process skills
+directly, using a reserved `runtime` provider name.
+
+### 6.7 Session catalog and hot-refresh -- durable, diffed by digest, not by content
+
+The consumer (`dsh-tool-skill`) injects one durable user-role
+`<system-reminder>` catalog at the session's first `agent/pre-step` that
+observes a non-empty complete view. The catalog renders sorted skill
+`name` and capped `description` only; it omits bodies, paths, sources,
+providers, and routing hints including `whenToUse`. Descriptions are
+whitespace-normalized, XML-escaped, and capped by
+`catalogDescriptionMaxLength` (default 500, minimum 3) -- VERIFIED
+from `packages/skill/tool-skill/README.md`.
+
+Before each later model step, the consumer applies exact `skill` tool
+visibility, computes a digest of the rendered entries between the
+`<available_skills>` tags, and compares it against the newest visible
+catalog message. A changed digest appends a complete replacement catalog
+through `agent.inject()`. An incomplete provider snapshot emits nothing
+and preserves the last-good model view. If compaction hides every
+historical catalog message, the next complete snapshot re-establishes
+the current catalog. An empty catalog (all skills removed) appends an
+explicit empty replacement that retires earlier names. This digest-based
+diffing is a distinct implementation choice from the simpler
+"re-render-and-replace" approach the other harnesses use -- it prevents
+whitespace or ordering changes from triggering unnecessary catalog
+replacements, a token-saving optimization whose explicit design is
+documented in `packages/skill/tool-skill/README.md` (VERIFIED: "the
+catalog is a durable projection, diffed by a digest over the published
+entries rather than the rendered prose, so the `<system-reminder>`
+framing can never force a republish and consumers never re-parse the
+`<available_skills>` block").
+
+The model-facing `skill({ name })` tool returns a structured result
+containing `<skill_content name="...">`, `<skill_resources>`, and
+`<skill_instructions>`, with resource guidance supplied as a directory
+path, URL, or opaque provider-managed description. Full skill bodies are
+not cached by the registry; each `get()` call re-reads the current file
+content from the provider. Body-only edits therefore do not change the
+catalog digest and produce no catalog replacement message -- a later
+tool call reads the current provider content while earlier tool results
+remain as historical facts.
+
+Chokidar-based filesystem watching invalidates the provider catalog when
+skills are added, removed, or have their frontmatter changed; resource
+subtree edits do not. First-party `write` and `edit` tools synchronously
+invalidate a relevant provider so the model observes its own filesystem
+mutation without waiting for the host watcher. Missing roots are probed
+until they appear. This is VERIFIED from both the skill-filesystem README
+and the hot-refresh Agent Note
+(`.agents/notes/implemented/feature/2026-07-27-skill-catalog-hot-refresh.md`).
+
+---
+
+## 7. Synthesis -- six different meanings of "built-in"
 
 ```mermaid
 flowchart TD
@@ -548,9 +902,15 @@ flowchart TD
         HM2["Named agentskills.io conformance +<br/>3-level skills_list()/skill_view() tool-callable<br/>progressive disclosure"]
         HM3["Autonomous self-authorship via skill_manage<br/>-- encouraged default, no review gate<br/>unless skills.write_approval: true is set"]
     end
+    subgraph DSH["DeepSeek Harness"]
+        D1["One opt-in badge skill<br/>(dsh-badge, disabled by default)<br/>-- bundled provider, not auto-loaded"]
+        D2["11 repo-shipped skills in .agents/skills/<br/>(dsh-code-review, dsh-doc,<br/>dsh-prose-standard, etc.)<br/>-- project-path, not product-bundled"]
+        D3["Per-preset skills in Cordis compositions<br/>(cordis-plugin-development,<br/>editing-cordis-compositions)<br/>-- scoped to the preset's layer"]
+        D4["Provider registry + 6-rank<br/>local discovery + 4-quadrant<br/>invocation policy"]
+    end
 ```
 
-**"Built-in" splits into at least three distinct claims, and they
+**"Built-in" splits into at least six distinct claims, and they
 should not be collapsed into one.** (1) Shipped and present in every
 session automatically -- confirmed for Claude Code's bundled-skill set
 and for Copilot CLI's changelog-named cloud-agent guide. (2)
@@ -566,56 +926,82 @@ pipeline; and (4), Hermes' own `skill_manage` tool (§5.3), the harness
 authoring new skills **without** a human-review gate by default, a
 distinct fourth point on the same spectrum found nowhere else in this
 page -- autonomous authorship exists at both a reviewed and an
-unreviewed default across the five harnesses this page now documents.
+unreviewed default across the harnesses this page documents. (5)
+Repository-shipped but not product-bundled -- DeepSeek Harness's eleven
+`.agents/skills/` skills, which a developer working inside the
+deepseek-harness repo will discover through the project path, but a user
+of a published `dsh` installation on their own project will not see
+without copying them. (6) Composition-scoped -- DeepSeek Harness's
+per-preset Cordis skills, which exist only in the agent layer of the
+preset that mounts them, a scoping mechanism none of the other five
+harnesses implement at the skill-discovery level.
 
-**OpenCode is the one harness with no confirmed built-in skill content
-of its own at all.** Its skill mechanism reads as a deliberately
-generic extension point -- the same `.claude/skills` directories
-Claude Code and Copilot CLI also read, layered under its own
-`.opencode/skills` and `.agents/skills` paths -- with authoring left
-entirely to the user or project, and no analogue found for either
-Claude Code's bundled-skill set or Copilot CLI's Forge-driven
-auto-drafting.
+**DeepSeek Harness's "bundled" is the narrowest in this book, and
+its "first-party" is the most architecturally distributed.** A single
+opt-in badge skill is the only product-bundled skill the CLI ships.
+Its repository-level skills are plentiful (eleven), but they live under
+the project's `.agents/skills/` path and are absent from any other
+project. Its preset-level skills are composition-scoped to a specific
+agent preset's layer. This three-tier distribution (product-bundled,
+repository-shipped, composition-scoped) is genuinely new in this page
+and has no direct analogue in any of the other five harnesses' skill
+systems.
 
-**The directory-sharing convergence is real and already load-bearing
-elsewhere in this book, and pi turns it into an explicit, first-party
-feature rather than an emergent side effect.** Claude Code's, Copilot
-CLI's, and OpenCode's skill-discovery logic all read `.claude/skills`
-as one of their own search paths (Copilot CLI and OpenCode both do so
-explicitly, per their own docs), meaning a skill authored for Claude
-Code is very likely to be picked up unmodified by the other two without
-any porting step -- a rare case of de facto cross-harness portability
-in a book that otherwise stresses how little transfers between these
-products. pi's own docs go one step further and document a dedicated
-"Using Skills from Other Harnesses" configuration example instructing a
-user to add `~/.claude/skills` and `~/.codex/skills` directly to pi's
-own `skills` settings array (§4.3) -- the most explicit, first-party-endorsed
-instance of this portability pattern this book has found anywhere, not
-an inferred convergence from independently-written discovery-path lists.
-Hermes' own progressive-disclosure format targets `agentskills.io`
-directly by name rather than converging on it by observation (§5.1),
-alongside pi (§4.1) -- a real, named, cross-vendor specification two
-independently-built harnesses now explicitly implement, distinct from
-the emergent `.claude/skills`-path convergence the first three harnesses
-merely happen to share. The `SKILL.md` frontmatter itself is not
-identically shaped across any of the five, however: Claude Code's field
-set is by far the largest (`context: fork`, `agent`, `background`,
-`hooks`, `paths`, `shell`, string substitutions, and more, per
-[Instruction context budget](instruction-context-budget.md)), Copilot
+**The two-dimensional invocation-policy model is unique in this book.**
+DeepSeek Harness's `SkillInvocationPolicy` with its four explicit
+quadrants (`modelInvocable` × `userInvocable`, each defaulting to
+`true`, each enforced at the consuming boundary rather than at the
+registry) goes beyond the simpler single-boolean
+`disable-model-invocation` toggle Claude Code, Copilot CLI, and pi
+implement. The "both-false" quadrant -- a skill accessible only through
+trusted `ctx.skills.get()` callers -- has no equivalent in any other
+harness this page has sourced. Whether this is a practical improvement
+or an over-built surface remains an open question; as of the developer
+preview, `dsh-translate-docs` is the only shipped skill using the
+model-disabled/user-enabled quadrant, and no shipped skill exercises the
+both-disabled quadrant.
+
+**The directory-sharing convergence continues with a sixth participant.**
+DeepSeek Harness reads `.agents/skills` at both project (rank 200) and
+user (rank 500) levels, joining Claude Code's, Copilot CLI's, OpenCode's,
+and pi's own confirmed reads of that same path. Its own primary path is
+`.dsh/skills` (ranks 100 and 400), not `.claude/skills` -- but the
+deepseek-harness repo itself symlinks `.claude/skills` to
+`../.agents/skills`, the most concrete demonstration yet that the
+convergence is real and load-bearing even at the repository-maintenance
+level. DSH's provider-registry architecture also means a future
+provider could read `.claude/skills` or any other external directory as
+a custom skill root, without changing the harness -- pi's explicit
+cross-harness configuration example (§4.3) is already a live instance
+of that pattern, and DSH's `customSkillDirs` configuration at rank 300
+provides the same extensibility point in DSH's own vocabulary.
+
+**The `SKILL.md` frontmatter field count now spans an even wider range.**
+Claude Code's field set is by far the largest (`context: fork`, `agent`,
+`background`, `hooks`, `paths`, `shell`, string substitutions, and more,
+per [Instruction context budget](instruction-context-budget.md)). Copilot
 CLI's confirmed set is smaller (`name`, `description`, `license`,
 `allowed-tools`, plus changelog-only `argument-hint` and
-`disable-model-invocation`), pi's sits in between (§4.4: adding
-`compatibility`, `metadata`, and its own `disable-model-invocation`),
-and OpenCode's is smaller still (`name`, `description`, `license`,
-`compatibility`, `metadata`) -- so a skill written against Claude
-Code's fuller frontmatter surface may load on the others with
-unrecognized fields silently ignored (OpenCode's and pi's docs both
-state this explicitly), rather than with equivalent behavior actually
-preserved. Hermes' own frontmatter (`name`, `description`, `version`,
-`platforms`, §5.3) is closest in size to OpenCode's and pi's, though
-this session did not find a stated ignore-unknown-fields policy in the
-one Hermes docs page fetched -- left as an open gap rather than assumed
-to match the other harnesses' documented leniency.
+`disable-model-invocation`). pi's sits in between (§4.4: adding
+`compatibility`, `metadata`, and its own `disable-model-invocation`).
+OpenCode's is smaller still (`name`, `description`, `license`,
+`compatibility`, `metadata`). Hermes' own frontmatter (`name`,
+`description`, `version`, `platforms`, §5.3) is closest in size to
+OpenCode's and pi's. DeepSeek Harness's confirmed set (`name`,
+`description`, `whenToUse`, `metadata`, `disable-model-invocation`,
+`user-invocable`) is the only one that matches both `disable-model-
+invocation` and `user-invocable` as paired kebab-case keys projected
+into a two-dimensional typed policy -- the same individual keys appear
+elsewhere, but the *domain model* they feed is unique. Notably, the
+fields DSH explicitly defers (`allowed-tools`, `argument-hint`,
+`context: fork`) are the ones Claude Code and Copilot CLI already ship --
+so a skill written against DSH's frontmatter will load on those
+harnesses with its DSH-specific fields silently ignored (per those
+harnesses' own documented leniency), but will not carry DSH's
+invocation-policy semantics, and a skill written against Claude Code's
+fuller frontmatter will load on DSH with its extra fields carried as
+uninterpreted `metadata` -- cross-harness portability of the *format*
+does not guarantee portability of the *behavior*.
 
 ---
 
@@ -634,6 +1020,21 @@ to match the other harnesses' documented leniency.
 | `gh api search/code` against `anomalyco/opencode` | 2026-07-31 | Corroborating (not proving) the absence of any bundled `SKILL.md` in that repository's indexed code |
 | `github.com/earendil-works/pi`'s `packages/coding-agent/docs/skills.md` (via `gh api`) | 2026-08-20 | pi's own `agentskills.io` conformance statement and named deviation (§4.1), its no-confirmed-bundled-skills posture (§4.2), the "Using Skills from Other Harnesses" cross-harness directory example (§4.3), its frontmatter field set (§4.4), and its `/skill:name` invocation/reliability caveat (§4.5) |
 | `hermes-agent.nousresearch.com/docs/user-guide/features/skills` (WebFetch) | 2026-08-24 | Hermes' own `agentskills.io` conformance statement (§5.1), the `skills_list()`/`skill_view()` tool-callable three-level progressive disclosure (§5.2), the `SKILL.md` frontmatter fields, the `skill_manage` autonomous-authorship tool and its contrast with Copilot CLI's reviewed pipeline (§5.3), the stacked slash-command invocation syntax, and the `skills.write_approval` config key |
+| `deepseek-ai/deepseek-harness` `README.md` (via `gh api` content read) | 2026-09-01 | DSH's own product description, developer-preview status, Cordis/everything-is-a-plugin architecture, run instructions |
+| `deepseek-ai/deepseek-harness` `docs/subsystems/skills.md` (via `gh api` content read) | 2026-09-01 | DSH's skill subsystem reference: the provider registry, local discovery priority table, `SkillInvocationPolicy`, `SkillSummary`/`SkillCandidate`/`SkillDefinition` type interfaces, session catalog and tool contract, Cordis API surface |
+| `deepseek-ai/deepseek-harness` `packages/skill/README.md` (group-level, via `gh api` content read) | 2026-09-01 | The four-package skill capability family: registry, filesystem provider, badge provider, consumer |
+| `deepseek-ai/deepseek-harness` `packages/skill/tool-skill/README.md` (via `gh api` content read) | 2026-09-01 | The model-facing skill catalog and loader tool: catalog template, tool result template, `catalogDescriptionMaxLength`, user-explicit invocation, digest-based diffing, KV-cache effect analysis |
+| `deepseek-ai/deepseek-harness` `packages/skill/skill-filesystem/README.md` (via `gh api` content read) | 2026-09-01 | The local filesystem provider: six-rank discovery priority, skill format, roots and priority, watching and invalidation, `bundledSkillDir`, `includeDefaultRoots` |
+| `deepseek-ai/deepseek-harness` `packages/skill/skill-badge/README.md` and `assets/dsh-badge.md` (via `gh api` content read) | 2026-09-01 | The bundled badge provider: single immutable `dsh-badge` skill, disabled by default, resource base, PNG asset |
+| `deepseek-ai/deepseek-harness` `.agents/skills/` (eleven `SKILL.md` files, via `gh api` content read) | 2026-09-01 | The repo-shipped project-level skills: frontmatter fields, invocation-policy settings, purpose descriptions |
+| `deepseek-ai/deepseek-harness` `packages/preset/agent-presets/presets/cordis/skills/` (two `SKILL.md` files, via `gh api` content read) | 2026-09-01 | The Cordis-preset-scoped skills: `cordis-plugin-development`, `editing-cordis-compositions` |
+| `deepseek-ai/deepseek-harness` `.claude/skills` (directory listing, via `gh api`) | 2026-09-01 | The symlink from `.claude/skills` to `../.agents/skills` that makes repo-level skills discoverable under Claude Code |
+| `deepseek-ai/deepseek-harness` `.agents/notes/implemented/feature/2026-07-05-skill-system.md` (via `gh api` content read) | 2026-09-01 | The original skill-system Agent Note: four-package split, local discovery, progressive disclosure, frontmatter parsing, deferred features |
+| `deepseek-ai/deepseek-harness` `.agents/notes/implemented/feature/2026-07-28-skill-invocation-policy.md` (via `gh api` content read) | 2026-09-01 | The independent invocation-policy decision: four-quadrant `SkillInvocationPolicy`, kebab-case frontmatter keys, consumer-boundary enforcement, camel-case rejection |
+| `deepseek-ai/deepseek-harness` `.agents/notes/implemented/feature/2026-07-27-skill-catalog-hot-refresh.md` (via `gh api` content read) | 2026-09-01 | The skill catalog hot-refresh decision: Chokidar watching, completeness bit, digest-based diffing, body-only edit isolation |
+| `deepseek-ai/deepseek-harness` `.agents/notes/implemented/feature/2026-08-08-user-explicit-skill-invocation.md` (via `gh api` content read) | 2026-09-01 | The user-explicit `/name` gesture decision: pre-step injection, `isUserInvocable` check, `renderSkillContent` sharing, peer-product survey |
+| `deepseek-ai/deepseek-harness` `.agents/notes/implemented/architecture/2026-08-09-layered-skill-registry.md` (via `gh api` content read) | 2026-09-01 | The layered skill registry decision: host-held + per-scope, nearest-wins shadowing, rank-within-one-layer, cold-session gateway |
+| `deepseek-ai/deepseek-harness` `.agents/notes/archived/feature/2026-08-06-bundled-dsh-badge-skill.md` (via `gh api` content read) | 2026-09-01 | The bundled badge-skill decision: one immutable `dsh-badge` provider, disabled by default, rank 600 |
 
 Not consulted this session, and therefore not cited above: direct
 inspection of `anomalyco/opencode`'s `dev`-branch source for the

@@ -1,22 +1,27 @@
-# Agent loop: Claude Code, GitHub Copilot CLI, OpenCode, pi, and Hermes Agent, and how to verify each
+# Agent loop: Claude Code, GitHub Copilot CLI, OpenCode, pi, Hermes Agent, and DeepSeek Harness, and how to verify each
 
 **Scope note.** [agent-loop.md](agent-loop.md) is deliberately general-concepts
 only (Thought/Action/Observation, ReAct, stop-and-parse) and holds no
 harness sections on purpose. This page is the harness-specific
-companion: what Claude Code, Copilot CLI, OpenCode, pi, and Hermes Agent
-each document/implement about their own loop, and -- per AUTHORITY
-OVERREACH discipline -- no harness's mechanism is assumed to describe
-another's. Added 2026-08-24: a Copilot CLI section, closing a real gap
-this page previously left (it originally covered only two of the book's
-three target harnesses); the Claude Code and OpenCode sections below are
-unchanged from the original 2026-07-30 write. Added 2026-09-01: a pi
-section (§4), covering a fourth harness already documented elsewhere in
-this book (see that section's own opening note for exactly which pages)
-but not previously covered on this specific page. Also added
-2026-09-01: a Hermes Agent section (§5), the fifth and last harness this
-book covers, sourced directly from its own public, open-source Python
-implementation rather than from documentation of a closed product --
-this page's most directly verifiable harness after OpenCode and pi.
+companion: what Claude Code, Copilot CLI, OpenCode, pi, Hermes Agent,
+and DeepSeek Harness each document/implement about their own loop, and
+-- per AUTHORITY OVERREACH discipline -- no harness's mechanism is
+assumed to describe another's. Added 2026-08-24: a Copilot CLI section,
+closing a real gap this page previously left (it originally covered only
+two of the book's three target harnesses); the Claude Code and OpenCode
+sections below are unchanged from the original 2026-07-30 write. Added
+2026-09-01: a pi section (§4), covering a fourth harness already
+documented elsewhere in this book (see that section's own opening note
+for exactly which pages) but not previously covered on this specific
+page. Also added 2026-09-01: a Hermes Agent section (§5), the fifth
+harness this book covers, sourced directly from its own public,
+open-source Python implementation rather than from documentation of a
+closed product -- this page's most directly verifiable harness after
+OpenCode and pi. Added 2026-09-01: a DeepSeek Harness section (§6),
+covering the sixth harness documented in this book, an open-source
+TypeScript agent framework built on the Cordis plugin architecture,
+sourced directly from its own public repository's `docs/` and generated
+config/event catalogs.
 
 ## 1. Claude Code (Agent SDK docs)
 
@@ -830,9 +835,349 @@ of their own internals to notice one, and pi's own `AgentLoopConfig`
 type (§4) has no default-cap field to be inconsistent about in the
 first place.
 
-## 6. Comparison
+## 6. DeepSeek Harness (DeepSeek AI)
 
-All five document the same shape at the level the Hugging Face course
+**Source and naming note.** DeepSeek Harness (repository
+`github.com/deepseek-ai/deepseek-harness`, `master` branch, confirmed as the
+repository's default branch this session via `gh api repos/deepseek-ai/deepseek-harness`)
+is an open-source, TypeScript-based agent framework whose documented design
+principle is "Everything is a Plugin" -- the agent loop itself is a Cordis
+plugin (`@deepseek-ai/dsh-agent-loop`), swappable from configuration alongside
+every other capability. The harness is a developer preview at time of writing
+(September 2026); this section is grounded in the repository's own `docs/`
+directory and its generated config/event catalogs, fetched directly this
+session. The repository ships real, public source for its entire Cordis tree,
+making DeepSeek Harness -- alongside OpenCode, pi, and Hermes Agent -- one of
+the openly verifiable harnesses on this page.
+
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant Agent as Agent (ctx.agents)
+    participant Loop as AgentLoop driver
+    participant PreStep as agent/pre-step waterfall
+    participant Session as Session log (ctx.sessions)
+    participant LLM as Provider (ctx.llm)
+    participant Tools as Tool registry (ctx.tools)
+    participant TurnStopping as agent/turn-stopping serial
+
+    Caller->>Agent: followup / steer / inject
+    Agent->>Loop: inbox wakes driver
+    Loop->>Session: turn/start
+    Loop->>Loop: claim next-step input + one next-turn message
+    Loop->>PreStep:(agent/pre-step) reject | enter(messages, startsRequestSeries?)
+    alt step rejected or empty first claim
+        Loop->>Session: turn/end (no step)
+    else step entered
+        Loop->>Session: step/start
+        Loop->>Session: user/message (entered batch)
+        Loop->>LLM: agent/request → llm/stream waterfalls
+        LLM-->>Session: assistant/chunk* (streaming deltas)
+        Loop->>Session: assistant/message (assembled)
+        alt model request failed
+            Loop->>Session: step/end
+            Loop->>Loop: agent/request-error waterfall (retry | preserve error)
+        else tool calls present
+            Loop->>Tools: classify by executionMode (parallel | exclusive)
+            loop barriers and bounded rolling pool
+                Tools->>Session: tool/call
+                Tools->>Tools: pre-execute → execute → post-execute
+                Tools->>Session: tool/result
+            end
+            Loop->>Session: step/end
+            opt next-step input pending or tools owe another request
+                Loop->>Loop: claim next-step → next step (same turn)
+            end
+        else no tool calls (natural stop)
+            Loop->>Session: step/end
+            opt next-step inbox empty
+                Loop->>TurnStopping: agent/turn-stopping (serial, no next())
+            end
+        end
+    end
+    Loop->>Session: turn/end
+```
+
+### 6.1 Turn and step: a two-level loop with an event-sourced session log
+
+VERIFIED (`docs/architecture.md`, fetched 1 September 2026 from
+`raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/docs/architecture.md`):
+the harness defines two nested units. A **step** is "one model request plus
+the tools it calls." A **turn** is "zero or more steps: it opens before its
+first input is claimed and closes once nothing is owed." The architecture doc
+lays out the concrete flow:
+
+> ```text
+> turn/start
+>   claim next-step input plus one queued message
+>   assemble prompt sections + tool schemas
+>   -> agent/pre-step                   reject | enter(messages, startsRequestSeries?)
+>      reject, or a first enter rewritten empty -> close the turn with no step
+>      step/start
+>      append entered messages as user/message
+>      derive model history from the log
+>      agent/request -> llm/stream -> assistant/chunk* -> assistant/message
+>      tool/call* -> tools/pre-execute -> tools/execute -> tools/post-execute -> tool/result*
+>      step/end
+>      tools owe another request, or next-step input arrived -> claim -> next step
+>   -> agent/turn-stopping
+> turn/end
+> ```
+
+This is a genuine two-level structure that no other harness on this page
+documents in the same terms: Claude Code, Copilot CLI, and OpenCode all have
+a single "turn" unit (one LLM call + tool execution), and pi's `turn_start`/
+`turn_end` pair brackets one LLM call and its tool execution together but
+offers no second nesting level. DeepSeek Harness' turn can contain *multiple*
+steps within one open `turn/start`/`turn/end` pair, where each step is one
+model call plus its tool round, and a subsequent step in the same turn occurs
+when "tools owe another request, or next-step input arrived." This makes the
+turn a strictly larger unit than the step: a multi-step turn is a sustained
+agent engagement that may run several model calls before `agent/turn-stopping`
+fires and the turn ends.
+
+VERIFIED (`docs/subsystems/session.md`, fetched this session): the session log
+is the single source of truth. Every model-visible fact is an append-only
+`SessionEvent`, and `deriveMessages()` projects LLM message history from it
+incrementally (each surface node projected once, cached, then rebuilt on a
+surface rewrite). The session event vocabulary is merge-extensible via
+declaration merging -- plugins add event types without touching the owning
+package. The twelve core event variants include `turn/start`, `turn/end`,
+`step/start`, `step/end`, `user/message`, `assistant/chunk`, `assistant/message`,
+`tool/call`, `tool/result`, `request/header`, `request/context`, and
+`session/end-seed`. The `request/header` event logs the full request envelope
+(provider, model, reasoning effort, rendered system prompt, assembled tool
+schemas) for each loop boundary; every conversation request is a pure function
+of the log, and a runtime invariant asserts this ("Model-visible means
+logged").
+
+### 6.2 The pre-step gate: rejection, message rewriting, and request-series markers
+
+VERIFIED (`docs/subsystems/core.md`, fetched this session; same content in
+`docs/agent-lifecycle.md`): the `agent/pre-step` waterfall is the only
+listener chain before request derivation. Its input carries the exclusive
+claimed batch (`messages`), the proposed step's coordinates (`turn`, `step`),
+and the current turn's cancellation `signal`. A listener returns a
+`PreStepDecision`:
+
+- `{ kind: 'reject' }` -- no step opens; a rejected or empty first claim
+  still closes a durable turn that spent no step, "so the log records the
+  attempt."
+- `{ kind: 'enter', messages: UserMessage[] }` -- the step proceeds with
+  these (possibly rewritten) messages appended as `user/message` events.
+- `{ kind: 'enter', messages: UserMessage[], startsRequestSeries?: true }`
+  -- as above, but additionally begins a distinct model-message series,
+  logging a fresh `request/header` (reason `series`, or `change` carrying
+  `startsSeries: true` when the envelope changed too).
+
+A listener that rebuilds a downstream enter decision must spread it
+(`{ ...decision, messages }`) so the `startsRequestSeries` declaration
+survives. The `agent/pre-step` decision is "authoritative; listeners
+wrapping `next()` preserve downstream messages and `startsRequestSeries`
+unless replacement is intentional." This is a more structured interception
+mechanism than any other harness on this page documents at the same point in
+the loop: Claude Code's hooks can intercept before tool *execution* but not
+before model *request*; Copilot CLI's hook layer intercepts at tool-execution
+time; OpenCode's `MAX_STEPS_PROMPT` injection and pi's
+`shouldStopAfterTurn`/`prepareNextTurn` hooks operate at turn boundaries, not
+at a per-step request gate.
+
+### 6.3 The natural stop condition, the turn-stopping checkpoint, and steering reinjection
+
+VERIFIED (`docs/architecture.md` and `docs/agent-lifecycle.md`): once a step
+completes with no tool calls (no `tool/call` events), and no next-step input
+has arrived in the inbox, the loop reaches `agent/turn-stopping` -- a serial
+terminal checkpoint with no `next()`. This is structurally the same
+model-driven stop condition this page documents for every other harness: the
+model decides when the loop ends by not requesting tools. The difference is
+architectural: DeepSeek Harness makes the stop a named, extensible
+checkpoint (`agent/turn-stopping`, serial, listeners run once in order and
+cannot delegate), where other harnesses simply end the loop without a final
+interception point.
+
+VERIFIED (same docs): steering and injected context pass through the same
+`agent/pre-step` waterfall after a later claim operation takes their
+next-step batch. The `Agent` interface exposes three delivery methods with
+distinct inbox targets and wake semantics -- `followup` (queues an ordinary
+follow-up turn and wakes the driver), `steer` (submits steering for the
+nearest step, waking an idle driver or being consumed at a running driver's
+next step boundary), and `inject` (queues model-facing context for the next
+pre-step *without* waking the driver). This is architecturally closer to pi's
+steering/follow-up/inject queue mechanism (§4 above) than to Copilot CLI's
+autopilot nudge (§2) or OpenCode's step-limit injection (§3): all four
+inject a message that becomes a model-visible input, but the *origin* of the
+injection differs. Copilot CLI's autopilot nudge originates from a
+harness-side condition (the model did not call `task_complete`). OpenCode's
+`MAX_STEPS_PROMPT` originates from a step-count ceiling being reached.
+DeepSeek Harness' steering originates from an explicit user or programmatic
+call to `Agent.steer()`, the same "human-initiated reinjection" class as
+pi's own steering/follow-up queues.
+
+### 6.4 Tool dispatch: a concurrency-safe classifier with rolling-pool parallelism
+
+VERIFIED (`docs/subsystems/tools.md` and `docs/tool-execution-pipeline.md`,
+fetched this session): the tool registry classifies each pending call by
+`executionMode` -- `{ kind: 'parallel' }` or `{ kind: 'exclusive' }`. The
+agent loop "asks the registry for each pending call's execution mode and uses
+it to form exclusive barriers and rolling-pool parallel runs." A tool opts
+into concurrency by declaring an `isConcurrencySafe?(args)` method that
+returns exactly `true`; "omission, exceptions, non-`true` returns, and
+invalid `defineTool` arguments are exclusive." VERIFIED
+(`docs/agent-lifecycle.md`): the dispatch loop is "barriers and bounded
+rolling pool, reclassify before start" -- parallel-safe calls run concurrently
+within their segment, exclusive calls form ordering barriers, and the
+reclassification before each start ensures a tool's own `isConcurrencySafe`
+predicate is consulted on its actual arguments at dispatch time, not cached.
+
+VERIFIED (`docs/tool-execution-pipeline.md`): beyond the concurrency
+classifier, the full tool execution pipeline runs through five stages in
+order: `tools/pre-execute` (allow/deny/ask waterfall), registered monotonic
+guards (can only reduce permission, never restore it), `tools/execute`
+(around-dispatch wrappers for timeout/retry/metrics), `tools/post-execute`
+(accept/replace/block/result), and finally `ToolDefinition.finalizeContent`
+(a synchronous content-only invariant). This pipeline is the most explicitly
+layered tool-dispatch architecture documented on this page: Hermes Agent's
+segment planner (§5.3) is closer in spirit but simpler in structure (it
+partitions a batch into parallel/sequential segments without the five-stage
+waterfall/guard/post/finalize pipeline), and Claude Code's read-only-hint
+classifier (§1) is coarser still.
+
+VERIFIED (`docs/config-catalog.md`, the generated config catalog fetched
+this session): `@deepseek-ai/dsh-agent-loop`'s `Config` type declares
+`maxParallelToolCalls?: number` -- "Maximum parallel-safe calls in flight
+per agent step. `1` is serial; omission defaults to
+`DEFAULT_MAX_PARALLEL_TOOL_CALLS`." This is the only harness on this page
+whose loop config explicitly exposes a tunable parallelism cap by name in a
+generated, machine-verified config catalog (the catalog's own generator
+cross-checks the runtime schemastery schema against the pasted type
+declaration). Neither Claude Code, Copilot CLI, OpenCode, nor pi documents
+an equivalent numeric-knob config field for per-step parallelism.
+
+### 6.5 Hard caps and budget enforcement: maxTokens per request, no documented step-count cap, and a max-tokens turn-end reason
+
+VERIFIED (`docs/subsystems/core.md` and `docs/config-catalog.md`): the
+`AgentOptions` type (the per-agent creation options surfaced through
+`ctx.agents.create()`/`ctx.agents.resume()`) carries `maxTokens?: number` --
+"Maximum output tokens for each conversation-model request. When present,
+`maxTokens` must be a positive safe integer and caps every
+conversation-model request." This is a per-request output-token ceiling,
+not a turn-count or spend cap. VERIFIED
+(`docs/subsystems/session.md`): the `TurnEndReasonMap` includes
+`'max-tokens': { kind: 'max-tokens' }` -- "At least one step reached its
+output-token ceiling, even if a plugin continued the turn." The same doc
+states: "any `max-tokens` step in a turn makes the whole turn end
+`max-tokens` rather than `completed` (the cut-short fact wins over a later
+continuation), so a consumer can tell a clean stop from a truncated one."
+This is a real, source-verified turn-end signal, but it originates from the
+model's output-token limit being hit, not from a harness-side step counter or
+budget threshold -- structurally closer to pi's own `stopReason: "length"`
+handling (§4) than to Claude Code's `max_turns`/`max_budget_usd` (§1).
+
+VERIFIED (`docs/config-catalog.md`, the complete generated catalog fetched
+this session): no loop-level config entry for step count, turn count, or
+spend cap exists in `@deepseek-ai/dsh-agent-loop`'s own `Config` type -- the
+type's two fields are `maxParallelToolCalls` and `agents` (a list of
+startup-created agent specifications). VERIFIED
+(`docs/subsystems/session.md`): the full `TurnEndReasonMap` lists five core
+reasons -- `completed`, `aborted`, `blocked`, `error`, and `max-tokens` --
+none of which is a "step limit reached" or "budget exhausted" harness-side
+cap. The map is merge-extensible, so a plugin could add one, but no core
+plugin does as of the `master` branch fetched this session. This places DeepSeek
+Harness in the same "no documented hard turn-count or budget cap" posture as
+pi (§4) and the default-config of Hermes Agent (§5.5), distinct from Claude
+Code's explicit `max_turns`/`max_budget_usd` caps (§1) and OpenCode's step
+limit (§3).
+
+### 6.6 Compaction: a capability seam, not part of the loop spine
+
+VERIFIED (`docs/subsystems/compaction.md` and `docs/architecture.md`):
+compaction in DeepSeek Harness is explicitly "one optional capability, not
+part of the agent-loop spine." The architecture doc's own core-packages table
+lists `core/agent-loop` as owning "the concrete driver implementing that
+interface" and does not include compaction in the spine; the compaction
+subsystem doc states plainly: "its vocabulary lives here, not in core.md." A
+tokenizer- or template-based backend is a sibling package implementing the
+same interface (`ctx.compaction`), and the basic backend
+(`@deepseek-ai/dsh-compaction-basic`) is the shipped default.
+
+VERIFIED (`docs/subsystems/compaction.md`): compaction attaches to the loop
+through two event-driven hooks, not by modifying the loop body. *Pressure*
+compaction runs at the `agent/pre-step` waterfall "before request derivation"
+-- the same pre-step gate §6.2 documents as the step-admission checkpoint.
+Once pressure qualifies, compaction-basic invokes the optional
+`ctx.toolResultPruner` (a deterministic head/middle/tail Unicode-code-point
+pruner), remeasures through `ctx.tokenMeter`, and can advance the surface
+without requiring a summary. *Overflow recovery* runs through
+`agent/request-error` after the failed step closes, and returns a retry
+action "only when the surface replacement generation advances, even if later
+summary work throws after pruning." VERIFIED (same doc): the compaction
+lock brackets the whole operation (`compaction/start` through
+`compaction/end`), and a crash mid-compaction leaves a detectable orphaned
+lock rather than a falsely-closed bracket; an unmatched start before a newer
+`session/end-seed` is stale evidence from a prior lifecycle and is ignored.
+
+VERIFIED (`docs/config-catalog.md`): the basic compaction backend's
+`BasicCompactionConfig` exposes `thresholdRatio` (fraction of context window,
+default `0.8`), `retainRatio` (recent context fraction, default `0.16`),
+`compactionRetries` (extra attempts after first compaction when pressure
+remains, default `1`), `maxOverflowRetries` (for canonical context overflow,
+default `1`), and per-model overrides via `modelPolicies`. The tool-result
+pruner's `ToolResultPruneConfig` declares `thresholdChars` (default `8192`
+Unicode code points), `headChars` (default `4096`), and `tailChars` (default
+`1024`). These are real, machine-verified config fields from the generated
+catalog, not documentation paraphrase.
+
+Architecturally, DeepSeek Harness' compaction mechanism is the most
+explicitly separated from the loop of any harness on this page: it is a
+swappable capability seam with its own service definition, providers, and
+consumers, attached via the same `agent/pre-step` and `agent/request-error`
+waterfalls that any other plugin can also listen on. Claude Code documents
+compaction as a built-in `compact_boundary` event (§1). OpenCode implements
+it in `session/compaction.ts` within the session package. pi wires its
+compaction check into the `prepareNextTurn` hook (§4). Hermes Agent does not
+have a separate compaction subsystem (§5). DeepSeek Harness goes furthest in
+making compaction a first-class extension point rather than an internal
+implementation detail.
+
+### 6.7 Subagents: a multi-provider capability seam with continuable conversations
+
+VERIFIED (`docs/subsystems/subagent.md`, fetched this session): subagents are
+another capability seam, not part of the loop spine. Unlike bash (which has
+one executor), multiple subagent providers may coexist in one context,
+registered by name (`ctx.subagents`). The shipped providers include
+`dsh-subagent-spawn-in-process`, `dsh-subagent-fork-in-process`,
+`dsh-subagent-acp`, `dsh-subagent-codex`, `dsh-subagent-claude-code`, and
+`dsh-subagent-dsh-sdk` -- notably including providers that delegate to
+*other harnesses* (Codex, Claude Code) as child-agent transports.
+
+Two kinds of subagent exist: **one-shot** (a disposable foreground
+delegation with one result, never a durable child handle) and **continuable**
+(a durable child Session with at most one process-local Activation, the
+period when a reconstructed child Agent is resident). A continuable child
+"may execute many FIFO turns and stays resident while descendants it created
+are still running." The continuation manager owns activation admission,
+direct-parent authorization, the live ownership graph, cold resume, and
+child-first disposal. This is architecturally comparable to pi's own
+`AgentHarness` with its lane-based subagent mechanism (§4, flagged as an open
+question there) and to OpenCode's primary/subagent split (§3), but with a
+more explicit provider abstraction: every transport is a named, swappable
+`SubagentProvider` the same way every LLM adapter is a named, swappable
+provider on `ctx.llm`. VERIFIED (same doc): delegation depth is tracked in
+the durable `SessionHeader.delegationDepth` and the merge-extensible runtime
+field `AgentOptions.subagentDepth`, and a caller may impose an absolute
+`maxDepth` cap that the service validates before starting the child.
+
+This section cross-references rather than re-derives the full subagent
+contract; the loop-relevant point is that subagent delegation is a
+tool-call-driven operation (the model calls a delegation tool, the tool
+layer builds a `SubagentStartRequest`, the service dispatches to the named
+provider), so from the parent-agent loop's perspective a subagent is just
+another tool call whose result arrives asynchronously -- another step in the
+same turn or a subsequent step, not a separate loop.
+
+## 7. Comparison
+
+All six document the same shape at the level the Hugging Face course
 teaches generically -- evaluate, act, observe, repeat, stop when the
 model stops requesting tools or a hard limit is hit. Concrete
 differences, all VERIFIED from each harness's own source above:
@@ -872,7 +1217,16 @@ differences, all VERIFIED from each harness's own source above:
   nudge (bounded to 2 attempts, active only under
   `HERMES_KANBAN_TASK`) -- more nudge mechanisms, each individually
   scoped tighter, than any other single harness on this page documents
-  in one place.
+  in one place. DeepSeek Harness' ordinary stop condition is likewise
+  model-driven (a step with no tool calls and no pending next-step
+  inbox reaches `agent/turn-stopping`), and, per its own generated
+  config catalog and `TurnEndReasonMap`, has **no documented hard
+  turn-count or spend cap at all** -- the same no-cap posture as pi and
+  the default-config of Hermes Agent. What it uniquely adds among the
+  harnesses on this page is a named, extensible stop-checkpoint
+  (`agent/turn-stopping`, serial, no `next()`) that any plugin can
+  observe, where the other no-cap harnesses (pi, default Hermes Agent)
+  simply end the turn without a final interception point.
 - **Budget/limit shape.** Claude Code's `max_budget_usd` is a hard,
   pre-emptively-enforced spend cap that ends the loop outright.
   Copilot CLI's nearest analogue, `sessionLimits.maxAiCredits`, is
@@ -897,6 +1251,16 @@ differences, all VERIFIED from each harness's own source above:
   `_budget_grace_call` escape hatch, source-confirmed to force exactly
   one further iteration past an otherwise-exhausted budget, with no
   other harness on this page documenting an equivalent grace mechanism.
+  DeepSeek Harness has no turn-count cap and no spend cap in its loop
+  config at all, placing it alongside pi and default-config Hermes Agent
+  in the no-cap posture. What it does have is a per-request
+  `maxTokens` field on `AgentOptions` that caps every
+  conversation-model request's output tokens, and a corresponding
+  `max-tokens` turn-end reason that propagates the cut-short fact up to
+  the turn level -- structurally closer to pi's own `stopReason:
+  "length"` handling than to Claude Code's or OpenCode's harness-side
+  caps, since it originates from the model's output limit, not from a
+  loop-level step counter or budget threshold.
 - **Verifiability.** Claude Code's and Copilot CLI's loops are each
   knowable only through what their respective companies choose to
   document (the Agent SDK page for Claude Code; the separate Copilot
@@ -922,7 +1286,22 @@ differences, all VERIFIED from each harness's own source above:
   itself* about default cap values and about what the word "turn"
   scopes over (§5.1, §5.5), a level of scrutiny only possible because
   the source itself, not just one docs page or one file, was read
-  closely enough to compare against a second file's claims.
+  closely enough to compare against a second file's claims. DeepSeek
+  Harness is verifiable at a different layer than any of the above: its
+  loop implementation is a published Cordis plugin
+  (`@deepseek-ai/dsh-agent-loop`) in a public repository, and the
+  sources this section cites are the repository's own `docs/` directory
+  -- including machine-generated config catalogs whose own generator
+  cross-checks the runtime schemastery schema against the pasted type
+  declarations. The docs are not the implementation source itself (that
+  lives under `packages/` in the same repository, not fetched at the
+  file level this session), but the generated catalogs are derived from
+  that source by a verified-fresh build step (`pnpm run
+  verify-config-catalog`), making them one verifiable step removed from
+  the implementation rather than a hand-authored paraphrase -- a
+  different verifiability profile from both the closed docs of Claude
+  Code/Copilot CLI and the directly-read source code of Hermes
+  Agent/pi.
 - **Turn/tool-execution boundary.** Claude Code, Copilot CLI, and
   OpenCode all treat "one LLM call" as the atomic turn unit, with tool
   execution happening *between* two turns. pi's own `turn_start`/
@@ -934,7 +1313,17 @@ differences, all VERIFIED from each harness's own source above:
   tool execution happens after it, within that same `while`-loop pass,
   before the next iteration's provider call -- it does not bracket the
   call and its tool round under one single named event pair the way
-  pi's `turn_start`/`turn_end` does.
+  pi's `turn_start`/`turn_end` does. DeepSeek Harness introduces a
+  genuinely different two-level boundary: a **step** is one model call
+  plus the tools it calls, and a **turn** is zero or more steps. A
+  multi-step turn (where "tools owe another request, or next-step input
+  arrived") can chain multiple model calls inside one `turn/start`/
+  `turn/end` pair, which no other harness on this page documents.
+  Within a multi-step turn, individual steps are separated by
+  `step/start`/`step/end` events in the session log and by the
+  `agent/pre-step` waterfall at the live level, giving DeepSeek Harness
+  the most granular within-turn boundary vocabulary of any harness on
+  this page.
 - **Parallel tool dispatch granularity.** Claude Code's own documented
   rule is coarse and binary -- read-only tools may run concurrently,
   mutating tools (Edit/Write/Bash) always run sequentially, and a
@@ -949,7 +1338,19 @@ differences, all VERIFIED from each harness's own source above:
   `DaemonThreadPoolExecutor` (cap 8 workers) doing the concurrent
   dispatch. None of Copilot CLI's, OpenCode's, or pi's own sections on
   this page document an equivalently fine-grained, path-overlap-aware
-  admission rule for their own within-turn tool-call batches.
+  admission rule for their own within-turn tool-call batches. DeepSeek
+  Harness occupies a distinct point in this design space: each tool
+  declares `isConcurrencySafe?(args)`, a per-call predicate consulted
+  at dispatch time (not a static allowlist), and the loop forms
+  "exclusive barriers and rolling-pool parallel runs" governed by a
+  tunable `maxParallelToolCalls` config knob. This is coarser than
+  Hermes Agent's path-overlap-aware segment planner (two calls to the
+  same mutating tool on different paths could run concurrently under
+  Hermes but never under DeepSeek Harness, which treats each tool's
+  opt-in as all-or-nothing per call), but more expressive than Claude
+  Code's static `readOnlyHint` (a DeepSeek Harness tool can return
+  `true` for some argument combinations and not others, where a Claude
+  Code tool's hint is declared once on the tool definition).
 
 BEST CURRENT UNDERSTANDING, UNCONFIRMED: whether OpenCode has an
 analogue to Claude Code's budget cap (`max_budget_usd`) or to its
@@ -971,9 +1372,18 @@ for Hermes Agent: what call site, if any, ever sets
 declaration and its one-shot consumption, not its trigger; and what the
 `codex_app_server` alternate turn path (§5.1) does internally --
 `agent/transports/codex_app_server_session.py` was named in a code
-comment but not fetched or read this session.
+comment but not fetched or read this session. Likewise UNCONFIRMED for
+DeepSeek Harness: whether any plugin (including those outside the
+`dsh-base` bundle) adds a `TurnEndReasonMap` variant for a turn-count
+or spend cap -- the merge-extensible map allows it, but this session
+checked only the core harness docs and the generated config catalog,
+not every plugin's declaration-merged additions. Also UNCONFIRMED: the
+exact value of `DEFAULT_MAX_PARALLEL_TOOL_CALLS` referenced in the
+agent-loop config -- the generated catalog quotes the JSDoc default
+description but this session did not fetch the runtime constant from
+`packages/core/agent-loop/src/index.ts` directly.
 
-## Sources
+## 8. Sources
 
 - `code.claude.com/docs/en/agent-sdk/agent-loop` -- fetched 2026-07-30.
   Authoritative for the Claude Code Agent SDK's documented loop
@@ -1067,3 +1477,45 @@ comment but not fetched or read this session.
   §6 and [Permissions & sandboxing architecture](permissions-and-sandboxing.md)
   §6 are cross-referenced, not re-derived, for Hermes' broader
   architectural introduction (entry points, sandboxed terminal backends).
+- `github.com/deepseek-ai/deepseek-harness`, `master` branch, fetched 1
+  September 2026 -- confirmed via `gh api repos/deepseek-ai/deepseek-harness`
+  as the repository's default branch (the standing caveat this page applies
+  to OpenCode's, pi's, and Hermes Agent's own `dev`/`main`/`master` branches
+  applies here too: `master` is a live branch, not a pinned release tag; the
+  harness is a developer preview at time of writing). Full-file reads via
+  `raw.githubusercontent.com/deepseek-ai/deepseek-harness/master/<path>`:
+  `docs/architecture.md` (the Cordis-plugin composition model, the core
+  packages table, the turn-flow definition, the event-domain taxonomy, and
+  the "where new behavior goes" extension-point map);
+  `docs/agent-lifecycle.md` (the Mermaid sequence diagram of the turn/step
+  lifecycle, the `agent/pre-step`/`agent/turn-stopping`/`agent/request-error`
+  event descriptions, the steering/inject delivery routing, and the
+  compaction hooks); `docs/subsystems/core.md` (the `Agent` interface and
+  `AgentHandle`, `PreStepDecision`, `AgentOptions`, `AgentCancelCause`,
+  `agent/*` event vocabulary, and the `AgentRegistry`/`AgentLoop` generated
+  Cordis API); `docs/subsystems/session.md` (`SessionEventMap` and all
+  twelve core event variants, `TurnEndReasonMap`, `deriveMessages()`,
+  `SessionSurface`, the `request/header`/`request/context` events, the
+  surface-replacement model, and the session fork API);
+  `docs/subsystems/tools.md` (`ToolDefinition` and `isConcurrencySafe`,
+  `ToolExecutionMode`, the five-stage tool execution pipeline, `PreToolDecision`,
+  `PostToolDecision`, `ToolGuard`, the JSON Schema DSL, and the tool
+  presentation UI vocabulary); `docs/tool-execution-pipeline.md` (the Mermaid
+  flowchart of the tool dispatch pipeline from model output through
+  pre-execute, guards, approval, execute, post-execute, finalizeContent, and
+  tools/result); `docs/subsystems/compaction.md` (the compaction capability
+  seam, `compaction/*` session events, `CompactionTrigger`, the
+  `agent/pre-step` pressure hook and `agent/request-error` overflow-recovery
+  hook, tool-result pruning, and the `CompactionEngine` Cordis API);
+  `docs/subsystems/subagent.md` (the subagent capability seam, one-shot vs.
+  continuable children, `SubagentProvider`, delegation depth, the continuation
+  manager, cold resume, and the `SubagentRuntime` Cordis API);
+  `docs/config-catalog.md` (the machine-generated, verified-fresh plugin config
+  catalog -- specifically `@deepseek-ai/dsh-agent-loop`'s `Config` type with
+  `maxParallelToolCalls` and `agents`, `@deepseek-ai/dsh-compaction-basic`'s
+  `BasicCompactionConfig` with thresholds and per-model overrides, the
+  tool-result pruner's `ToolResultPruneConfig`, and the LLM adapter configs);
+  `docs/AGENTS.md` (the documentation standard and tier taxonomy, used only to
+  understand the repo's own documentation conventions, not as a harness-specific
+  source); and `docs/defensive-patterns.md` (the async-state and disposal
+  patterns, cross-referenced rather than re-derived).

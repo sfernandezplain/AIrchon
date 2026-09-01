@@ -8,15 +8,17 @@ several agents. This page asks the question both of those deliberately
 leave open: once two agent instances are already running side by side --
 a resumed subagent, two agent-team teammates, two `/fleet` subtasks, a
 parent session and its OpenCode child session, two Hermes Bot Mode
-teammates -- what is the actual transport and envelope a message travels
-over between them? Is it a tool call, a file on disk, a server-sent-event
-stream, a database row? Is delivery push or pull? Does the message carry
-any provenance metadata telling the receiver who really sent it? Is
-there a distinction between an ordinary natural-language message and a
-structured protocol message (a shutdown request, a plan approval)? The
-five harnesses this page covers give five structurally different
-answers, and the differences matter for anyone building automation that
-assumes messaging "just works" the same way across all of them.
+teammates, a DeepSeek Harness continuable subagent and its parent, two
+Agent Teams members -- what is the actual transport and envelope a message
+travels over between them? Is it a tool call, a file on disk, a
+server-sent-event stream, a database row, a session-log projection? Is
+delivery push or pull? Does the message carry any provenance metadata
+telling the receiver who really sent it? Is there a distinction between an
+ordinary natural-language message and a structured protocol message (a
+shutdown request, a plan approval)? The six harnesses this page covers
+give six structurally different answers, and the differences matter for
+anyone building automation that assumes messaging "just works" the same
+way across all of them.
 
 ---
 
@@ -910,19 +912,398 @@ Desktops against the same gateway at once.
 
 ---
 
-## 6. Synthesis
+## 6. DeepSeek Harness (DeepSeek AI)
 
-| Dimension | Claude Code (`SendMessage`) | Copilot CLI | OpenCode | pi | Hermes Agent |
-|---|---|---|---|---|---|
-| Transport | Tool call, resolved to either an in-conversation resume or a filesystem mailbox write | One-directional event stream (SDK-documented); no CLI-confirmed transport for a peer channel | Real HTTP Server-Sent-Events endpoint (`text/event-stream`), source-verified | Spawned OS process (`child_process.spawn`, `--mode json -p --no-session`), stdin closed at spawn -- source-verified from an official but opt-in reference extension, not a core primitive | Three distinct transports, source-verified: `delegate_task` results ride a durable `state.db`-backed completion queue (§5.1); local bot-to-bot delivery spawns a whole new `hermes` CLI process running one agent turn against `terminal_tool(background=True, notify_on_complete=True)` (§5.4); cross-connection delivery is a file-based `outbox`/`claimed`/`replies` envelope queue drained by the Desktop, or a direct peer-gateway HTTP call (§5.5) |
-| Message envelope | Natural-language "task direction" for ordinary messages; two named structured types (`shutdown_request`, `plan_approval_response`) for agent-team protocol messages | Named lifecycle events with fixed field sets per type (`agentName`, `toolCallId`, `error`, etc.) -- not a general-purpose message, a fixed event schema | A generic `Info` message row (`role`, `parts[]`, `metadata`) -- the same schema for every message in the product, human or agent-originated | Streamed JSONL `AgentSessionEvent`/`AgentEvent` lines (`message_end`, `tool_result_end`, etc., per `docs/json.md`) consumed for UI progress only; the one value actually delivered to the parent LLM is the tool call's own final `content`, assembled client-side by the extension | A `message_agent(target, message)` tool call whose body is server-side wrapped in a fixed `Message from 🤖 <sender> (@<sender>): ` attribution prefix before delivery (§5.3); cross-connection envelopes additionally carry `id`/`created_at`/`from_profile`/`from_handle`/`target_connection`/`target_profile`/`target_handle` as a distinct JSON schema (§5.5); a separate six-member `subagent.*` gateway-event union (`spawn_requested`/`start`/`thinking`/`tool`/`progress`/`complete`) carries UI telemetry only, never the model-facing message (§5.2) |
-| Addressing | Agent ID (durable across name reuse) or agent name (collision-checked as of v2.1.199) | `agentId` tag on each event, attributing it to the sub-agent that produced it -- not an address a message is sent *to* | `sessionID` (a session with a `parentID` is a subagent's session); no separate agent-address concept beyond the session ID itself | Agent *name* only, resolved from a markdown frontmatter file (`~/.pi/agent/agents/*.md`, or project-scoped `.pi/agents/*.md`) at dispatch time -- no persistent handle to a *running* instance exists, because each dispatch is a fresh, short-lived child process, not a resumable session | Profile name resolved against a live roster injected into the sender's own system prompt, with `<peer>/<agent>` for a registered peer gateway and `<handle>@<connection>` disambiguating a same-named Bot on another registered Desktop connection (§5.3-§5.5) -- no durable agent-ID handle comparable to Claude Code's |
-| Push vs. pull | Push: "the lead doesn't need to poll for updates"; mailbox delivered automatically | Push: events "share the parent session stream" | Push: SSE stream, plus a `server.heartbeat` keepalive so a client can tell "connected, idle" from "disconnected" | Push, but UI-scoped only: the extension's `onUpdate` callback is invoked as JSONL lines arrive on the child's stdout, updating the tool call's live render; nothing is pushed into the parent LLM's own context until the child process exits | Push but fire-and-forget: the sender gets an immediate acknowledgement and is told explicitly not to wait or poll; the reply surfaces later on exactly one shared channel -- a background-process completion notification -- reused across `delegate_task` results, arbitrary background shell processes, and `message_agent` replies alike (§5.1, §5.4) |
-| Peer-to-peer (agent-to-agent, not just parent-child) | Yes -- agent teams: "teammates message each other directly," one send per recipient, no broadcast primitive | Not found in any source fetched this session, across three separate pages researched | Not applicable in the same sense -- there is no peer concept; every message is a write into *some* session's own row, parent or child | No -- strictly parent-to-child, one direction, spawn-time only; sequencing multiple subagents (chain mode) is the parent extension's own string interpolation of one child's finished output into the next child's spawn arguments, never a channel between the two children themselves | Yes, and in two distinct shapes: addressed one-to-one via `message_agent` (§5.3-§5.5), and voluntary many-to-many in a shared, replicated group room where each member decides per-turn whether to speak at all (§5.6) |
-| Provenance / trust boundary on receipt | Enforced at the permission-classifier level: a message is tagged as coming from another agent, not the human, and cannot carry approval consent | Not documented -- no permission-relay discussion found for Copilot CLI's sub-agent events | Not documented as a trust boundary; the message schema itself carries no sender-trust field distinct from `role: "user" | "assistant"` | Documented at the agent-*definition* level, not the message level: project-local agent files (`.pi/agents/*.md`) are treated as less trusted than user-level ones, and the reference extension prompts for confirmation before running a project-local agent in an untrusted project (`agentScope`, `confirmProjectAgents`) -- a load-time trust gate on which prompt runs, not a runtime check on message content | Enforced at composition time rather than only on receipt: the tool's own schema instructs the sending model never to forward the human's words verbatim and to paraphrase, while the true-sender attribution prefix is stamped server-side inside `message_agent_tool()` itself, not left to the model to self-report (§5.3) |
-| Malformed-message handling | Documented, dated fix: bad mailbox entries are validated, reported as errors, and evicted individually (v2.1.207+); before that, one bad entry blocked the whole mailbox | Not documented | Not documented as a distinct failure mode; ordinary schema validation (Effect's `Schema.Struct`) applies to every message row generally | Documented per-invocation, not per-message: a non-zero child exit code surfaces as a tool error with captured stderr/output, an LLM-level `stopReason: "error"` propagates as an error message, and in chain mode the whole chain stops at the first failing step | No documented malformed-*entry* recovery comparable to Claude Code's, but a substantially richer *delivery-failure* taxonomy: eleven named machine-readable reason codes (`provider_auth_or_access`, `queued_expired`, `target_busy`, `runtime_offline`, etc.) ride end-to-end with every failed delivery, plus TTL-based envelope expiry and a fail-fast offline check before an envelope is even queued (§5.5) |
-| Extensibility hook for messaging-adjacent events | Three dedicated hooks (`TeammateIdle`, `TaskCreated`, `TaskCompleted`), each supporting exit-code-2 blocking, no `matcher` support | Not found | The same generic SSE stream any external tool could subscribe to; no dedicated hook system found for messaging specifically | None dedicated to subagent messaging specifically; the generic `registerTool`/`onUpdate`/`exec` extension primitives the reference example is built from are available to any tool, and a separate, unrelated `pi.events` in-process pub/sub bus exists for extension-to-extension notification within one session (§4.4) -- not a hook on the subagent pattern itself | None found scoped specifically to subagent or bot-to-bot messages; [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §6 documents three general-purpose hook systems (gateway/plugin/shell) that observe tool calls and turns broadly, none named for the messaging events this page covers |
-| Verifiability | Docs-only (closed-source product) | Docs-only, and thinner than the other two on this specific question | Docs **and** live `dev`-branch source, cross-checked end to end (schema file, publish call sites, SSE handler) | Docs **and** the full, real TypeScript source of the one reference extension the "subagent" concept is built from, both fetched this session from the `main` branch | Docs **and** the full production Python tool source and TypeScript gateway-event schema, both fetched this session directly from `NousResearch/hermes-agent` |
+Sources for this section, fetched 1 September 2026 via `gh api` directly from `github.com/deepseek-ai/deepseek-harness` (`master` branch): `docs/architecture.md`, `docs/event-producer-consumer.md`, `docs/subsystems/core.md`, `docs/subsystems/subagent.md`, `docs/subsystems/agent-team.md`, `packages/subagent/subagent/src/types.ts`, `packages/experimental/agent-team/src/types.ts`, `packages/subagent/tool-subagent-control/README.md`, `packages/subagent/tool-subagent-report/README.md`, `packages/experimental/agent-team/README.md`, and `packages/experimental/tool-agent-team/README.md`. VERIFIED unless tagged otherwise.
+
+DeepSeek Harness (`dsh`) is a sixth, independent harness whose inter-agent
+messaging surface is the most architecturally factored of any harness this
+page covers: where Claude Code uses one `SendMessage` tool for both its
+subagent-resume and agent-team-mailbox paths, and Hermes Agent reuses a single
+background-process-completion notification channel for three different delivery
+shapes, DeepSeek Harness separates the parent→child continuable-subagent
+direction, the child→parent report direction, and the peer-to-peer agent-team
+mailbox direction into three *independently installed* plugin packages --
+`dsh-tool-subagent-control`, `dsh-tool-subagent-report`, and
+`dsh-experimental-tool-agent-team` -- each with its own tool surface, its own
+delivery semantics, and its own authority model, all built over a shared
+`Agent` inbox primitive. The harness's plugin architecture (Cordis, per
+`docs/architecture.md`'s own framing) means every one of these surfaces is
+opt-in and replaceable -- none of the three packages is required for the
+harness to run at all.
+
+### 6.1 The `Agent` inbox: two targets, three delivery modes, the shared primitive everything builds on
+
+Source-verified from `docs/subsystems/core.md` and
+`packages/core/agent/src/types.ts`: every running agent owns an `Inbox` -- a
+durable projection of two ordered pending-message lists, `next-turn` and
+`next-step`, discriminated by `InboxTarget`. The `Agent` handle's own `send`
+method routes identified input to one of these two targets with an optional
+wakeup flag; `followup()`, `steer()`, and `inject()` are fixed-preset aliases
+over that single `send`:
+
+- **`followup(message)`** queues an ordinary follow-up turn and wakes the
+  driver. The item becomes the sole ordinary message of its own turn.
+- **`steer(message)`** submits steering for the nearest step boundary. An idle
+  driver starts a turn; a running driver consumes it at its next step boundary.
+  A rejected step leaves steering parked in the inbox until the next wake.
+- **`inject(message)`** queues model-visible context for the next pre-step
+  *without* waking the driver. A running driver claims it at the nearest step
+  boundary; idle drivers leave it pending until a later `followup` or `steer`
+  wakes them.
+
+Every pending occurrence is a `UserMessage` carrying both content and a
+`MessageSource` attribution record; `MessageId` is the sole identity. The inbox
+records durable `agent/inbox/spliced` mutations (append, prepend, replace,
+remove, clear, splice, claim) and rejects duplicate pending ids. Three
+observable inbox-lifecycle events -- `agent/inbox/inserted`,
+`agent/inbox/claimed`, and `agent/inbox/discarded` -- are emitted by the
+agent loop and consumed by the goal-round driver, subagent continuation
+manager, the ACP (access-control-policy) layer, and others, per the
+`docs/event-producer-consumer.md` matrix. The inbox is the only queue the
+continuation manager knows; the subagent layer defines no subagent-specific
+delivery route.
+
+This is the load-bearing architectural fact for inter-agent messaging in
+DeepSeek Harness: **every message-carrying channel, in every direction, feeds
+into the same two-target inbox.** A `send_message` follow-up, a `report`
+from a child, a `team/message/queued` peer delivery -- all of them resolve
+to either `followup()`, `steer()`, or `inject()` on the target agent's own
+inbox, and the inbox's FIFO ordering is the only ordering guarantee the
+harness gives. There is no separate mailbox file, no separate event stream,
+no separate queue row; the inbox projection over the session log is the
+single, durable, de-duplicating channel.
+
+### 6.2 Continuable subagents: the parent→child direction is `followup()`, not a mailbox
+
+Source-verified from `docs/subsystems/subagent.md` and the `dsh-tool-subagent-control`
+README: a **continuable background subagent** is one durable child Session
+with at most one process-local **Activation** (the period when a reconstructed
+child Agent is resident). The three tool-level operations the model sees are
+`send_message`, `interrupt_agent`, and `list_agents`, all registered by the
+opt-in `dsh-tool-subagent-control` package:
+
+- **`send_message`** delivers a follow-up message that becomes the child's
+  next FIFO turn. The call returns *only* acceptance -- the accepted message's
+  stable `MessageId` -- never the child's reply. A working child finishes its
+  current turn first, so a message cannot redirect work already underway.
+  Under the hood, `send_message` delegates to `SubagentRuntime.followup()`,
+  which routes to the child agent's `Agent.followup()` -- i.e. the inbox's
+  `next-turn` target with wakeup, the same primitive a human user's own
+  follow-up would use. Authority comes from an exact live `Agent` tool context:
+  the authenticated Agent must be the durable child's direct parent recorded
+  in `SessionHeader.parentSession`. `MessageSource` and `senderSessionId`
+  record who supplied an admitted message but grant no authority; the
+  model-facing tool uses `CoordinatorMessageSource` (`{ kind: 'coordinator',
+  form: 'relay', senderSessionId }`) as the durable attribution.
+- **`interrupt_agent`** stops only the target's current turn via
+  `SubagentRuntime.interrupt()`, which calls `Agent.cancel(cause, {
+  keepInbox: true })`. Queued messages stay parked; descendants keep running;
+  the child stays available for follow-ups. The `keepInbox: true` flag is
+  critical: it means cancellation aborts the active turn but preserves all
+  pending inbox work, so a later `send_message` can resume the FIFO queue
+  that was in place before the interrupt.
+- **`list_agents`** enumerates the parent's continuable children from the
+  live-preferred merge of the session store and optional session persistence.
+  One-shot children are intentionally absent because they cannot accept
+  `send_message`.
+
+A key design commitment, explicit in the subagent docs and the control-tool
+README: **a queued message has no independent result.** Acceptance returns
+only its inbox `MessageId`; the child's work lands in the durable child
+Session and is never collected through this tool. This is architecturally
+the same fire-and-forget shape Hermes Agent's `message_agent` adopts
+(§5.3 above), but arrived at independently and implemented over a different
+transport -- DeepSeek Harness's `Agent.followup()` on the same-process inbox
+vs. Hermes' spawned `hermes -p <bot> chat` process running one full agent
+turn.
+
+The continuation manager's **Activation residency** governs how `followup`
+routes:
+
+| Activation state | `followup` behavior |
+|---|---|
+| `running` | enqueue in the same Activation |
+| `waiting` | wake the same Activation |
+| no Activation | cold-resume a new Activation |
+
+`running` means the Agent has an active admission or turn; `waiting` means it
+is quiescent but still owns at least one child Activation that has not
+completed disposal; `settled` means quiescent with every owned child
+disposed, at which point the manager disposes the `AgentHandle` and removes
+the Activation. Cold resume does not dispatch through a provider at all: the
+manager folds the generic descriptor, calls `ctx.agents.resume()` through the
+same activation-owner scope, and submits the waiting turn -- meaning the
+inbox is the resumption primitive, not a provider-specific reconnection
+protocol.
+
+When a resident Activation settles, the continuation manager delivers one
+unconditional **settlement notice** to the child's durable direct parent
+before the ownership release that would let the parent be judged settled.
+That notice carries a `SubagentSettledMessageSource` --
+`{ kind: 'subagent-settled', form: 'notice', summary, senderSessionId }` --
+deliberately a *different* `kind` from the explicit child report
+(§6.3 below), because "a transcript that merged them would credit the child
+with words it never wrote."
+
+### 6.3 The child→parent report direction: `reportFrom()`, a separate tool, a separate delivery mode
+
+Source-verified from the `dsh-tool-subagent-report` README and
+`docs/subsystems/subagent.md`: the child→parent direction is owned by the
+independently installed `dsh-tool-subagent-report` package, which gives
+every continuable in-process child a scoped `report` tool plus prompt guidance
+telling the child to call it once before finishing and earlier whenever a
+partial finding changes what the parent should do next. The tool and its
+guidance exist *only inside those children* -- roots, one-shot subagents,
+remote providers, and sibling scopes never see them. Accepted reports reach
+the parent as ordinary parent messages, framed as `Background subagent
+<child-id> reported:` followed by the child's exact output.
+
+Delivery is governed by a deployment-level `reportDelivery` setting (not a
+per-call parameter the model can override):
+
+- **`next-step`** (default) uses `parent.steer()`: wakes an idle parent or
+  joins a running parent's nearest step boundary. Reports accepted in
+  sequence share the next-step FIFO.
+- **`quiet`** uses `parent.inject()`: adds the same context without waking
+  the parent.
+
+The durable attribution is `SubagentReportMessageSource` --
+`{ kind: 'subagent-report', form: 'relay', senderSessionId }` -- distinct
+both from the coordinator source on parent→child messages and from the
+`subagent-settled` kind on the manager's own settlement notice. A `report`
+call neither ends the turn nor settles the child's Activation. The tool
+takes no recipient: the service derives the sole recipient from the child's
+durable `parentSession`.
+
+The report tool deliberately survives the child's global `toolFilter`:
+"a delegation allow-list cannot remove the only return channel." A deployment
+that requires a child with no return channel simply omits this package.
+
+**BEST CURRENT UNDERSTANDING, UNCONFIRMED on one point:** the README's
+"Known Limitations" section states that acceptance is weaker than durable
+delivery -- "there is no durable mailbox, idempotency key, delivery receipt,
+retry protocol, or exactly-once claim. A process failure after one side
+recorded acceptance leaves the outcome ambiguous, and an external retry may
+duplicate the report." This is an explicitly flagged limitation of the
+report channel specifically, not of the peer team mailbox (§6.4 below),
+which *does* provide durably-queued delivery with de-duplication. The
+report channel's delivery guarantee is architecturally closer to OpenCode's
+synthetic-completion write (§3 above) -- accepted in-process, recoverable
+only through session-log persistence, not through a mailbox-style
+queued-minus-delivered reconciliation -- than to Claude Code's file-backed
+mailbox (§1.3) or the agent-team mailbox below.
+
+### 6.4 Agent Teams: a durable, log-backed mailbox with de-duplication, replay, and a shared task DAG
+
+Source-verified from `docs/subsystems/agent-team.md`,
+`packages/experimental/agent-team/src/types.ts`, and the `agent-team` and
+`tool-agent-team` READMEs: Experimental Agent Teams is a private opt-in
+coordination seam on `ctx.agentTeams`, layered over continuable subagents,
+providing a durable roster, a durable mailbox, and a shared task board.
+The word "experimental" is the package's own classification: the package is
+"private, excluded from official releases, carries no stability promise, and
+needs durable session storage to activate."
+
+```mermaid
+sequenceDiagram
+    participant Sender as Any Team member
+    participant TS as TeamService (Lead Session log)
+    participant Mailbox as queued-minus-delivered mailbox
+    participant Target as Target member Session
+
+    Sender->>TS: sendMessage(target, content, delivery)
+    TS->>TS: validate peer membership<br/>append team/message/queued<br/>flush before delivery
+    TS->>Mailbox: message enters durable queue
+    alt Target is live and ready
+        TS->>Target: immediate inbox admission<br/>(followup for wakeup,<br/>inject for quiet)
+        Target->>TS: inbox records message identity<br/>(pending inbox item or user message)
+        TS->>TS: append team/message/delivered
+    else Target is offline
+        Mailbox-->>Mailbox: message stays queued
+        Note over Mailbox: recovery dispatches<br/>queued-minus-delivered<br/>in durable queue order on resume
+    end
+    Sender-->>Sender: { messageId, status: "accepted" | "queued" }
+```
+
+#### 6.4.1 Identity and roster
+
+`TeamId` is the root `SessionId` under a distinct brand -- there is no
+creation event, and durable state begins with the first member, message, or
+task record. Every ordinary runtime root is the implicit Lead of a Team
+whose `TeamId` equals its `SessionId`. A teammate's Session id remains its
+persistent identity, while `name` is an immutable model/UI label. Names are
+reserved by the first `provisioning` record and never reused -- "even a
+teammate whose creation failed keeps its name, and no name is ever reused."
+The roster is a `TeamMemberPhase` lifecycle: every member starts in
+`provisioning` and reaches exactly one terminal phase, `active` or `failed`.
+Runtime `running`/`idle`/`inactive` status is derived separately and never
+rewrites this record.
+
+#### 6.4.2 The durable mailbox: queued-minus-delivered, replay-backed, de-duplicated
+
+The mailbox's design is stated explicitly in the subsystem types and the
+package README. `sendMessage()` validates peer membership, appends
+`team/message/queued` to the Lead Session log, and flushes *before*
+attempting delivery. A target receipt is acknowledged with
+`team/message/delivered` only *after* the target Session durably holds the
+message identity in its pending inbox or recorded history. The mailbox is
+therefore the **queued-minus-delivered** delta: messages that have been
+queued but not yet acknowledged as delivered, replayed from the Lead Session
+log on every read.
+
+```typescript
+interface TeamMessageSnapshot {
+  readonly id: TeamMessageId          // globally random
+  readonly senderId: SessionId
+  readonly senderName: string
+  readonly targetId: SessionId
+  readonly delivery: 'quiet' | 'wakeup'
+  readonly content: ContentBlock[]
+}
+```
+
+Two delivery modes cover two intents: `'quiet'` delivers information without
+starting an idle teammate (uses `Agent.inject()` under the hood); `'wakeup'`
+makes the message the recipient's next turn (uses `Agent.followup()`). The
+sender always sees the outcome -- `accepted` (delivered now) or `queued`
+(waiting). A queued message is already safely stored, so "it must not be
+resent."
+
+The target Session keeps message identity and sender attribution on both the
+pending inbox item and the eventual user message. `TeamMessageSource` --
+`{ kind: 'team-message', teamId, messageId, senderId, senderName }` -- is
+the durable attribution retained by the target Session for de-duplication:
+folding that source across inbox and history is the target-side
+de-duplication key, and the model-visible framing repeats the id and sender.
+This is a genuine, source-defined de-duplication contract, not a
+BEST-CURRENT-UNDERSTANDING inference: the types file declares it directly,
+and the package README states that "immediate admissions are serialized per
+target in durable queue order; recovery dispatches queued-minus-delivered
+records in the same order. Delivery folds both live and persisted target
+inbox/history state before retrying, so a crash between inbox acceptance and
+model claim does not duplicate the message." The guarantee is explicitly
+scoped: "process-local retry plus target-Session de-duplication, not
+cross-process exactly-once delivery."
+
+Configurable deployment limits bound the mailbox: `maxPendingMessagesPerMember`
+(default 64), `maxMessageBytes` (default 65,536 UTF-8 bytes), and
+`maxMembers` (default 8).
+
+This is architecturally a third, distinct answer to the same problem Claude
+Code's file-backed mailbox (§1.3) and Hermes Agent's `state.db`-plus-fresh-
+turn-queue (§5.1) solve: a log-backed, replay-derived, queued-minus-delivered
+delta with explicit de-duplication. Where Claude Code's mailbox is a JSON
+file at a known path and Hermes' is a `state.db` write plus a durable claim
+on a fresh-turn queue, DeepSeek Harness's is a projection folded from the
+session event log by `foldTeam()`, which replays one root Session into the
+roster, task board, and queued-minus-delivered mailbox that every Team
+operation reads.
+
+#### 6.4.3 The shared task DAG
+
+Every task event stores a complete `TeamTaskSnapshot` with a monotonic
+`revision` (the compare-and-set value). `blockedBy` edges must name
+non-deleted tasks and keep the graph acyclic. `writeScopes` are normalized
+advisory path prefixes -- they produce warnings when two in-progress tasks
+overlap but never block anything. Task status follows
+`pending` → `in_progress` → `completed`/`deleted`, with `released` and
+`reopened` as additional transitions. Every `updateTask` call carries an
+`expectedRevision`; a stale caller receives `TEAM_TASK_STALE_REVISION`
+instead of overwriting a newer value.
+
+This is the same general shape as Claude Code's shared task list
+(`TaskCreate`/`TaskUpdate`) and Copilot CLI's `/fleet` shared todo state
+(§2.2), but with an explicitly documented compare-and-set concurrency guard
+and an advisory write-scope conflict-warning system that no other harness on
+this page documents for its own task board.
+
+#### 6.4.4 The ten model-facing tools and scoping
+
+Source-verified from the `tool-agent-team` README: the opt-in
+`dsh-experimental-tool-agent-team` package installs ten scoped tools on
+every Team member -- `spawn_teammate`, `send_message`, `followup_task`,
+`list_agents`, `wait_agent`, `interrupt_agent`, `team_task_create`,
+`team_task_list`, `team_task_get`, and `team_task_update` -- plus a fixed
+policy section teaching each member its role and coordination rules. The
+tools are scoped to Team members' own `ctx`; non-Team subagents keep the
+default catalog. Any member can message any other member and use the task
+board; only the Lead creates and interrupts teammates. `send_message`
+delivers without waking (`quiet`); `followup_task` wakes the recipient
+(`wakeup`). `wait_agent` waits for the next team change (roster, mailbox, or
+task) with a bounded timeout from ten seconds through one hour, reporting
+only whether it timed out; the caller re-reads the current state afterward.
+
+### 6.5 Provenance: three distinct attribution kinds, enforced at the type level
+
+DeepSeek Harness's inter-agent messaging carries provenance through the
+merge-extensible `MessageSourceMap` pattern (documented in
+`docs/subsystems/core.md`), where each message source is a discriminated
+union member keyed by `kind`. Three distinct kinds ride on the three
+messaging channels this section documents:
+
+- **`coordinator`** (`{ kind: 'coordinator', form: 'relay',
+  senderSessionId }`) -- attribution for a parent's follow-up to one of its
+  children, carried on `send_message`/`followup` messages. `senderSessionId`
+  records the sender but grants no authority; the continuation manager
+  enforces the direct-parent lineage check independently.
+- **`subagent-report`** (`{ kind: 'subagent-report', form: 'relay',
+  senderSessionId }`) -- attribution for a child's explicit parent report.
+  `senderSessionId` names the child.
+- **`subagent-settled`** (`{ kind: 'subagent-settled', form: 'notice',
+  summary, senderSessionId }`) -- the continuation manager's own account of
+  a continuable child settling, deliberately a different `kind` so "a
+  transcript that merged them would credit the child with words it never
+  wrote."
+- **`team-message`** (`{ kind: 'team-message', teamId, messageId,
+  senderId, senderName }`) -- attribution for a peer team message,
+  registered into the `MessageSourceMap` by the agent-team types package
+  via declaration merging so the rest of the harness treats it as a
+  first-class discriminated variant.
+
+This is a more granular, type-enforced provenance taxonomy than any other
+harness on this page documents. Claude Code's provenance tagging (§1.4)
+distinguishes messages from other agents vs. from the human at the
+permission-classifier level but does not sub-classify *which* agent
+relationship the message rides on; Hermes Agent stamps a server-side
+attribution prefix (`Message from 🤖 <sender>`) but does not distinguish
+coordinator-relay from subagent-report from team-peer in its envelope
+schema. DeepSeek Harness's `MessageSource` discriminated union does exactly
+that, and the `…Map`/`derived-union` pattern means a future plugin could add
+a new messaging relationship as a new `kind` without editing the owning
+package.
+
+### 6.6 The event matrix: which packages produce and consume inter-agent messaging events
+
+Source-verified from `docs/event-producer-consumer.md` (auto-generated from
+source by `scripts/gen-doc-graphs.ts`): the event most directly relevant to
+inter-agent messaging is `agent/inbox/inserted`, `agent/inbox/claimed`, and
+`agent/inbox/discarded`. Dispatchers: `agent-loop` (all three). Listeners:
+`acp`, `goal-round-driver`, `subagent`, and `tool-jobs` (for `claimed`);
+`goal-round-driver` and `subagent` (for `discarded`); `goal-round-driver`
+alone (for `inserted`). The subagent lifecycle events -- `subagent/start`,
+`subagent/end`, `subagent/provider-added`, `subagent/provider-removed` --
+are dispatched by `subagent` and consumed by `hooks-claude-code`, `server`,
+and `subagent` itself. The agent-team service listens on `session/disposed`,
+`session/event`, `agent/status`, and `agent/session-start` -- confirming that
+the team domain is a *consumer* of the core agent lifecycle, not a parallel
+messaging system with its own independent agent-tracking.
+
+---
+
+## 7. Synthesis
+
+| Dimension | Claude Code (`SendMessage`) | Copilot CLI | OpenCode | pi | Hermes Agent | DeepSeek Harness |
+|---|---|---|---|---|---|---|
+| Transport | Tool call, resolved to either an in-conversation resume or a filesystem mailbox write | One-directional event stream (SDK-documented); no CLI-confirmed transport for a peer channel | Real HTTP Server-Sent-Events endpoint (`text/event-stream`), source-verified | Spawned OS process (`child_process.spawn`, `--mode json -p --no-session`), stdin closed at spawn -- source-verified from an official but opt-in reference extension, not a core primitive | Three distinct transports, source-verified: `delegate_task` results ride a durable `state.db`-backed completion queue (§5.1); local bot-to-bot delivery spawns a whole new `hermes` CLI process running one agent turn against `terminal_tool(background=True, notify_on_complete=True)` (§5.4); cross-connection delivery is a file-based `outbox`/`claimed`/`replies` envelope queue drained by the Desktop, or a direct peer-gateway HTTP call (§5.5) | Three independently installed plugin surfaces, all built over the same `Agent` inbox primitive (§6.1): `Agent.followup()`/`steer()`/`inject()` on the `next-turn`/`next-step` inbox targets. Continuable-subagent `send_message` routes to `Agent.followup()`; child `report` routes to `Agent.steer()` or `Agent.inject()`; team peer delivery routes to whichever the `delivery` mode selects (§6.4). No separate mailbox file or event stream -- the inbox projection over the session log is the single transport |
+| Message envelope | Natural-language "task direction" for ordinary messages; two named structured types (`shutdown_request`, `plan_approval_response`) for agent-team protocol messages | Named lifecycle events with fixed field sets per type (`agentName`, `toolCallId`, `error`, etc.) -- not a general-purpose message, a fixed event schema | A generic `Info` message row (`role`, `parts[]`, `metadata`) -- the same schema for every message in the product, human or agent-originated | Streamed JSONL `AgentSessionEvent`/`AgentEvent` lines (`message_end`, `tool_result_end`, etc., per `docs/json.md`) consumed for UI progress only; the one value actually delivered to the parent LLM is the tool call's own final `content`, assembled client-side by the extension | A `message_agent(target, message)` tool call whose body is server-side wrapped in a fixed `Message from 🤖 <sender> (@<sender>): ` attribution prefix before delivery (§5.3); cross-connection envelopes additionally carry `id`/`created_at`/`from_profile`/`from_handle`/`target_connection`/`target_profile`/`target_handle` as a distinct JSON schema (§5.5); a separate six-member `subagent.*` gateway-event union (`spawn_requested`/`start`/`thinking`/`tool`/`progress`/`complete`) carries UI telemetry only, never the model-facing message (§5.2) | `UserMessage` over `ContentBlock[]` with a `MessageSource` discriminated union (§6.5): `coordinator`/`subagent-report`/`subagent-settled`/`team-message` are distinct `kind` values, each carrying its own field set, extensible via declaration merging. `TeamMessageSnapshot` additionally carries `id`/`senderId`/`senderName`/`targetId`/`delivery` |
+| Addressing | Agent ID (durable across name reuse) or agent name (collision-checked as of v2.1.199) | `agentId` tag on each event, attributing it to the sub-agent that produced it -- not an address a message is sent *to* | `sessionID` (a session with a `parentID` is a subagent's session); no separate agent-address concept beyond the session ID itself | Agent *name* only, resolved from a markdown frontmatter file (`~/.pi/agent/agents/*.md`, or project-scoped `.pi/agents/*.md`) at dispatch time -- no persistent handle to a *running* instance exists, because each dispatch is a fresh, short-lived child process, not a resumable session | Profile name resolved against a live roster injected into the sender's own system prompt, with `<peer>/<agent>` for a registered peer gateway and `<handle>@<connection>` disambiguating a same-named Bot on another registered Desktop connection (§5.3-§5.5) -- no durable agent-ID handle comparable to Claude Code's | `SessionId` everywhere -- the branded session identity is both the durable agent handle and the addressing key. Continuable-subagent `send_message` uses the `subagent_id` tool parameter; team `send_message` uses the immutable teammate `name` resolved against the roster. The `Agent` object itself (exact live reference) is the authority credential, not a copied ID |
+| Push vs. pull | Push: "the lead doesn't need to poll for updates"; mailbox delivered automatically | Push: events "share the parent session stream" | Push: SSE stream, plus a `server.heartbeat` keepalive so a client can tell "connected, idle" from "disconnected" | Push, but UI-scoped only: the extension's `onUpdate` callback is invoked as JSONL lines arrive on the child's stdout, updating the tool call's live render; nothing is pushed into the parent LLM's own context until the child process exits | Push but fire-and-forget: the sender gets an immediate acknowledgement and is told explicitly not to wait or poll; the reply surfaces later on exactly one shared channel -- a background-process completion notification -- reused across `delegate_task` results, arbitrary background shell processes, and `message_agent` replies alike (§5.1, §5.4) | Push with a two-mode dial: `wakeup` delivery wakes the target agent (`Agent.followup()` or `Agent.steer()`); `quiet` delivery injects without waking (`Agent.inject()`). The inbox itself is a durable projection the agent driver claims from, not a poll-based read. `wait_agent` offers a bounded long-poll for team-activity changes, separate from message delivery |
+| Peer-to-peer (agent-to-agent, not just parent-child) | Yes -- agent teams: "teammates message each other directly," one send per recipient, no broadcast primitive | Not found in any source fetched this session, across three separate pages researched | Not applicable in the same sense -- there is no peer concept; every message is a write into *some* session's own row, parent or child | No -- strictly parent-to-child, one direction, spawn-time only; sequencing multiple subagents (chain mode) is the parent extension's own string interpolation of one child's finished output into the next child's spawn arguments, never a channel between the two children themselves | Yes, and in two distinct shapes: addressed one-to-one via `message_agent` (§5.3-§5.5), and voluntary many-to-many in a shared, replicated group room where each member decides per-turn whether to speak at all (§5.6) | Yes, via the experimental agent-team seam (§6.4): any member can `send_message` or `followup_task` to any other member or the Lead. No broadcast; each send addresses one recipient. The child→parent `report` direction is explicitly one-edge-upward only (a grandchild reports to its direct parent, never to the top-level coordinator) |
+| Provenance / trust boundary on receipt | Enforced at the permission-classifier level: a message is tagged as coming from another agent, not the human, and cannot carry approval consent | Not documented -- no permission-relay discussion found for Copilot CLI's sub-agent events | Not documented as a trust boundary; the message schema itself carries no sender-trust field distinct from `role: "user" | "assistant"` | Documented at the agent-*definition* level, not the message level: project-local agent files (`.pi/agents/*.md`) are treated as less trusted than user-level ones, and the reference extension prompts for confirmation before running a project-local agent in an untrusted project (`agentScope`, `confirmProjectAgents`) -- a load-time trust gate on which prompt runs, not a runtime check on message content | Enforced at composition time rather than only on receipt: the tool's own schema instructs the sending model never to forward the human's words verbatim and to paraphrase, while the true-sender attribution prefix is stamped server-side inside `message_agent_tool()` itself, not left to the model to self-report (§5.3) | Four discriminated `MessageSource` kinds at the type level (§6.5): `coordinator`, `subagent-report`, `subagent-settled`, `team-message`. The continuation manager enforces direct-parent lineage as the authority check, independent of the attribution record; `MessageSource`/`senderSessionId` record who sent a message but grant no authority. The `subagent-settled` kind is explicitly distinct from `subagent-report` so a transcript cannot merge runtime accounts with child-authored content |
+| Malformed-message handling | Documented, dated fix: bad mailbox entries are validated, reported as errors, and evicted individually (v2.1.207+); before that, one bad entry blocked the whole mailbox | Not documented | Not documented as a distinct failure mode; ordinary schema validation (Effect's `Schema.Struct`) applies to every message row generally | Documented per-invocation, not per-message: a non-zero child exit code surfaces as a tool error with captured stderr/output, an LLM-level `stopReason: "error"` propagates as an error message, and in chain mode the whole chain stops at the first failing step | No documented malformed-*entry* recovery comparable to Claude Code's, but a substantially richer *delivery-failure* taxonomy: eleven named machine-readable reason codes (`provider_auth_or_access`, `queued_expired`, `target_busy`, `runtime_offline`, etc.) ride end-to-end with every failed delivery, plus TTL-based envelope expiry and a fail-fast offline check before an envelope is even queued (§5.5) | Team mailbox: log-backed replay with de-duplication (§6.4.2) -- a crash between inbox acceptance and model claim does not duplicate the message. Configurable limits (`maxPendingMessagesPerMember`, `maxMessageBytes`, `maxMembers`) with typed rejections on exhaustion. Report channel: explicitly weaker -- "no durable mailbox, idempotency key, delivery receipt, retry protocol, or exactly-once claim" (§6.3). CAS on task mutations (`expectedRevision`) prevents silent overwrites |
+| Extensibility hook for messaging-adjacent events | Three dedicated hooks (`TeammateIdle`, `TaskCreated`, `TaskCompleted`), each supporting exit-code-2 blocking, no `matcher` support | Not found | The same generic SSE stream any external tool could subscribe to; no dedicated hook system found for messaging specifically | None dedicated to subagent messaging specifically; the generic `registerTool`/`onUpdate`/`exec` extension primitives the reference example is built from are available to any tool, and a separate, unrelated `pi.events` in-process pub/sub bus exists for extension-to-extension notification within one session (§4.4) -- not a hook on the subagent pattern itself | None found scoped specifically to subagent or bot-to-bot messages; [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §6 documents three general-purpose hook systems (gateway/plugin/shell) that observe tool calls and turns broadly, none named for the messaging events this page covers | The `agent/inbox/inserted`/`claimed`/`discarded` events (§6.6) are the extension point consumers hook into; the `agent/pre-step` waterfall (from `docs/subsystems/core.md`) can intercept and rewrite claimed messages before the step runs. The Cordis plugin system means any package can listen to `session/event` and fold team-domain events independently; the `invariant` companion for agent-team replays each candidate event against its committed prefix before append |
+| Verifiability | Docs-only (closed-source product) | Docs-only, and thinner than the other two on this specific question | Docs **and** live `dev`-branch source, cross-checked end to end (schema file, publish call sites, SSE handler) | Docs **and** the full, real TypeScript source of the one reference extension the "subagent" concept is built from, both fetched this session from the `main` branch | Docs **and** the full production Python tool source and TypeScript gateway-event schema, both fetched this session directly from `NousResearch/hermes-agent` | Docs **and** the full package READMEs + subsystem docs + type-definition source for `agent-team` and `subagent`, all fetched this session from `deepseek-ai/deepseek-harness` `master` branch. Auto-generated `event-producer-consumer.md` cross-checked against the type definitions for dispatcher/listener accuracy |
 
 **The design lesson.** The three harnesses answer "how does a message
 actually get from one agent instance to another" in three
@@ -1003,9 +1384,37 @@ that happen to share exactly one thing: the generic background-process
 completion-notification channel every one of them ultimately surfaces
 through.
 
+DeepSeek Harness answers the question a sixth way -- and is the only harness
+on this page where the answer is *architecturally factored into three
+independently installed packages* rather than offered as one unified
+messaging primitive. The continuable-subagent parent→child direction
+(`dsh-tool-subagent-control`'s `send_message` → `Agent.followup()`), the
+child→parent report direction (`dsh-tool-subagent-report`'s `report` →
+`Agent.steer()`/`Agent.inject()`), and the peer-to-peer agent-team
+direction (`dsh-experimental-tool-agent-team`'s `send_message`/`followup_task`
+→ the `TeamService` mailbox → `Agent.followup()`/`Agent.inject()`) are three
+separate plugin surfaces that happen to converge on *one* shared
+transport primitive: the `Agent` inbox with its two targets (`next-turn` and
+`next-step`) and three delivery modes (`followup`, `steer`, `inject`). A
+workflow builder coming to DeepSeek Harness expecting Claude Code's single
+`SendMessage` tool will instead find that "messaging" is a capability seam
+the operator composes from packages, not a product primitive that comes
+pre-assembled. The payoff is that every channel carries its own provenance
+kind (`coordinator`, `subagent-report`, `subagent-settled`, `team-message`)
+in a type-enforced discriminated union that prevents the exact conflation
+the harness's own designers flagged as a semantic error -- "a transcript
+that merged them would credit the child with words it never wrote." The cost
+is that a deployment must deliberately compose the channels it needs, and
+the report path explicitly does not carry the same durability guarantees as
+the team mailbox (no de-duplication, no idempotency key, no exactly-once
+claim). This is the most granular, most explicitly-typed, and most
+opt-in-by-design answer on this page -- appropriate for the one harness
+whose entire architecture is built on Cordis composition and capability
+seams rather than on a fixed product surface.
+
 ---
 
-## Sources
+## 8. Sources
 
 **Claude Code (authoritative for Claude Code's documented behavior only), fetched 2026-07-31:**
 - `https://code.claude.com/docs/en/sub-agents` -- `SendMessage` tool
@@ -1181,3 +1590,72 @@ session, its own real production source), fetched 1 September 2026:**
   introduction; [fan-out.md](fan-out.md) §5, for `delegate_task`'s
   dispatch/concurrency mechanics and Bot Mode's group-chat shape from
   the dispatch angle, not repeated here.
+
+**DeepSeek Harness (authoritative for its own documented behavior; fetched
+this session from its own public repository), `master` branch via `gh api`,
+fetched 1 September 2026:**
+- `repos/deepseek-ai/deepseek-harness/contents/docs/architecture.md` --
+  the Cordis framework overview, the "capability seam" vocabulary,
+  profiles/bundles composition, the `Agent` interface and its `send`/
+  `followup`/`steer`/`inject`/`cancel`/`inbox` contract, the event
+  taxonomy, and the turn-flow lifecycle (§6.1).
+- `repos/deepseek-ai/deepseek-harness/contents/docs/event-producer-consumer.md` --
+  the auto-generated matrix of every harness-owned event's dispatchers
+  and listeners, specifically `agent/inbox/inserted`/`claimed`/`discarded`,
+  `subagent/start`/`end`/`provider-added`/`provider-removed`, and the
+  `session/event`/`session/disposed`/`agent/status`/`agent/session-start`
+  events the agent-team service listens on (§6.6).
+- `repos/deepseek-ai/deepseek-harness/contents/docs/subsystems/core.md` --
+  the `Agent` handle's full public interface, `InboxTarget`/`Inbox`
+  mechanics, `AgentHandle`/`AgentStatus`, the `agent/pre-step` waterfall,
+  `UserMessage`/`MessageSource` types, the `…Map`/`derived-union` pattern,
+  branded IDs, and the inbox-lifecycle event vocabulary (§6.1, §6.5).
+- `repos/deepseek-ai/deepseek-harness/contents/docs/subsystems/subagent.md` --
+  continuable children, Activations, the `followup()`/`interrupt()`/`reportFrom()`
+  continuation-manager contract, `CoordinatorMessageSource`/
+  `SubagentReportMessageSource`/`SubagentSettledMessageSource`,
+  the `SubagentRuntime` service API, and the cold-resume mechanism (§6.2,
+  §6.3).
+- `repos/deepseek-ai/deepseek-harness/contents/docs/subsystems/agent-team.md` --
+  the experimental Agent Teams subsystem: `TeamId`/`TeamMemberSnapshot`/
+  `TeamMessageSnapshot`/`TeamMessageSource` durable types, the
+  `ctx.agentTeams` service API (`sendMessage`, `spawnTeammate`,
+  `createTask`, `updateTask`, `interrupt`, `waitForChange`), the durable
+  mailbox ("queued-minus-delivered"), replay recovery, and the shared task
+  DAG (§6.4).
+- `repos/deepseek-ai/deepseek-harness/contents/packages/experimental/agent-team/src/types.ts` --
+  the full source-verified type definitions for `TeamId`, `TeamTaskId`,
+  `TeamMessageId`, `TeamMemberSnapshot`, `TeamMemberPhase`/
+  `TeamMemberView`, `TeamTaskSnapshot`/`TeamTaskView`/`TeamTaskAction`,
+  `TeamMessageSnapshot`, `TeamMessageSource`, `SendTeamMessageRequest`/
+  `SendTeamMessageResult`, `SpawnTeammateRequest`/`SpawnTeammateResult`,
+  `CreateTeamTaskRequest`/`UpdateTeamTaskRequest`/`TeamTaskMutationResult`,
+  `Config`, and the `SessionEventMap` extension adding `team/member`,
+  `team/task`, `team/message/queued`, and `team/message/delivered` (§6.4).
+- `repos/deepseek-ai/deepseek-harness/contents/packages/subagent/subagent/src/types.ts` --
+  the full source-verified type definitions for `SubagentRunId`,
+  `SubagentRunInfo`/`SubagentRunEndInfo`, `SubagentCapabilities`,
+  `SubagentStartRequest`/`ResolvedSubagentStartRequest`,
+  `ContinuableCreateRequest`/`ContinuableCreateSpec`, `SubagentResult`,
+  and `SubagentStopReasonMap` (§6.1-§6.2).
+- `repos/deepseek-ai/deepseek-harness/contents/packages/subagent/tool-subagent-control/README.md` --
+  `send_message`, `interrupt_agent`, and `list_agents` tools; acceptance-
+  only return semantics; the "no independent result" limitation; thin
+  adapter over `ctx.subagents.followup()`/`interrupt()` design; listing
+  projection and occupancy-discovery gaps (§6.2).
+- `repos/deepseek-ai/deepseek-harness/contents/packages/subagent/tool-subagent-report/README.md` --
+  the child-scoped `report` tool, `reportDelivery` (`next-step`/`quiet`)
+  scheduling via `parent.steer()`/`parent.inject()`, the `SubagentReport`
+  framing, the `toolFilter`-survival design, and the "acceptance is weaker
+  than durable delivery" limitation (§6.3).
+- `repos/deepseek-ai/deepseek-harness/contents/packages/experimental/agent-team/README.md` --
+  the durable-log/derived-state design philosophy, the process-local
+  ownership model, the explicit authority rule (exact live `Agent`), the
+  durable mailbox with queued-minus-delivered recovery and de-duplication,
+  the CAS task board, the immutable-name roster, and the "not cross-process
+  exactly-once" scoping (§6.4).
+- `repos/deepseek-ai/deepseek-harness/contents/packages/experimental/tool-agent-team/README.md` --
+  the ten scoped team tools, the fixed team policy, the fresh/fork provider
+  configuration, the `send_message`(quiet)/`followup_task`(wakeup) delivery
+  mode split, `wait_agent`/`interrupt_agent`, and the experimental-status
+  caveat (§6.4.4).

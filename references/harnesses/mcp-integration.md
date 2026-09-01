@@ -1,4 +1,4 @@
-# MCP integration -- Claude Code, GitHub Copilot CLI, OpenCode, Hermes Agent, and pi
+# MCP integration -- Claude Code, GitHub Copilot CLI, OpenCode, Hermes Agent, pi, and DeepSeek Harness
 
 How each harness discovers, registers, connects to, and invokes MCP
 servers. Written for someone building a server that must work across
@@ -7,23 +7,30 @@ harnesses.
 Every claim below is tagged VERIFIED (fetched this session from the
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Sources and
 fetch dates at the bottom. Claude Code, Copilot CLI, OpenCode, Hermes
-Agent, and pi are separate products from separate organizations --
-nothing confirmed for one is assumed for another. §3 (OpenCode) was
-added 2026-08-24 as a gap-fill: an earlier 2026-08-24 update to this
-page had added Hermes Agent as a third harness section, but the page
-still had never covered OpenCode -- one of this book's own three named
-target harnesses -- leaving a real gap this update closes; §4 (Hermes
-Agent) and §5 (Synthesis) are renumbered from that earlier update, not
-otherwise changed. §5 (pi) was added 1 September 2026, with the former
-§5 (Synthesis) renumbered to §6 -- pi is already documented elsewhere
-in this book (`llm-api-contract.md` §3.5, `hooks-lifecycle-extensibility.md`
-§5, `permissions-and-sandboxing.md`, `session-persistence.md`,
-`configuration.md`, `auth-and-usage-accounting.md`, `built-in-skills.md`
-§4, `context-compression.md`, `model-routing-and-selection.md`), and
-this page's own finding is a genuinely different shape from the other
-four: pi ships **no built-in MCP client at all**, by explicit design
-choice, and this section documents both that absence and the
-ecosystem's own de facto third-party answer to it.
+Agent, pi, and DeepSeek Harness are separate products from separate
+organizations -- nothing confirmed for one is assumed for another.
+§3 (OpenCode) was added 2026-08-24 as a gap-fill: an earlier 2026-08-24
+update to this page had added Hermes Agent as a third harness section,
+but the page still had never covered OpenCode -- one of this book's own
+three named target harnesses -- leaving a real gap this update closes;
+§4 (Hermes Agent) and §5 (Synthesis) are renumbered from that earlier
+update, not otherwise changed. §5 (pi) was added 1 September 2026, with
+the former §5 (Synthesis) renumbered to §6 -- pi is already documented
+elsewhere in this book (`llm-api-contract.md` §3.5,
+`hooks-lifecycle-extensibility.md` §5, `permissions-and-sandboxing.md`,
+`session-persistence.md`, `configuration.md`,
+`auth-and-usage-accounting.md`, `built-in-skills.md` §4,
+`context-compression.md`, `model-routing-and-selection.md`), and this
+page's own finding is a genuinely different shape from the other four:
+pi ships **no built-in MCP client at all**, by explicit design choice,
+and this section documents both that absence and the ecosystem's own de
+facto third-party answer to it. §6 (DeepSeek Harness) was added 1
+September 2026, with the former §6 (Synthesis) renumbered to §7 --
+DeepSeek Harness is a developer-preview, open-source, plugin-architecture
+harness from DeepSeek AI whose MCP integration is entirely a first-party
+bridge plugin (`@deepseek-ai/dsh-mcp-client`) rather than a core
+service, and whose source (including the bridge implementation itself)
+is directly inspectable in the public repo.
 
 ---
 
@@ -945,30 +952,403 @@ what the ecosystem has built on top of it.
 
 ---
 
-## 6. Synthesis -- what actually differs
+## 6. DeepSeek Harness (DeepSeek AI)
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | Hermes Agent | pi |
-|---|---|---|---|---|---|
-| Built-in MCP client | Yes | Yes | Yes | Yes | **No** -- explicit design choice; ecosystem fills the gap via third-party extensions (§5.3) |
-| Wrapper object | `mcpServers` | `mcpServers`, bare top-level keys also accepted in project files | `mcp` (under `opencode.json`) | `mcp_servers` under `~/.hermes/config.yaml` | N/A in pi itself (§5.2); `pi-mcp-adapter` (third-party, §5.3) reads the same `mcpServers` object shape |
-| stdio type value | `"stdio"` | `"local"` | `"local"` | Implicit -- a `command`-shaped entry (e.g. `npx -y @modelcontextprotocol/server-github`) rather than a discriminated `type` value documented on the one page fetched | N/A in pi itself; the adapter uses a `command`/`args` entry with no discriminated `type` field, mutually exclusive with its own `url`/`socket` fields |
-| Remote types | `http` (alias `streamable-http`), `sse` (deprecated), `ws` | `http`, `sse` (deprecated) | `remote` (a single type value covering any URL-based server; no `sse`/`ws` distinction documented) | HTTP (remote URL, headers, API key/OAuth/mTLS) | N/A in pi itself; the adapter's `url` field is Streamable HTTP with SSE fallback (no separate `sse` type) |
-| WebSocket | Yes, JSON-config only | No confirmed support | Not found on the pages fetched | Not found on the page fetched | Not found -- the adapter instead documents a `socket` field for an `rmcp-mux` Unix-domain-socket path, a different mechanism from a `ws://` MCP transport |
-| User-level file | `~/.claude.json` | `~/.copilot/mcp-config.json` (relocatable via `COPILOT_HOME`) | Global `opencode.json` (location not itself re-derived here; see [configuration.md](configuration.md)) | `~/.hermes/config.yaml` | N/A in pi itself; the adapter reads `~/.config/mcp/mcp.json`, `~/.agents/mcp.json`, `~/.agents/mcp/mcp.json`, and its own `<Pi agent dir>/mcp.json` (default `~/.pi/agent/mcp.json`) |
-| Project file | `.mcp.json` at project root | `.mcp.json` (walked up to repo root) or `.github/mcp.json` | `opencode.json` at project root, under its own `mcp` key (no separate MCP-only file found) | Not found on the page fetched -- config is documented as the single `~/.hermes/config.yaml` (or `$HERMES_HOME`-relative per profile, per [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §6's own per-profile isolation finding) | N/A in pi itself; the adapter reads `.mcp.json` plus its own project override `.pi/mcp.json` |
-| `env` semantics | `${VAR}` / `${VAR:-default}` expansion | literal by default; `${VAR}` for a reference | `environment` object (local servers) with literal values in the docs' own examples; `{env:...}` substitution confirmed specifically for OAuth `clientId`/`clientSecret` | Not documented on the page fetched | N/A in pi itself; the adapter supports `${VAR}`/`$env:VAR` interpolation, plus a leading `!` on a value to run a command for it (`!!` escapes a literal leading `!`) |
-| Per-server tool filter | none in config; permissions instead | `tools` field (`*` or comma-separated list) | config-level `tools` key with glob patterns (`"my-mcp*": false`), plus a documented per-agent override pattern | `tools.include`/`tools.exclude`, glob-pattern-capable | N/A in pi itself; the adapter's `includeTools`/`excludeTools` (glob-capable) |
-| Deferred loading opt-out | `alwaysLoad: true` | `deferTools` | Not applicable -- no deferred-loading strategy documented; tools register directly into the flat registry alongside built-ins | Not applicable -- no deferred-loading strategy documented; tools register directly into the flat registry | N/A -- pi has no first-party MCP registration to defer at all (§5.2); the adapter instead registers one proxy tool by default for every server, with `directTools` as its own opt-in escape hatch to individual per-tool registration |
-| Permission addressing | `mcp__server__tool` | `SERVER(tool_name)` or `SERVER` | `sanitize(server)_sanitize(tool)` (single underscore, source-verified in `catalog.ts`) | `mcp_<server_name>_<tool_name>` (single fixed prefix, not a permission-rule-specific syntax distinct from the tool's own registered name) | N/A in pi itself (pi's own permission model is extension-defined, not MCP-specific); the adapter's default proxy-tool shape addresses a call via a `{ tool: "<name>" }` argument, not a `server__tool` string, with `toolPrefix` controlling the name format only for directly-registered tools |
-| Server instructions in prompt | yes, and central to tool search | opt-in via `--allow-all-mcp-server-instructions` | Not documented on the pages fetched | Not documented on the page fetched | Not found on the sources read this session, for either pi itself or the adapter |
-| Per-session override flag | `--mcp-config` (referenced in docs) | `--additional-mcp-config` (inline JSON or `@file`) | Not found on the pages fetched | Not found on the page fetched | Not found on the sources read this session, for either pi itself or the adapter |
-| Built-in server always present | reserved names include `workspace`, `claude-in-chrome`, `computer-use` | GitHub MCP server | None found -- no bundled MCP server documented | None found -- Hermes' own built-in capability comes from its 70+ native tools, not a bundled MCP server | None -- pi ships none, first-party or via the adapter |
-| OAuth | Full client support: discovery, dynamic registration, CIMD, pre-configured credentials | Not independently confirmed on pages fetched this session | Full client support: 401-triggered discovery, RFC 7591 dynamic client registration, pre-registered `clientId`/`clientSecret`/`scope`, `oauth: false` opt-out, dedicated `mcp auth`/`mcp debug` command surface, tokens at `~/.local/share/opencode/mcp-auth.json` | API key/OAuth/mTLS named as supported for HTTP transport; mechanism detail not independently confirmed beyond that | N/A in pi itself; the adapter's own OAuth surface (§5.3) is the fullest documented of any client in this table: RFC 7591 DCR fallback, an explicit `authorization_code`/`client_credentials` grant choice, pre-registered client metadata, authoritative-metadata pinning with issuer validation, and OS-credential-store token storage bound to the server's resolved URL |
-| Dynamic tool-list re-discovery | `list_changed` notification honoured per-connection; no broader re-discovery guarantee found | `list_changed`-style behavior not independently confirmed on pages fetched | Not found on the pages fetched (a `list_changed`-shaped MCP capability is not among the client capabilities read from `CLIENT_OPTIONS`) | Explicit, named runtime re-discovery: a connected server can push a change notification and Hermes re-fetches and updates the registry live | Not found on the sources read this session, for either pi itself or the adapter |
-| Sampling / elicitation client capability | Elicitation documented and supported (form/URL rendering, `Elicitation` hook); sampling not documented on the page fetched | Not documented on pages fetched | Both explicitly commented out in source (`sampling`/`elicitation` capabilities), each citing a since-closed-as-completed GitHub issue -- a live, unresolved discrepancy (§3.4) | Not independently confirmed | Not found on the sources read this session, for either pi itself or the adapter |
-| Pagination/cursor defensiveness | Not documented on the page fetched | Not documented on pages fetched | Source-verified 1,000-page cap with a duplicate-cursor guard that throws rather than looping forever | Not documented on the page fetched | Not found on the sources read this session, for either pi itself or the adapter |
-| Tool-result content sanitisation | Not found as a named MCP-specific step (general prompt-injection mitigations exist elsewhere, per [system-prompt-design-as-craft.md](system-prompt-design-as-craft.md)) | Not found as a named MCP-specific step | Not found as a named MCP-specific step | Named Unicode-TAG-character stripping on tool results specifically | Not found on the sources read this session, for either pi itself or the adapter |
-| Org-wide/remote default servers | Claude.ai connector inheritance is the closest analogue (§1.1), a different mechanism | Not documented on pages fetched | Documented `.well-known/opencode`-published remote defaults, opt-in per server via local `enabled: true` | Not documented on the page fetched | Not found on the sources read this session; the adapter's own host-config-import flow (§5.3) is a related but distinct, one-directional, user-triggered import mechanism, not an org-published default |
+Source for this section: VERIFIED, fetched 1 September 2026 directly from
+`github.com/deepseek-ai/deepseek-harness`, `master` branch -- the
+package README (`packages/mcp/mcp-client/README.md`), the plugin
+implementation source (`packages/mcp/mcp-client/src/index.ts`,
+`connection.ts`, `tools.ts`, `transport.ts`), the Agent Notes
+(`.agents/notes/implemented/feature/2026-07-07-mcp-client-plugin.md` and
+`2026-08-06-mcp-client-auto-reconnect.md`), the MCP-memory user guide
+(`docs/user/guide/mcp-memory.md`), and the example Cordis overlay configs
+under `apps/cli/config/examples/mcp-memory/`, all via `gh api`. DeepSeek
+Harness is a developer-preview product whose `master` branch may not
+reflect the current stable release; flag this when citing source code. The
+MCP bridge is a plugin (`@deepseek-ai/dsh-mcp-client`), not a core
+service -- it ships disabled in the base composition and is added by
+explicit Cordis overlay, a different architectural choice from any other
+harness in this page, where MCP support lives in the core code rather
+than an extension. This section documents that plugin specifically; a
+DeepSeek Harness deployment that does not load it has no MCP support at
+all, just as pi (§5) has none without `pi-mcp-adapter`.
+
+### 6.1 Architecture: a plugin bridge, not a core feature
+
+```mermaid
+flowchart TD
+    A["cordis.yml entry<br/>name: '@deepseek-ai/dsh-mcp-client'"] --> B["Plugin apply()<br/>resolves config, reserves serverName"]
+    B --> C["Connection supervisor<br/>starts transport, awaits ready"]
+    C --> D{Connect + initial tools/list?}
+    D -->|Success| E["syncTools(): register on ctx.tools<br/>as mcp__serverName__rawName"]
+    D -->|Failure| F["If failOnStartupError: abort<br/>Otherwise: enter reconnect loop"]
+    F --> G["Bounded backoff reconnect<br/>500ms → 30s, maxAttempts = 10"]
+    G --> C
+    E --> H["Listen for notifications/tools/list_changed"]
+    H -->|Change notification| I["Re-sync: atomic generation swap<br/>fetch → dispose previous → register next"]
+    subgraph "Per-server lifetime"
+        C; D; E; F; G; H; I
+    end
+```
+
+DeepSeek Harness is built on **Cordis**, a TypeScript plugin framework
+where every capability -- tools, LLM adapters, persistence, the agent
+loop itself -- is a Cordis plugin registered in a `cordis.yml`
+composition. MCP is no different: `@deepseek-ai/dsh-mcp-client` is a
+Cordis namespace plugin (named exports `name`/`inject`/`Config`/`apply`,
+no `export default`) that `inject: ['tools']` and registers discovered
+MCP tools onto the same `ctx.tools` `ToolRuntime` that all native tools
+use. VERIFIED (`packages/mcp/mcp-client/src/index.ts`, `README.md`). Each
+MCP server is one plugin *instance* -- `dsh-mcp-client` loaded N times
+with different configs in `cordis.yml`, the same pattern the harness uses
+for `dsh-tool-subagent`. VERIFIED (`README.md`: "Each MCP server is one
+plugin instance in `cordis.yml` -- the same package loaded N times with
+different configs").
+
+This has three practical consequences that differ from every other
+harness in this page:
+
+1. **MCP integration requires an explicit composition step.** Nothing
+   ships enabled in the base `dsh-base` bundle; a Cordis overlay (a
+   YAML patch applied at startup via `--patch` or a profile's
+   `cordis.patch.yml`) must add each server entry. The `docs/user/guide/mcp-memory.md`
+   guide illustrates this explicitly: "No memory server is present in
+   the shipped composition, so omitting `--patch` keeps all three
+   disabled." VERIFIED.
+
+2. **The plugin activation gateway blocks startup.** `apply()` is
+   explicitly `async` and awaits the initial connection plus tool
+   discovery before returning, so "Cordis consumers observe the tools
+   immediately after the fiber activates." When `failOnStartupError` is
+   `true` (default `false`), a failed initial connection rejects the
+   fiber and Cordis rolls it back -- the harness cannot start with a
+   broken MCP server, which is a stronger-startup-guarantee posture than
+   any other harness in this page documents. VERIFIED (`src/index.ts`
+   comments and `README.md`).
+
+3. **HMR hot-swaps the server connection in place.** Editing the
+   `cordis.yml` entry triggers Cordis HMR: dispose the old instance
+   (disconnects, unregisters tools) and create a new one (connects,
+   discovers, registers). Because public names are a pure function of
+   `(serverName, rawName)`, an HMR swap that keeps `serverName`
+   recreates identical model-facing names, preserving session history and
+   permission rules. VERIFIED (`README.md` and Agent Note
+   `2026-07-07-mcp-client-plugin.md`).
+
+### 6.2 Config format and transport types
+
+One config entry per server, discriminated on `transport`:
+
+```yaml
+- id: mcp-github
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: github
+    transport: stdio
+    command: npx
+    args: ['-y', '@modelcontextprotocol/server-github']
+    env:
+      GITHUB_TOKEN: !!js process.env.GITHUB_TOKEN
+
+- id: mcp-web
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: web
+    transport: streamable-http
+    url: http://localhost:3000/mcp
+    headers:
+      Authorization: !!js '`Bearer ${process.env.MCP_TOKEN}`'
+```
+
+VERIFIED (`README.md` "Minimal configuration", `src/index.ts` `Config`
+type). Two transports, no more:
+
+| Transport value | Meaning | Config keys |
+|---|---|---|
+| `stdio` | Subprocess, launched and stopped by the plugin lifecycle | `command`, `args`, `env`, `cwd` |
+| `streamable-http` | Remote server using Streamable HTTP with SSE fallback | `url`, `headers` |
+
+This is a narrower transport surface than Claude Code's four transports
+(§1.2: `stdio`, `http`, `sse`, `ws`) or Copilot CLI's three (§2.2:
+`local`/`http`/`sse`). There is no deprecated-`sse` transport value,
+no `ws`/WebSocket transport value, and no standalone SSE option at all
+-- the Streamable HTTP transport handles SSE internally per the MCP SDK's
+own `StreamableHTTPClientTransport`. VERIFIED (`src/transport.ts`).
+
+Shared fields across both transports: `serverName` (required,
+`[A-Za-z0-9_-]{1,32}`, must be unique across live instances inside one
+registration scope), `toolCallTimeoutMs` (default `60,000`),
+`failOnStartupError` (default `false`), and `reconnect` (default
+on/off/delays/attempts, detailed in §6.4 below). VERIFIED (`src/index.ts`
+`Config` schema, `README.md` field table).
+
+`serverName` is deliberately the user's local configuration, not the
+remote `serverInfo.name` -- the Agent Note states the rationale
+explicitly: "the remote name is untrusted, not unique across deployments,
+and can change on upgrade, none of which may silently rename
+model-facing tools." VERIFIED (Agent Note `2026-07-07-mcp-client-plugin.md`).
+A duplicate `serverName` across live instances within one scope is a
+configuration error: the later instance "fails to load with a clear
+error," never silently shadowing or skipping. VERIFIED (`src/index.ts`
+`apply()` and `README.md`).
+
+For `headers` on the `streamable-http` transport, the YAML examples use
+Cordis `!!js` tag expressions (e.g. `!!js '`Bearer ${process.env.MCP_TOKEN}`'`)
+to interpolate environment variables at config-read time. This is a
+Cordis-framework mechanism, not an MCP-client-specific env-expansion
+feature; `stdio`'s `env` field is a plain key-value map merged on top
+of a scrubbed parent environment. VERIFIED (`README.md` examples and
+`src/transport.ts`).
+
+### 6.3 Environment scrubbing for stdio
+
+The stdio child environment starts from the subprocess seam's shared
+`scrubbedParentEnv()`, which removes ambient environment variable names
+matching `/KEY|PASSWORD|SECRET|TOKEN/i` and all ambient `DSH_*` names,
+then merges the configured `env` on top so explicit overrides survive.
+VERIFIED (`src/transport.ts` `buildChildEnv()`, `README.md` "Environment
+scrubbing (stdio)"). This is a credential-protection measure not
+documented on any other harness's own stdio-MCP surface in this page --
+Claude Code (§1.4) documents `${VAR}` expansion but not credential
+scrubbing; Copilot CLI (§2.2) documents env-by-reference but not
+scrubbing; OpenCode (§3.1) documents `environment` passes-through but
+not scrubbing; Hermes Agent (§4) does not document env semantics on the
+page fetched. Whether any of them *implement* equivalent scrubbing is
+BEST CURRENT UNDERSTANDING, UNCONFIRMED; this section only confirms it
+for DeepSeek Harness.
+
+### 6.4 Connection lifecycle, reconnection, and `list_changed` re-sync
+
+The connection supervisor (`src/connection.ts`) owns the MCP client and
+transport generations for one plugin instance. Its lifecycle:
+
+1. **Initial connection.** `apply()` starts the supervisor, which
+   creates a fresh `Client` + transport, connects, drains `tools/list`
+   pagination, and registers the discovered tool generation on
+   `ctx.tools`. The `apply` function awaits the `ready` promise before
+   returning, blocking plugin activation. VERIFIED.
+
+2. **`notifications/tools/list_changed`.** The supervisor registers a
+   handler before `connect()` so a notification arriving during initial
+   sync is queued behind it. On notification, it re-runs `syncTools()`
+   atomically: fetch the new tool list, dispose the previous generation's
+   registrations, register the next generation. A fetch failure keeps
+   the previous generation registered ("the previous tool set stays
+   active"); a registration conflict (a foreign tool squatting on this
+   server's namespace) rolls back the entire attempted generation to
+   zero tools from that server. VERIFIED (`src/connection.ts`, Agent
+   Note `2026-07-07`).
+
+3. **Automatic reconnection with bounded exponential backoff.** When a
+   stdio server's child process crashes, the SDK fires `client.onclose`;
+   the supervisor schedules a reconnect with delays doubling from
+   `initialDelayMs` (default 500 ms) up to `maxDelayMs` (default 30 s).
+   One outage shares one attempt budget: `maxAttempts` (default 10)
+   consecutive failures, after which the server's tools are unregistered
+   and reconnection stops until reload or restart. A connection that
+   stays up past the stability window = `maxDelayMs` resets the budget,
+   so an occasionally-crashing server recovers indefinitely while a
+   crash-loop whose connects briefly succeed cannot launder its budget
+   into a restart storm. VERIFIED (`src/connection.ts`, Agent Note
+   `2026-08-06-mcp-client-auto-reconnect.md`).
+
+4. **During an outage**, the last-known tool set stays registered and
+   calls against it fail deterministically, which is better than
+   flapping the model-visible tool list on every transient disconnect.
+   After recovery, unchanged tool lists reproduce identical definitions,
+   keeping the KV-cache-friendly schema prefix stable. VERIFIED (Agent
+   Note `2026-08-06`).
+
+5. **Streamable HTTP reconnection is different.** The
+   `StreamableHTTPClientTransport` fires `onclose` only for deliberate
+   closes, not for request failures; it owns its internal SSE-stream
+   recovery and surfaces request failures per call. The supervisor
+   therefore does not restart HTTP servers -- HTTP request failures are
+   retried per call by the SDK, not by the supervisor. VERIFIED
+   (`src/connection.ts`, `README.md` "Known Limitations").
+
+6. **Sync serialization.** One per-supervisor queue serializes every
+   `syncTools` call -- initial syncs, notification re-syncs, and
+   reconnect syncs across all generations -- so two syncs can never
+   interleave their dispose-previous/register-next swap. VERIFIED
+   (`src/connection.ts` `enqueueSync`).
+
+### 6.5 Tool naming: `mcp__<serverName>__<rawName>` with collision-safe normalization
+
+```mermaid
+flowchart LR
+    A["MCP tool: rawName"] --> B["Compute: mcp__serverName__rawName"]
+    B --> C{All chars in A-Za-z0-9 underscore hyphen AND length <= 64?}
+    C -->|Yes| D["Use verbatim<br/>e.g. mcp__github__create_issue"]
+    C -->|No| E["Replace invalid chars with underscore<br/>Truncate to 64 - 13 chars<br/>Append underscore + 12-hex SHA-256 hash of serverName NUL rawName"]
+    E --> F["e.g. mcp__github__create.issue → mcp__github__create_issue_a1b2c3d4e5f6"]
+```
+
+The model-facing public name for an MCP tool is computed by a
+deterministic pure function `publicToolName(serverName, rawName)`:
+
+```
+joined  = "mcp__" + serverName + "__" + rawName
+normalized = joined.replace(/[^A-Za-z0-9_-]/g, "_")
+if normalized == joined AND len(normalized) <= 64:
+  return normalized
+hash = sha256(serverName + "\0" + rawName).hex()[0:12]
+return normalized[0:64-13] + "_" + hash
+```
+
+VERIFIED (`src/tools.ts` `publicToolName()`). The 64-character ceiling
+comes from the DeepSeek API's own function-name contract (`MAX_PUBLIC_NAME_LENGTH
+= 64`), a constraint not shared by Claude Code's or Copilot CLI's own
+API function-name limits (which this page has not found documented). The
+12-hex-char collision-safe hash appendix is a mechanism this page has not
+found on any other harness: Claude Code (§1.6) simply sanitizes
+characters without appending a hash; OpenCode (§3.3) runs
+`sanitize(clientName) + "_" + sanitize(name)` with no hash fallback; and
+Copilot CLI sanitizes but does not document its exact algorithm (§2.4).
+The hash is a stronger collision-avoidance guarantee: two MCP tools
+whose raw names differ only in characters outside `[A-Za-z0-9_-]` will
+still produce distinct public names after normalization, because the
+SHA-256 input includes the identity pair `(serverName, rawName)`.
+
+**The raw name is the only wire name.** `tools/call` always receives the
+raw MCP name; the public name is never sent to the server and never
+parsed to recover the raw name. This is the same wire/readiness
+discipline Claude Code enforces (§1.6: names are resolved locally, the
+server never sees its `mcp__` prefix). VERIFIED (`src/tools.ts`
+`createExecutor()`, Agent Note).
+
+**Conflict handling is structural, not collision-time.** The Agent Note
+records the design rationale explicitly: "MCP guarantees tool-name
+uniqueness only within one server; cross-server collisions are the norm,
+not the exception." The always-on `mcp__<serverName>__` namespace makes
+collisions structurally impossible rather than handling them at collision
+time. Two servers publishing `search` coexist as `mcp__github__search`
+and `mcp__web__search`; a native harness tool named `search` is
+unaffected; a duplicate `serverName` config fails the later instance at
+load. The Agent Note further cites a Microsoft Research survey of 1,470
+MCP servers finding 775 colliding tool names, and notes the
+`mcp__<server>__<tool>` spelling "follows Claude Code and Codex,
+maximizing model familiarity." VERIFIED.
+
+### 6.6 Tool execution semantics
+
+**Registration is into the same `ctx.tools` pipeline as native tools.**
+MCP tools pass through the same `tools/pre-execute` → guard →
+`tools/execute` → `tools/post-execute` → `finalizeContent` →
+`tools/result` pipeline that `docs/subsystems/tools.md` documents for
+all tools, with the same `PreToolDecision`/`PostToolDecision` types.
+MCP tools are therefore subject to the same permission system,
+scoped restrictions, and execution guards as native tools, with no
+MCP-specific bypass. VERIFIED (`src/tools.ts` registers a raw
+`ToolDefinition` via `ctx.tools.register()`, which the `ToolRuntime`
+pipeline then governs).
+
+**Per-call timeout.** Each MCP `tools/call` invocation carries the
+configured `toolCallTimeoutMs` (default 60,000 ms) and the caller's
+`AbortSignal` for cancellation propagation. VERIFIED (`src/tools.ts`
+`callToolUncached()`).
+
+**Canonical result structure.** The executor returns the
+protocol-complete canonical value as `{ content: JsonValue[],
+structuredContent?: Structured }`, preserving the full MCP JSON blocks
+for programmatic and PTC (Parallel Tool Call) mode callers. A supported
+advertised `outputSchema` validates `structuredContent`; unsupported
+schema vocabulary falls back to unconstrained `JsonValue`. VERIFIED
+(`src/tools.ts` `createOutput()` and `createExecutor()`).
+
+**Image handling is exact-capability-gated.** If the MCP result
+contains image blocks, the bridge decodes the complete batch, resolves
+the calling agent's latest model route, and requires both (a) an
+attachment store to be mounted and (b) the exact model to declare image
+input via `resolveModelInfo()`. Any decode, capability, or storage
+refusal renders every image in the batch as diagnostic text (not a
+partial reference), while the canonical `McpResult` retains the raw
+base64 for programmatic callers. VERIFIED (`src/tools.ts`
+`prepareImageProjection()`, `decodeImage()`, Agent Note).
+
+**MCP `isError: true` throws before image persistence**, so the registry
+produces a failed tool result and no images are saved for an error
+response. VERIFIED (`src/tools.ts` `createExecutor()`).
+
+**`finalizeContent` for rich projections.** The bridge stages its
+image-enriched projection in a generation-local `WeakMap` keyed by the
+exact execution; `finalizeContent` installs it only when the registry's
+post-execute result still has the original canonical value and fallback
+content, so a policy block or value replacement remains authoritative.
+VERIFIED (`src/tools.ts` `createDefinition()`, Agent Note).
+
+**Tool-task-required MCP tools are rejected at call time.** A tool
+whose `execution.taskSupport === 'required'` throws instead of bridging,
+because the task-based execution extension is not implemented. VERIFIED
+(`src/tools.ts`, `README.md` "Known Limitations").
+
+### 6.7 What is not bridged
+
+**Resources and Prompts are not supported.** The bridge explicitly
+defers both: "Resources need a harness-side mechanism to decide WHEN to
+inject content (system prompt? on demand? model-triggered?). Prompts
+need a 'prompt template' concept the harness lacks. Both require their
+own design; Tools are the high-value, low-risk starting point." VERIFIED
+(Agent Note, `README.md` "Known Limitations").
+
+**No OAuth support.** The `streamable-http` transport accepts static
+`headers` (including `Authorization`) but has no built-in OAuth flow,
+dynamic client registration, or token refresh. This is a narrower
+credential surface than Claude Code (§1.7: full OAuth 2.0 client),
+Copilot CLI (§2.4: OAuth documented), or OpenCode (§3.2: RFC 7591 DCR,
+interactive auth), and closer to Hermes Agent's own static-credential
+posture (§4.1: API keys / headers). VERIFIED (`src/transport.ts`
+`StreamableHTTPClientTransport` construction -- only `requestInit: {
+headers }` is passed).
+
+**No sampling or elicitation client capability.** The MCP `Client`
+constructor passes `capabilities: {}` -- no `sampling`, `elicitation`,
+or `roots` capability is advertised to any connected server. VERIFIED
+(`src/connection.ts` `new Client({ capabilities: {} })`). This is
+narrower than Claude Code's documented elicitation support (§1.7) and
+OpenCode's source-verified `roots` capability (§3.4).
+
+**Startup and discovery timeouts are inherited from the MCP SDK** (60
+seconds per request by default); the plugin exposes no connection or
+discovery timeout of its own, so an unresponsive server or cursor chain
+can delay both activation and teardown. VERIFIED (`README.md` "Known
+Limitations").
+
+**No tool search / deferred loading.** The bridge registers all
+discovered tools immediately into the flat `ToolRuntime` registry with
+no deferred-loading or ToolSearch mechanism. VERIFIED as an absence from
+`src/tools.ts` -- `syncTools()` registers every tool from the fetched
+list. This is the same immediate-registration posture as Hermes Agent
+(§4) and the default posture of OpenCode (§3); it differs from Claude
+Code's `ENABLE_TOOL_SEARCH` (§1.6) and Copilot CLI's `deferTools`
+(§2.4).
+
+---
+
+## 7. Synthesis -- what actually differs
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | Hermes Agent | pi | DeepSeek Harness |
+|---|---|---|---|---|---|---|
+| Built-in MCP client | Yes | Yes | Yes | Yes | **No** -- explicit design choice; ecosystem fills the gap via third-party extensions (§5.3) | **Plugin** -- first-party bridge (`@deepseek-ai/dsh-mcp-client`) that ships disabled; a Cordis overlay must add each server entry (§6.1) |
+| Wrapper object | `mcpServers` | `mcpServers`, bare top-level keys also accepted in project files | `mcp` (under `opencode.json`) | `mcp_servers` under `~/.hermes/config.yaml` | N/A in pi itself (§5.2); `pi-mcp-adapter` (third-party, §5.3) reads the same `mcpServers` object shape | Per-server Cordis plugin entry under `cordis.yml` (no `mcpServers` wrapper; each server is a separate plugin instance keyed by `id`) |
+| stdio type value | `"stdio"` | `"local"` | `"local"` | Implicit -- a `command`-shaped entry (e.g. `npx -y @modelcontextprotocol/server-github`) rather than a discriminated `type` value documented on the one page fetched | N/A in pi itself; the adapter uses a `command`/`args` entry with no discriminated `type` field, mutually exclusive with its own `url`/`socket` fields | `"stdio"` |
+| Remote types | `http` (alias `streamable-http`), `sse` (deprecated), `ws` | `http`, `sse` (deprecated) | `remote` (a single type value covering any URL-based server; no `sse`/`ws` distinction documented) | HTTP (remote URL, headers, API key/OAuth/mTLS) | N/A in pi itself; the adapter's `url` field is Streamable HTTP with SSE fallback (no separate `sse` type) | `"streamable-http"` (SSE handled internally by the transport; no separate `sse` value) |
+| WebSocket | Yes, JSON-config only | No confirmed support | Not found on the pages fetched | Not found on the page fetched | Not found -- the adapter instead documents a `socket` field for an `rmcp-mux` Unix-domain-socket path, a different mechanism from a `ws://` MCP transport | Not supported -- only `stdio` and `streamable-http` |
+| User-level file | `~/.claude.json` | `~/.copilot/mcp-config.json` (relocatable via `COPILOT_HOME`) | Global `opencode.json` (location not itself re-derived here; see [configuration.md](configuration.md)) | `~/.hermes/config.yaml` | N/A in pi itself; the adapter reads `~/.config/mcp/mcp.json`, `~/.agents/mcp.json`, `~/.agents/mcp/mcp.json`, and its own `<Pi agent dir>/mcp.json` (default `~/.pi/agent/mcp.json`) | Cordis composition (`cordis.yml` / `cordis.patch.yml`) -- deployment-wide, not a user-level MCP-specific file; `$DSH_HOME/profiles/<name>/cordis.patch.yml` for one profile, or `$DSH_HOME/cordis.patch.yml` for every profile |
+| Project file | `.mcp.json` at project root | `.mcp.json` (walked up to repo root) or `.github/mcp.json` | `opencode.json` at project root, under its own `mcp` key (no separate MCP-only file found) | Not found on the page fetched -- config is documented as the single `~/.hermes/config.yaml` (or `$HERMES_HOME`-relative per profile, per [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §6's own per-profile isolation finding) | N/A in pi itself; the adapter reads `.mcp.json` plus its own project override `.pi/mcp.json` | `--patch <path/to/overlay.cordis.yml>` at startup; no project-local MCP-only file convention exists |
+| `env` semantics | `${VAR}` / `${VAR:-default}` expansion | literal by default; `${VAR}` for a reference | `environment` object (local servers) with literal values in the docs' own examples; `{env:...}` substitution confirmed specifically for OAuth `clientId`/`clientSecret` | Not documented on the page fetched | N/A in pi itself; the adapter supports `${VAR}`/`$env:VAR` interpolation, plus a leading `!` on a value to run a command for it (`!!` escapes a literal leading `!`) | Scrubbed parent env (credential-shaped names + `DSH_*` dropped) + `config.env` merged on top; `!!js` Cordis expressions for `headers` interpolation |
+| Per-server tool filter | none in config; permissions instead | `tools` field (`*` or comma-separated list) | config-level `tools` key with glob patterns (`"my-mcp*": false`), plus a documented per-agent override pattern | `tools.include`/`tools.exclude`, glob-pattern-capable | N/A in pi itself; the adapter's `includeTools`/`excludeTools` (glob-capable) | None in the MCP bridge plugin itself; the same `ctx.tools.restrict()` / `ToolRestriction` / guard pipeline that applies to native tools applies to MCP tools too (§6.6) |
+| Deferred loading opt-out | `alwaysLoad: true` | `deferTools` | Not applicable -- no deferred-loading strategy documented; tools register directly into the flat registry alongside built-ins | Not applicable -- no deferred-loading strategy documented; tools register directly into the flat registry | N/A -- pi has no first-party MCP registration to defer at all (§5.2); the adapter instead registers one proxy tool by default for every server, with `directTools` as its own opt-in escape hatch to individual per-tool registration | Not applicable -- no deferred-loading strategy; all discovered tools register immediately into the `ToolRuntime` via `ctx.tools.register()` |
+| Permission addressing | `mcp__server__tool` | `SERVER(tool_name)` or `SERVER` | `sanitize(server)_sanitize(tool)` (single underscore, source-verified in `catalog.ts`) | `mcp_<server_name>_<tool_name>` (single fixed prefix, not a permission-rule-specific syntax distinct from the tool's own registered name) | N/A in pi itself (pi's own permission model is extension-defined, not MCP-specific); the adapter's default proxy-tool shape addresses a call via a `{ tool: "<name>" }` argument, not a `server__tool` string, with `toolPrefix` controlling the name format only for directly-registered tools | `mcp__<serverName>__<rawName>` (same double-underscore shape as Claude Code; collision-safe normalization appends a 12-hex SHA-256 hash when character replacement or truncation changes the name -- §6.5) |
+| Server instructions in prompt | yes, and central to tool search | opt-in via `--allow-all-mcp-server-instructions` | Not documented on the pages fetched | Not documented on the page fetched | Not found on the sources read this session, for either pi itself or the adapter | Not found for this bridge -- the plugin passes the server's `description` through as the `ToolDefinition.description` and registers via `ctx.tools.register()`; whether harness-level system-prompt assembly surfaces server instructions is a separate mechanism not verified this session |
+| Per-session override flag | `--mcp-config` (referenced in docs) | `--additional-mcp-config` (inline JSON or `@file`) | Not found on the pages fetched | Not found on the page fetched | Not found on the sources read this session, for either pi itself or the adapter | `--patch <path>` (Cordis overlay, applies at startup; not session-midway) |
+| Built-in server always present | reserved names include `workspace`, `claude-in-chrome`, `computer-use` | GitHub MCP server | None found -- no bundled MCP server documented | None found -- Hermes' own built-in capability comes from its 70+ native tools, not a bundled MCP server | None -- pi ships none, first-party or via the adapter | None -- the base `dsh-base` bundle ships with zero MCP server entries; all are opt-in overlays |
+| OAuth | Full client support: discovery, dynamic registration, CIMD, pre-configured credentials | Not independently confirmed on pages fetched this session | Full client support: 401-triggered discovery, RFC 7591 dynamic client registration, pre-registered `clientId`/`clientSecret`/`scope`, `oauth: false` opt-out, dedicated `mcp auth`/`mcp debug` command surface, tokens at `~/.local/share/opencode/mcp-auth.json` | API key/OAuth/mTLS named as supported for HTTP transport; mechanism detail not independently confirmed beyond that | N/A in pi itself; the adapter's own OAuth surface (§5.3) is the fullest documented of any client in this table: RFC 7591 DCR fallback, an explicit `authorization_code`/`client_credentials` grant choice, pre-registered client metadata, authoritative-metadata pinning with issuer validation, and OS-credential-store token storage bound to the server's resolved URL | **No OAuth** -- `streamable-http` accepts static `headers` only; no dynamic client registration, token refresh, or interactive auth flow (§6.7) |
+| Dynamic tool-list re-discovery | `list_changed` notification honoured per-connection; no broader re-discovery guarantee found | `list_changed`-style behavior not independently confirmed on pages fetched | Not found on the pages fetched (a `list_changed`-shaped MCP capability is not among the client capabilities read from `CLIENT_OPTIONS`) | Explicit, named runtime re-discovery: a connected server can push a change notification and Hermes re-fetches and updates the registry live | Not found on the sources read this session, for either pi itself or the adapter | Source-verified: `notifications/tools/list_changed` triggers an atomic generation swap (fetch new list → dispose previous → register next); fetch failure keeps the previous generation; registration conflict rolls back to zero (§6.4) |
+| Sampling / elicitation client capability | Elicitation documented and supported (form/URL rendering, `Elicitation` hook); sampling not documented on the page fetched | Not documented on pages fetched | Both explicitly commented out in source (`sampling`/`elicitation` capabilities), each citing a since-closed-as-completed GitHub issue -- a live, unresolved discrepancy (§3.4) | Not independently confirmed | Not found on the sources read this session, for either pi itself or the adapter | Source-verified: `capabilities: {}` advertised to every server -- no `sampling`, `elicitation`, or `roots` (§6.7) |
+| Pagination/cursor defensiveness | Not documented on the page fetched | Not documented on pages fetched | Source-verified 1,000-page cap with a duplicate-cursor guard that throws rather than looping forever | Not documented on the page fetched | Not found on the sources read this session, for either pi itself or the adapter | Source-verified: `syncTools()` drains `tools/list` pagination via `listToolsUncached()` with a `do...while (cursor)` loop; no explicit page-count cap or duplicate-cursor guard found in the bridge source (relies on the MCP SDK's own pagination semantics); a server returning an infinite cursor chain would loop until the SDK's request timeout or the configured `toolCallTimeoutMs` |
+| Tool-result content sanitisation | Not found as a named MCP-specific step (general prompt-injection mitigations exist elsewhere, per [system-prompt-design-as-craft.md](system-prompt-design-as-craft.md)) | Not found as a named MCP-specific step | Not found as a named MCP-specific step | Named Unicode-TAG-character stripping on tool results specifically | Not found on the sources read this session, for either pi itself or the adapter | Not found in the MCP bridge plugin source; the pipeline passes tool results through the harness's shared `ToolRuntime` post-execute and spill policies, but no MCP-specific sanitisation step was found |
+| Org-wide/remote default servers | Claude.ai connector inheritance is the closest analogue (§1.1), a different mechanism | Not documented on pages fetched | Documented `.well-known/opencode`-published remote defaults, opt-in per server via local `enabled: true` | Not documented on the page fetched | Not found on the sources read this session; the adapter's own host-config-import flow (§5.3) is a related but distinct, one-directional, user-triggered import mechanism, not an org-published default | Not documented -- Cordis overlays are file-based patches; an org could publish an overlay via a shared file path, but no `.well-known`-style auto-discovery mechanism was found |
 
 **The three things that matter most if you are writing one server for
 Claude Code and Copilot CLI specifically.** First, `type` is genuinely
@@ -979,35 +1359,63 @@ leak a literal string where you meant a secret, or vice versa; write
 Copilot CLI treats it as a reference). Third, everything above the
 protocol -- permission rule syntax, deferred loading opt-out field,
 whether your `instructions` string is even read -- is per-harness
-client policy, so keep it out of your server's assumptions. OpenCode and
-Hermes each add a real, independent data point to this same lesson
-rather than an exception to it: OpenCode's own `"local"`/`"remote"`
-`type` values (again incompatible with both closed-source harnesses'
-own vocabulary), its config-level `tools` glob-pattern filter with a
-per-agent override, and its source-verified
+client policy, so keep it out of your server's assumptions. OpenCode,
+Hermes, and DeepSeek Harness each add a real, independent data point
+to this same lesson rather than an exception to it: OpenCode's own
+`"local"`/`"remote"` `type` values (again incompatible with both
+closed-source harnesses' own vocabulary), its config-level `tools`
+glob-pattern filter with a per-agent override, and its source-verified
 `sanitize(server)_sanitize(tool)` naming (§3.3); Hermes' own
 `mcp_<server_name>_<tool_name>` namespacing, `tools.include`/`tools.exclude`
-filtering, and dynamic re-discovery behavior (§4.2) -- are, again,
+filtering, and dynamic re-discovery behavior (§4.2); DeepSeek Harness'
+own `"stdio"`/`"streamable-http"` `transport` values (compatible with
+Claude Code's `stdio` but not with Copilot CLI's `"local"` or OpenCode's
+`"local"`), its Cordis-plugin-per-server config model (no `mcpServers`
+wrapper at all), its credential-scrubbed stdio env, and its
+collision-safe `mcp__<serverName>__<rawName>` naming with a 12-hex
+SHA-256 hash appendix (§6.5 -- a stronger uniqueness guarantee than
+any other harness's naming convention in this table) -- are, again,
 entirely each harness's own client policy. A server author gains nothing
-by assuming any one of Claude Code's, Copilot CLI's, OpenCode's, or
-Hermes' own naming/filtering conventions transfers to any of the other
-three.
+by assuming any one of Claude Code's, Copilot CLI's, OpenCode's,
+Hermes', or DeepSeek Harness's own naming/filtering/config conventions
+transfers to any of the other five.
 
-**pi is the outlier in this table, not a fifth variation on the same
-theme.** Where Claude Code, Copilot CLI, OpenCode, and Hermes Agent each
-ship a first-party MCP client whose config format, transports, and
-naming conventions merely differ from one another, pi ships none at all
--- a deliberate product decision (§5.2), not an oversight, grounded in a
-named, fetched rationale about MCP's own token cost relative to
-plain-CLI-tool alternatives. If you are shipping an MCP server and want
-it reachable from a pi session, there is no first-party integration
-surface to target; the only realistic path is the third-party
-`pi-mcp-adapter` (or a sibling extension), whose own config format
-happens to reuse the same `.mcp.json` `mcpServers` shape Claude Code and
-Copilot CLI use (§5.3) -- convenient, but still someone else's
-independently maintained code sitting between your server and the
+**pi is the outlier in this table, not a sixth variation on the same
+theme.** Where Claude Code, Copilot CLI, OpenCode, Hermes Agent, and
+DeepSeek Harness each ship a first-party MCP client whose config format,
+transports, and naming conventions merely differ from one another, pi
+ships none at all -- a deliberate product decision (§5.2), not an
+oversight, grounded in a named, fetched rationale about MCP's own token
+cost relative to plain-CLI-tool alternatives. If you are shipping an
+MCP server and want it reachable from a pi session, there is no
+first-party integration surface to target; the only realistic path is
+the third-party `pi-mcp-adapter` (or a sibling extension), whose own
+config format happens to reuse the same `.mcp.json` `mcpServers` shape
+Claude Code and Copilot CLI use (§5.3) -- convenient, but still someone
+else's independently maintained code sitting between your server and the
 model, with its own proxy-tool-first tool-calling shape that a server
 author writing against the raw MCP spec would not otherwise anticipate.
+
+**DeepSeek Harness is the open-source, plugin-architecture counterpoint
+to the closed-source, core-service pattern.** Its MCP bridge is a
+genuinely open-source, source-inspectable plugin (`@deepseek-ai/dsh-mcp-client`)
+rather than a compiled-in core feature -- the same architectural
+posture as OpenCode's own MCP implementation (§3), but atop a different
+plugin framework (Cordis vs. OpenCode's own Go-ish package system). The
+practical difference for server authors is that DeepSeek Harness's
+bridge (a) ships disabled and must be explicitly composed in via a
+Cordis overlay, (b) has zero support for MCP Resources, Prompts,
+sampling, elicitation, or OAuth (§6.7), (c) provides a documented,
+bounded-automatic-reconnect mechanism with a per-outage attempt budget
+that is source-verified in `connection.ts` (§6.4), and (d) implements a
+collision-safe naming algorithm that appends a deterministic SHA-256
+hash when the sanitised public name would collide (§6.5) -- a mechanism
+no other harness in this page documents. Points (b) and (c) are
+genuinely different trade-offs: the narrower capability surface means
+a server relying on elicitation, resources, or OAuth simply will not
+work under this bridge, while the bounded reconnect gives operational
+resilience for stdio servers that the other harnesses (except Hermes'
+own dynamic re-discovery, §4.2) document less precisely.
 
 **The protocol itself is the portable part.** `tools/list`,
 `tools/call`, `list_changed`, elicitation, and OAuth are confirmed on
@@ -1025,17 +1433,21 @@ support for Hermes beyond the general credential-handling detail named
 in §4.1; pi itself confirms none of the above, having no MCP client to
 confirm it of (§5.2), though the third-party `pi-mcp-adapter` documents
 its own `tools/call` dispatch and a fuller OAuth surface than any of the
-first-party clients in this table (§5.3). Design against the MCP spec,
-expose good `description` and `instructions` text, keep names in
-`[a-z0-9_-]`, keep result payloads small (Claude Code will truncate and
-disk-spill above documented thresholds; Copilot CLI's, OpenCode's, and
-Hermes' own thresholds are either unknown or, for OpenCode, only weakly
-source-inferable from a 30-second-vs-5-second timeout discrepancy §3.1
-already flags rather than resolves -- so small is the safe default
-everywhere), validate every argument server-side rather than trusting
-the client to enforce your JSON Schema, and avoid root-level
-`anyOf`/`oneOf`/`allOf` in input schemas since Claude Code has to
-flatten them.
+first-party clients in this table (§5.3); DeepSeek Harness's own bridge
+source confirms `tools/list` (with paginated draining), `tools/call`
+(passing the raw name only), and `notifications/tools/list_changed`
+(queued and serialised behind the initial sync), but advertises
+`capabilities: {}` -- no sampling, no elicitation, no roots (§6.4,
+§6.7). Design against the MCP spec, expose good `description` and
+`instructions` text, keep names in `[a-z0-9_-]`, keep result payloads
+small (Claude Code will truncate and disk-spill above documented
+thresholds; Copilot CLI's, OpenCode's, and Hermes' own thresholds are
+either unknown or, for OpenCode, only weakly source-inferable from a
+30-second-vs-5-second timeout discrepancy §3.1 already flags rather
+than resolves -- so small is the safe default everywhere), validate
+every argument server-side rather than trusting the client to enforce
+your JSON Schema, and avoid root-level `anyOf`/`oneOf`/`allOf` in
+input schemas since Claude Code has to flatten them.
 
 **Related page in a sibling project, different scope**:
 the AgentXRay repo's `references/mcp-server-setup.md` documents how
@@ -1062,17 +1474,24 @@ worth reconciling if picked up again.
 | Mario Zechner, `mariozechner.at/posts/2025-11-02-what-if-you-dont-need-mcp/` (WebFetch) | 2026-09-01 | The token-cost rationale pi's own README cites for shipping no MCP client (Playwright/Chrome DevTools MCP token-cost figures, the tool-count and composability arguments) |
 | `registry.npmjs.org/-/v1/search` (npm registry search API) | 2026-09-01 | Confirms the existence, relative popularity, and self-reported descriptions of the third-party pi-package MCP-adapter ecosystem, including `pi-mcp-adapter`'s own download/dependent counts |
 | `github.com/nicobailon/pi-mcp-adapter`'s own `README.md` (in full), via `gh api` | 2026-09-01 | `pi-mcp-adapter`'s documented config file layout and precedence, transports, proxy-tool tool-calling semantics, lifecycle values, OAuth surface, Agent Plugins/Pi-package-manifest/runtime-registration/SDK-mode mechanisms, and host-config-import flow (§5.3) |
+| `github.com/deepseek-ai/deepseek-harness`'s `packages/mcp/mcp-client/README.md` and `packages/mcp/mcp-client/src/index.ts`, `connection.ts`, `tools.ts`, `transport.ts`, `master` branch, via `gh api` | 2026-09-01 | DeepSeek Harness's MCP bridge plugin: the `Config` schema, `apply()` startup-await, `serverName` reservation, connection supervisor lifecycle, bounded exponential-backoff reconnect, `syncTools()` atomic generation swap, `publicToolName()` collision-safe naming algorithm, tool execution with canonical `McpResult`, image projection with exact-capability gating, `finalizeContent` rich-projection handoff, `scrubbedParentEnv()` credential scrubbing, Streamable HTTP transport with static headers, and `capabilities: {}` (no sampling/elicitation/roots). Standing `master`-branch caveat applies. |
+| `github.com/deepseek-ai/deepseek-harness`'s `.agents/notes/implemented/feature/2026-07-07-mcp-client-plugin.md` and `2026-08-06-mcp-client-auto-reconnect.md`, `master` branch, via `gh api` | 2026-09-01 | The naming invariants, discovery and execution design rationale, collision-safe normalization, `list_changed` re-sync, alternatives considered (raw names, server-only namespace, `serverInfo.name` derivation), and the auto-reconnect decision with bounded per-outage budget, stability-window reset, Streamable HTTP limitation, and sync serialization |
+| `github.com/deepseek-ai/deepseek-harness`'s `docs/user/guide/mcp-memory.md` and `apps/cli/config/examples/mcp-memory/memorix.cordis.yml`, `master` branch, via `gh api` | 2026-09-01 | The user-facing MCP server overlay guide: Cordis overlay composition, `--patch` at startup, explicit opt-in posture ("No memory server is present in the shipped composition"), environment scrubbing notes, and the example YAML config |
 
 Not consulted this session, and therefore not cited above:
 `modelcontextprotocol.io` (the spec itself), Copilot CLI's issue
 tracker, the Copilot "About MCP" concepts page, any dedicated Hermes
 config-reference page beyond the one Features page fetched (its
 project-file/env-substitution/OAuth support could not be independently
-confirmed as a result, see the §6 table's own "not found" cells), pi's
+confirmed as a result, see the §7 table's own "not found" cells), pi's
 own `docs.json`/`settings.md` in full (only grepped/cross-referenced,
-not read end to end for this page), and the source of `pi-mcp-adapter`
+not read end to end for this page), the source of `pi-mcp-adapter`
 itself (only its README was read -- its documented behaviour is not
 independently verified against its actual implementation the way this
-book verifies OpenCode's own source in §3). Any of these is the natural
-next stop -- the spec especially, if you want the capability-negotiation
-and lifecycle details that sit underneath all five clients.
+book verifies OpenCode's own source in §3), and DeepSeek Harness's own
+test files (`packages/mcp/mcp-client/tests/`) and the broader
+`docs/subsystems/tools.md` (read for context but not independently
+cited for MCP-bridge claims this section does not make). Any of these
+is the natural next stop -- the spec especially, if you want the
+capability-negotiation and lifecycle details that sit underneath all
+six clients.

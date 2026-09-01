@@ -19,19 +19,22 @@ than a settled question.
 
 Every claim below is tagged VERIFIED (fetched this session from a
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code,
-Copilot CLI, OpenCode, pi, and Hermes Agent are five separate products
-from five separate organizations (or, for pi, an independent individual
-maintainer rather than an organization at all) -- nothing confirmed for
-one is assumed for another. A prior pass through this book noticed,
+Copilot CLI, OpenCode, pi, Hermes Agent, and DeepSeek Harness are six
+separate products from six separate organizations (or, for pi, an
+independent individual maintainer rather than an organization at all)
+-- nothing confirmed for one is assumed for another. A prior pass through this book noticed,
 only in passing, that all three harnesses covered at the time rely on
 agentic search rather than embeddings; this page re-verifies that
 finding fresh (docs, changelogs, and OpenCode's own source and issue
 tracker, all re-checked this session) and gives it the dedicated
 treatment it didn't get the first time, then extends the same
-re-verification to pi (§5), added to this page in a later pass, and
-now to Hermes Agent (§6), added in this update from Hermes' own hosted
+re-verification to pi (§5), added to this page in a later pass, to
+Hermes Agent (§6), added in an update from Hermes' own hosted
 documentation and a direct read of its public, MIT-licensed
-`NousResearch/hermes-agent` source repository.
+`NousResearch/hermes-agent` source repository, and to DeepSeek
+Harness (§7), added in this update from DeepSeek AI's own public,
+MIT-licensed `deepseek-ai/deepseek-harness` repository and its
+extensive `docs/` subsystem documentation.
 
 ---
 
@@ -1290,21 +1293,294 @@ checks code the model has already decided to write.
 
 ---
 
-## 7. Synthesis and the hybrid-as-ceiling question
+## 7. DeepSeek Harness (DeepSeek AI)
 
-### 7.1 Convergence, restated precisely
+Sources for this section, all fetched fresh this session (1 September
+2026): `github.com/deepseek-ai/deepseek-harness`'s own repository
+metadata (via `gh api`, confirming a real, public, MIT-licensed,
+actively-pushed TypeScript monorepo -- 207,555 stargazers,
+`pushed_at` timestamped 2026-08-31, `master` branch); the full repo
+tree (recursive, via `gh api`); `docs/architecture.md`,
+`docs/subsystems/filesystem.md`,
+`docs/subsystems/tools.md`, `docs/subsystems/lsp.md`,
+`docs/subsystems/session-query.md`, and `docs/capability-seams.md`
+(all raw-fetched from `master`); the package READMEs for
+`packages/fs/tool-fs-search/README.md`,
+`packages/session-query/tool-session-query/README.md`, and
+`packages/session-query/session-query-sqlite/README.md` (all
+raw-fetched); the source of `packages/fs/tool-fs-search/src/index.ts`
+(raw-fetched, 115 lines); and the architecture Agent Note
+`.agents/notes/implemented/architecture/2026-08-01-packaged-ripgrep-search.md`
+(raw-fetched). DeepSeek Harness (`dsh`) is a sixth, independent
+product from a sixth organization -- see §8.1's updated convergence
+table for the full cross-harness comparison.
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
-|---|---|---|---|---|---|
-| Primary code-discovery mechanism | Agentic: `Grep`/`Glob`/`Read`, optional LSP plugin, Explore subagent | Agentic: grep/glob-equivalent "search tools," `view` | Agentic: `grep`/`glob`, optional experimental `lsp` | Agentic: `grep`/`find`, `ls`, `read` | Agentic: single ripgrep-backed `search_files` tool fusing grep+glob+`ls` |
-| Ever shipped embeddings/vector code search? | Yes, early versions, per a secondary-sourced but credible attributed quote -- deliberately removed | No confirmed instance in any doc/changelog fetched | No -- never shipped, repeatedly requested, never landed | No confirmed instance anywhere in its full changelog history | No confirmed instance in any doc/source fetched this session |
-| Any embeddings-based retrieval mechanism at all? | None found for code; none found for anything else either, in sources fetched this session | Yes -- `dynamicRetrieval`, scoped to skill/MCP **instruction text**, not source code | None found anywhere in docs or source | None found anywhere in source, dependency graph, or changelog | Yes, twice over, both scoped away from code -- BM25 Tool Search over the **MCP/plugin tool catalog**, and optional embeddings-based memory providers (Honcho, Mem0) over **conversational/user memory**, never source files |
-| Stated rationale against embeddings-for-code | Explicit, in Claude Code's own blog: staleness ("reflects the codebase as it previously existed... hours before"), maintenance burden of a "centralised index" | Not stated (no changelog entry frames a decision either way) | Not stated by any maintainer found in this session's issue search | Not named specifically, but subsumed under a stated harness-wide minimalism philosophy ("if I don't need it, it won't be built") | Not stated by name; `search_files`'s own schema frames the tool as a faster, gitignore-aware replacement for shell grep/glob/find/ls, not as a rejection of embeddings specifically |
-| Documented hybrid extension point | Yes -- bring-your-own RAG/code-search index exposed as an MCP tool (`large-codebases` guide) | Not found | Not found in official docs; exists only as third-party plugins outside the core project | None -- pi ships no MCP support at all by explicit design choice, so not even Claude Code's seam exists; a hybrid would require a from-scratch custom extension | Yes, two seams -- Hermes' own MCP integration (bring-your-own code-search server, same shape as Claude Code's) and its pluggable "context engines"/memory-provider plugin architecture, though neither is documented as shipping a code-embeddings index by default |
+```mermaid
+flowchart TB
+    subgraph DSHCore["DeepSeek Harness code-discovery surface"]
+        direction TB
+        GrepTool["grep tool<br/>(packaged ripgrep binary,<br/>no shell layer,<br/>no host rg needed)"]
+        GlobTool["glob tool<br/>(packaged ripgrep binary,<br/>--sort=modified,<br/>optional sampling)"]
+        LSP["lsp tool<br/>(4 operations: goToDefinition,<br/>findReferences,<br/>goToImplementation, hover)"]
+        ReadWrite["read / write / edit<br/>(ctx.fs provider seam,<br/>observation-policy gate)"]
+    end
+    subgraph DSHExt["Optional retrieval layers (opt-in, off by default)"]
+        direction TB
+        SessionSearch["session_search / session_event_search<br/>(SQLite FTS5, unicode61 tokenizer)<br/>corpus: prior session history,<br/>NOT source code"]
+    end
+    GrepTool --> Model["Agent loop:<br/>model drives iterative<br/>discovery turn by turn"]
+    GlobTool --> Model
+    LSP --> Model
+    ReadWrite --> Model
+    SessionSearch -.->|"off by default; workspace-scoped"| Model
+```
+
+### 7.1 The code-discovery tool surface: packaged ripgrep behind `glob`/`grep`, no embeddings, no vector index, no shell layer
+
+DeepSeek Harness' model-facing code-discovery tools are `glob` and
+`grep`, backed by a packaged ripgrep binary (`@vscode/ripgrep`, an
+npm dependency whose optional platform packages ship the binary for
+darwin/linux/win32 on x64/arm64), spawned directly through the
+`ctx.subprocess` seam -- never through `ctx.shell` or any host
+shell. VERIFIED, directly from
+`packages/fs/tool-fs-search/src/index.ts`'s own module-level
+docstring (raw fetch, this session): "Local workspace discovery is a
+process-backed `rg` workflow, so these tools execute through
+`ctx.subprocess.spawn()` with fixed ripgrep argv templates -- never
+`ctx.shell`, never `ctx.shell.start()`, never a model-visible
+background task[]. deliberately NOT `fs`." The same source's
+`inject` declaration lists `['tools', 'systemPrompt', 'subprocess']`
+-- no `fs`, no embedding service, no vector-store service. VERIFIED,
+from the packaged-ripgrep-search architecture note (raw fetch, this
+session): the v1 design ran grep/glob through the bash executor seam,
+requiring a host `rg` install; the implemented replacement "now runs
+the PACKAGED ripgrep binary through the `ctx.subprocess` seam" with
+"no shell layer, so the shell-quoting boundary is gone from
+execution" and "`--no-config` is prepended" to prevent a host
+`RIPGREP_CONFIG_PATH` from injecting a `--pre` preprocessor that
+could execute arbitrary commands.
+
+This is architecturally the same agentic, iterative code-discovery
+strategy as Claude Code's `Grep`/`Glob`, Copilot CLI's search tools,
+OpenCode's `grep`/`glob`, pi's `grep`/`find`, and Hermes Agent's
+`search_files`: the model receives a small set of literal-pattern
+search tools and drives discovery turn by turn, deciding what to look
+for next based on what it has already seen. No embedding model, no
+vector index, and no semantic-search mechanism appears anywhere in
+the tool-fs-search package's source, its dependency list, or the
+architecture documents fetched this session. The `glob` tool returns
+files sorted by modification time (ripgrep's `--sort=modified`) with
+an optional over-cap sampling strategy that distributes results across
+top-level directory entries rather than always returning the
+modification-time head; the `grep` tool returns line-oriented content
+matches grouped by file. VERIFIED, from
+`packages/fs/tool-fs-search/README.md` (raw fetch, this session):
+"glob" "Finds files whose paths match a glob pattern[]; complete
+results stay modification-time ordered" and "grep" "Searches file
+contents with a ripgrep regex and returns matches grouped by file as
+`Line N: <preview>`." Both tools are bounded (configurable caps on
+results, raw output bytes, and cooperative timeout) and spill their
+complete output to an optional spill store when the inline page
+overflows. No component of the search pipeline ranks results by
+computed relevance, embedding similarity, or any metric other than
+ripgrep's own match ordering and modification-time sort.
+
+### 7.2 The LSP seam: genuine semantic navigation, not just post-write diagnostics
+
+Unlike Hermes Agent's LSP integration (§6.6), which is a post-write
+diagnostics gate with no code-navigation capability, DeepSeek
+Harness' LSP seam is a genuine model-callable discovery tool exposing
+four semantic operations. VERIFIED, directly from
+`docs/subsystems/lsp.md` (raw fetch, this session): the `lsp` tool
+exposes exactly "four semantic queries" -- `goToDefinition`,
+`findReferences`, `goToImplementation`, and `hover` -- through a
+closed `LspOperation` union type, and the seam is explicitly a
+"capability seam" with a `LspService` interface, pluggable
+`LspProvider` registration, and a `dsh-tool-lsp` Consumer. The seam
+"offers no protocol escape hatch, so a backend translates into the
+normalized request and result" -- i.e. the model calls the same four
+operations regardless of which language server backs them. This is
+structurally closest to Claude Code's own optional LSP
+code-intelligence plugin (§2.2) and OpenCode's experimental `lsp`
+tool (§4.1): a code-navigation and discovery mechanism that
+substitutes for a grep-then-read round trip when symbol-level
+precision is available, sitting in the same agentic-search loop as
+`glob`/`grep`. No embedding or vector-index component appears in the
+LSP subsystem either.
+
+### 7.3 The filesystem seam is pluggable -- and no code-search embedding is implemented on any provider
+
+VERIFIED, from `docs/subsystems/filesystem.md` and
+`docs/capability-seams.md` (both raw-fetched this session): the
+filesystem capability is a three-role seam -- Service Definition
+(`dsh-fs`, owning `ctx.fs`), provider (`dsh-fs-local`,
+`dsh-fs-sandbox`, or `dsh-fs-e2b`), and consumer (`dsh-tool-fs`),
+plus an optional observation-policy plugin. The capability-seams
+graph confirms three `ctx.fs` implementations consume the same tool
+and the same policy: `fs-local` (local disk), `fs-sandbox` (sandboxed
+writes via a shared sandbox policy), and `fs-e2b` (E2B remote
+sandbox). No `ctx.fs` provider ships a search, retrieval, or
+embedding capability. The filesystem docs explicitly note that
+putting search on `ctx.fs` "would force every filesystem backend to
+grow a search API" -- explaining architecturally why `dsh-tool-fs-search`
+is a separate package that injects `subprocess` but not `fs`. This is
+a deliberate separation: the search tools are spawn-backed
+ripgrep workflows, not filesystem-provider methods, and a provider
+swap (local to sandboxed to E2B) does not change how the model
+discovers code -- it only changes where read/write/edit operate.
+
+### 7.4 A real, shipped full-text search exists -- over session history, not source code, and off by default
+
+DeepSeek Harness ships a genuine, implemented full-text search
+subsystem -- the same category of "real retrieval feature scoped away
+from source code" that §3.1 found for Copilot CLI's
+`dynamicRetrieval` and §6.5 found for Hermes Agent's BM25 Tool Search
+and memory-provider embeddings. VERIFIED, from
+`packages/session-query/session-query-sqlite/README.md` (raw fetch,
+this session): `dsh-session-query-sqlite` provides "ranked full-text
+search over session history with a SQLite FTS5 index" using the
+`unicode61` tokenizer, with cursor-paginated results, deterministic
+ranking (more FTS5 highlighted-match spans first, then shorter
+documents, then event time, session id, and seq as tiebreakers), and
+configurable snippet length. Queries are "literal phrases: they are
+trimmed and whitespace-normalized, and FTS5 syntax such as quotes,
+`OR`, `NEAR`, and `*` is treated as data, never as executable query
+syntax." The indexed corpus is session events (messages, tool
+calls/results, todos, failure/status detail contribute "semantic
+text"), not source files -- and the feature is explicitly "opt-in and
+off by default in shipped compositions" with an `openAt` configuration
+(`startup`, `first-search`, or `never`) controlling whether the index
+opens at all.
+
+VERIFIED, from
+`packages/session-query/tool-session-query/README.md` (raw fetch,
+this session): the model-facing consumer (`dsh-tool-session-query`)
+exposes five read-only tools (`session_search`,
+`session_event_search`, `session_trace`, `session_event_trace`,
+`session_event_read`) that are "workspace-authorized -- a model can
+only reach sessions whose `cwd` exactly matches its own caller
+session," cursor-free, and carry "no provider cursors, offsets, page
+sizes, or a model-controlled limit." The README is explicit that the
+package "is opt-in and not mounted by shipped host compositions."
+
+This is the third independent harness on this page to ship a real
+retrieval mechanism scoped away from source code, and it is the most
+fully documented of the three: the FTS5 tokenization strategy
+(`unicode61`, not trigram), the ranking formula, the generation-bound
+cursor scheme, the derived-index separation from session persistence,
+and the opt-in deployment model are all stated concretely and
+verifiably in the fetched sources. A reader encountering the phrase
+"DeepSeek Harness has full-text search" without the scope qualifier
+would incorrectly assume it applies to the codebase; in fact the
+corpus is prior-session conversational history only, the same way
+Copilot CLI's `dynamicRetrieval` corpus is skill/MCP instruction text
+and Hermes Agent's Tool Search corpus is the MCP/plugin tool catalog.
+The design rationale for keeping the two corpora separate is
+implicit but inferable from the architecture: session history is a
+bounded, append-only, already-indexed artifact the harness itself owns
+and controls; source code is an unbounded, externally-mutated
+artifact whose staleness and chunking semantics would create the same
+maintenance burden Claude Code's blog (§2.1) names explicitly.
+
+### 7.5 The "everything is a plugin" architecture creates a first-party hybrid seam that no other harness on this page documents this explicitly
+
+DeepSeek Harness' plugin architecture is not merely extensible; it
+is constitutive. VERIFIED, from `docs/architecture.md` (raw fetch,
+this session): "Every part of the product is a plugin, including the
+model adapter, the tool registry, the session log, and the agent loop
+itself, so each is replaceable from configuration." The capability-
+seams graph confirms every model-facing tool is a composable
+plugin registering on `ctx.tools`, and the architecture docs'
+"Where new behavior goes" table includes: "Add a model-facing
+capability -- register on `ctx.tools`; its schema joins prompt
+assembly." This means that a code-search-retrieval plugin --
+whether embeddings-based, hybrid vector-plus-keyword, or any other
+strategy -- would register on `ctx.tools` and appear in the model's
+tool array on the next step, alongside `glob`, `grep`, `read`, `lsp`,
+and the rest, without modifying the agent loop, the prompt-assembly
+pipeline, or any other plugin. The same architecture doc also
+documents: "Add filesystem access or policy -- register a `ctx.fs`
+provider or listen to `fs/*` events," which is the alternative seam
+for a filesystem-provider-scoped indexing capability (though, per
+§7.3, no such provider exists today).
+
+This is the same shape as Claude Code's documented MCP-as-RAG-seam
+(§2.2: "if your organization already runs a code search or RAG index
+over the repository, expose it as an MCP tool so Claude queries it
+instead of reading files directly"), but stated at a more fundamental
+architectural level -- not as a specific configuration suggestion in a
+large-codebases guide, but as the way *every* capability enters the
+product. VERIFIED, from `docs/capability-seams.md`: the seam graph
+shows that `ctx.tools` is the central registration surface consumed
+by the agent loop, and a new tool's schema "joins prompt assembly"
+automatically. No other harness on this page documents this entry
+point this explicitly: Claude Code names the MCP seam once in a guide;
+Copilot CLI has no equivalent documentation; OpenCode has the gap only
+as third-party plugins; pi rejects the seam outright; Hermes Agent
+has MCP integration but describes it per-feature, not as a
+universal composition mechanism. BEST CURRENT UNDERSTANDING,
+UNCONFIRMED: whether the practical effect differs -- a user can
+register a RAG-code-search plugin on `ctx.tools` in dsh the same way
+they can expose an MCP tool in Claude Code -- is that the *documented
+culture* of the product frames plugin composition as the normal path
+for any capability, not as an exceptional escape hatch for
+organizations that have outgrown grep. The architectural clarity
+is real and VERIFIED; whether it translates into a meaningfully
+lower barrier to a shipping hybrid within dsh specifically, versus
+the other five harnesses, is not established by anything fetched this
+session.
+
+### 7.6 No trace of embeddings, vector-index, or semantic-code-search in the repository tree, package sources, or dependency declarations
+
+The full recursive tree of the `deepseek-ai/deepseek-harness`
+repository on `master` (fetched this session via `gh api`) contains
+no path containing the strings `embed`, `vector-store`, `vector-db`,
+`semantic-search`, or `rag`. The capability-seams graph in
+`docs/capability-seams.md` lists every `ctx.*` service, provider, and
+consumer in the product; none names an embedding, vector, or
+semantic-code-search capability. The `tool-fs-search` package's
+`inject` declaration lists `['tools', 'systemPrompt', 'subprocess']`
+with no embedding or vector service. The `tool-session-query` package
+backs its search with SQLite FTS5 (a token-based full-text index, not
+an embedding index). A targeted search of the full tree for filenames
+containing `embed`, `vector`, `rag`, `semantic`, `index`, `chunk`,
+or `search` found: `tool-fs-search` (ripgrep-backed file discovery),
+`tool-session-query` and `session-query-sqlite` (FTS5 session-history
+search), web-UI search features (session listing cards), an SQLite
+"physical chunk row compression" architecture note (a storage-
+compression detail for session persistence, not a retrieval-chunking
+concept), and various `chunk`-named entries that are stream-chunk or
+UI-layout-chunk artifacts, not RAG chunking. No entry in any
+fetched file describes an embedding model, a vector similarity
+computation, or a code-search retrieval index over source files. The
+finding for DeepSeek Harness, at the same precision as §2-6's closing
+conclusions: no embeddings-based or vector-index retrieval mechanism
+for code discovery exists anywhere in the harness's own source,
+architecture docs, capability-seams graph, or package READMEs, per
+every artifact fetched this session; its two code-discovery tools
+(`glob`, `grep`) are agentic, iterative, ripgrep-backed tools
+structurally identical in kind to the other five harnesses'
+equivalents; and a real, shipped FTS5 full-text search exists but is
+scoped to prior-session conversational history, off by default, and
+never pointed at the user's source tree.
+
+---
+
+## 8. Synthesis and the hybrid-as-ceiling question
+
+### 8.1 Convergence, restated precisely
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent | DeepSeek Harness |
+|---|---|---|---|---|---|---|
+| Primary code-discovery mechanism | Agentic: `Grep`/`Glob`/`Read`, optional LSP plugin, Explore subagent | Agentic: grep/glob-equivalent "search tools," `view` | Agentic: `grep`/`glob`, optional experimental `lsp` | Agentic: `grep`/`find`, `ls`, `read` | Agentic: single ripgrep-backed `search_files` tool fusing grep+glob+`ls` | Agentic: packaged-ripgrep `glob`/`grep` through `ctx.subprocess`, LSP `lsp` tool |
+| Ever shipped embeddings/vector code search? | Yes, early versions, per a secondary-sourced but credible attributed quote -- deliberately removed | No confirmed instance in any doc/changelog fetched | No -- never shipped, repeatedly requested, never landed | No confirmed instance anywhere in its full changelog history | No confirmed instance in any doc/source fetched this session | No confirmed instance in any doc/source/repo-tree fetched this session |
+| Any embeddings-based retrieval mechanism at all? | None found for code; none found for anything else either, in sources fetched this session | Yes -- `dynamicRetrieval`, scoped to skill/MCP **instruction text**, not source code | None found anywhere in docs or source | None found anywhere in source, dependency graph, or changelog | Yes, twice over, both scoped away from code -- BM25 Tool Search over the **MCP/plugin tool catalog**, and optional embeddings-based memory providers (Honcho, Mem0) over **conversational/user memory**, never source files | Yes -- SQLite FTS5 full-text search over **prior-session conversational history**, off by default, not source code |
+| Stated rationale against embeddings-for-code | Explicit, in Claude Code's own blog: staleness ("reflects the codebase as it previously existed... hours before"), maintenance burden of a "centralised index" | Not stated (no changelog entry frames a decision either way) | Not stated by any maintainer found in this session's issue search | Not named specifically, but subsumed under a stated harness-wide minimalism philosophy ("if I don't need it, it won't be built") | Not stated by name; `search_files`'s own schema frames the tool as a faster, gitignore-aware replacement for shell grep/glob/find/ls, not as a rejection of embeddings specifically | Not stated explicitly; the filesystem docs note that putting search on `ctx.fs` "would force every filesystem backend to grow a search API," explaining architecture but not expressing a position on embeddings |
+| Documented hybrid extension point | Yes -- bring-your-own RAG/code-search index exposed as an MCP tool (`large-codebases` guide) | Not found | Not found in official docs; exists only as third-party plugins outside the core project | None -- pi ships no MCP support at all by explicit design choice, so not even Claude Code's seam exists; a hybrid would require a from-scratch custom extension | Yes, two seams -- Hermes' own MCP integration (bring-your-own code-search server, same shape as Claude Code's) and its pluggable "context engines"/memory-provider plugin architecture, though neither is documented as shipping a code-embeddings index by default | Yes -- the `ctx.tools` plugin seam is the universal composition mechanism: "register on `ctx.tools`; its schema joins prompt assembly"; a code-search-retrieval plugin would join the model's tool array alongside `glob`/`grep`/`lsp` with no changes to the agent loop |
 
 The finding this page was asked to re-verify holds, precisely stated:
-**none of the five harnesses ships embeddings-based retrieval as its
-primary or default code-discovery strategy today.** All five converge
+**none of the six harnesses ships embeddings-based retrieval as its
+primary or default code-discovery strategy today.** All six converge
 on agentic, tool-driven, iterative search as the mechanism the model
 itself drives turn by turn. That convergence is not superficial or
 coincidental for at least one harness -- Claude Code's own product blog
@@ -1312,23 +1588,27 @@ names the failure mode (index staleness under active development) it
 is a deliberate reaction against, and its early-version history (per
 the Cherny attribution in §2.1) shows this was a reversal from a real,
 shipped alternative, not a path never tried. pi's is the most
-categorical convergence of the five: not merely undocumented or
+categorical convergence of the six: not merely undocumented or
 silently absent, but ruled out by a named, general design philosophy
 that also excludes the one integration seam (MCP) the other harnesses
-either ship (Claude Code, Hermes Agent) or lack only by omission rather
-than by stated principle (Copilot CLI, OpenCode). Hermes Agent's own
-convergence is the most *textured* of the five, not the most
-categorical: it is the only harness on this page that ships two
-independently-confirmed, real, shipped embeddings-or-lexical-retrieval
-mechanisms (§6.5) at all, and the finding here rests entirely on both
-being scoped, by their own respective corpora, away from the codebase
-files `search_files` and `@folder:` operate over -- the same
-scoped-elsewhere pattern §3.1 already established for Copilot CLI's
-`dynamicRetrieval`, now confirmed a second time by an independent
-harness and, within that one harness, in two separate subsystems at
-once.
+either ship (Claude Code, Hermes Agent, DeepSeek Harness) or lack
+only by omission rather than by stated principle (Copilot CLI,
+OpenCode). Hermes Agent's own convergence is the most *textured*,
+not the most categorical: it is the only harness on this page that
+ships two independently-confirmed, real, shipped embeddings-or-lexical-
+retrieval mechanisms (§6.5) at all, and the finding here rests entirely
+on both being scoped, by their own respective corpora, away from the
+codebase files `search_files` and `@folder:` operate over. DeepSeek
+Harness extends the same scoped-elsewhere pattern to a third
+independent harness and a third retrieval technology (FTS5, lexical
+not embeddings-based, over session history rather than tool catalogs
+or user memory), confirming that the pattern is not an artifact of any
+one harness's architecture but a convergent design boundary across
+all six: retrieval mechanisms exist, they are sometimes shipped by the
+harness vendor itself, and they stop at the source-code boundary
+every time.
 
-### 7.2 Is embeddings-for-candidates + agentic-search-for-verification the ceiling nobody built?
+### 8.2 Is embeddings-for-candidates + agentic-search-for-verification the ceiling nobody built?
 
 ```mermaid
 sequenceDiagram
@@ -1372,8 +1652,7 @@ establishing that a multi-strategy hybrid is a real, shipped pattern
 somewhere in the broader coding-agent market -- never as evidence about
 what Claude Code, Copilot CLI, OpenCode, pi, or Hermes Agent themselves
 do, per this page's own AUTHORITY OVERREACH discipline.
-
-Given that, is the hybrid a genuine technical ceiling none of the five
+Given that, is the hybrid a genuine technical ceiling none of the six
 examined harnesses has reached, or a deliberate simplicity choice they
 declined to spend engineering effort on? The evidence gathered this
 session points more toward the latter, argued as follows (BEST CURRENT
@@ -1417,7 +1696,7 @@ rejection rather than pure silence:
    right now. Declining to build that is a legible product-scoping
    decision under this reading, distinguishable from a claim that the
    hybrid wouldn't work.
-4. **Four of the five harnesses' own docs, changelogs, or (for
+4. **Five of the six harnesses' own docs, changelogs, or (for
    OpenCode) source and issue tracker contain no stated engineering
    reason the hybrid specifically -- as opposed to embeddings alone --
    was rejected; pi's case is the one partial exception, and it is
@@ -1429,14 +1708,18 @@ rejection rather than pure silence:
    worth flagging precisely, not smoothing over: the strongest
    documented critique found this session targets
    embeddings-as-sole-strategy, and this page found no source, from
-   Claude Code, Copilot CLI, OpenCode, or Hermes Agent, that directly
-   argues against embeddings-as-a-narrowing-step-before-agentic-verification
+   Claude Code, Copilot CLI, OpenCode, Hermes Agent, or DeepSeek
+   Harness, that directly argues against embeddings-as-a-narrowing-step-before-agentic-verification
    -- Hermes' own case is the most concrete instance of this silence,
    since it is the one harness on this page that already ships two
    embeddings-or-lexical retrieval mechanisms elsewhere in its own
    architecture (§6.5) yet documents no stated reason those mechanisms
    stop at the tool catalog and conversational memory rather than
-   extending to source files. pi
+   extending to source files; DeepSeek Harness' case is the next most
+   concrete, since it ships FTS5 session-history search (§7.4) and
+   documents a universal plugin-composition mechanism (§7.5) that
+   would accept a code-retrieval plugin without architectural changes,
+   yet has not built one. pi
    supplies something adjacent but not identical to the missing
    argument: §5.5's issue #1255 is a directly on-record instance of
    pi's own creator rejecting a fully-implemented embeddings/vector
@@ -1450,9 +1733,9 @@ rejection rather than pure silence:
    actively, personally absent, which is a different and stronger
    claim than silence but not the same claim as "the hybrid was
    considered and found technically wanting." The absence of a written
-   technical argument, across all five harnesses, is consistent with
+   technical argument, across all six harnesses, is consistent with
    the hybrid being an unexamined option that fell outside each team's
-   chosen scope, but it is not itself proof that any of the five teams
+   chosen scope, but it is not itself proof that any of the six teams
    considered and rejected it for a stated technical reason -- treat
    "nobody has built this because nobody decided it's not worth it, as
    opposed to nobody having thought about it," as the honest,
@@ -1460,23 +1743,27 @@ rejection rather than pure silence:
 
 The most defensible summary, holding the tags apart rather than
 blending them: it is VERIFIED that none of Claude Code, Copilot CLI,
-OpenCode, pi, or Hermes Agent ships an embeddings-based hybrid for
-*code* discovery today -- Hermes' own case requires the qualifier
-precisely, since unlike the other four it does ship real
-embeddings-or-lexical retrieval mechanisms in production (§6.5), just
-never pointed at the codebase -- and VERIFIED that a structurally
-similar hybrid is both
+OpenCode, pi, Hermes Agent, or DeepSeek Harness ships an
+embeddings-based hybrid for *code* discovery today -- Hermes' own
+case requires the qualifier precisely, since unlike the others it
+does ship real embeddings-or-lexical retrieval mechanisms in
+production (§6.5), just never pointed at the codebase; DeepSeek
+Harness' FTS5 search (§7.4) is a further instance of the same
+pattern, scoped to session history instead -- and VERIFIED that a
+structurally similar hybrid is both
 requested by real users (OpenCode's issue tracker, and pi's own
 community extensions for the adjacent memory-recall case) and
 buildable with existing techniques (the community plugins, and Cody's
 reported multi-strategy architecture as an external, non-harness
 comparator). It is BEST CURRENT UNDERSTANDING, UNCONFIRMED that this
 specific hybrid represents an actual engineering ceiling any of the
-five harnesses has hit and failed to clear, versus a scope boundary
+six harnesses has hit and failed to clear, versus a scope boundary
 each team drew around "own and operate a retrieval index" that a
 bring-your-own-index MCP integration (Claude Code, and, per §6.5,
 Hermes Agent's own MCP support plus its pluggable memory-provider/
-context-engine architecture), a third-party plugin ecosystem
+context-engine architecture), a first-party plugin-composition seam
+documented as the universal capability entry point (DeepSeek Harness,
+§7.5), a third-party plugin ecosystem
 (OpenCode), or an explicit, personally-enforced core-minimalism
 boundary (pi) was judged to satisfy well enough not to
 justify building in-house. A from-scratch harness attempting to
@@ -1535,6 +1822,19 @@ to retrieval rather than planning.
 | `github.com/NousResearch/hermes-agent`'s `agent/context_references.py` (raw fetch, `main` branch) | This session (1 Sept 2026) | Confirms the closed `BUILTIN_PREFIXES` set for `@`-references and the ripgrep-`--files`-backed, 200-entry-capped `_build_folder_listing()` implementation behind `@folder:` |
 | `github.com/NousResearch/hermes-agent`'s `agent/coding_context.py` (raw fetch, `main` branch) | This session (1 Sept 2026) | Confirms the bounded, non-exhaustive `_has_code_files()` workspace check (500-entry cap, top two directory levels only) and the `ProjectFacts`/`build_coding_workspace_block()` session-start snapshot mechanism |
 | `github.com/NousResearch/hermes-agent`'s `tools/tool_search.py` (raw fetch, `main` branch) | This session (1 Sept 2026) | Confirms the BM25 implementation (tokenization, Snowball stemming, corpus statistics) underlying Tool Search, scoped to the tool/MCP catalog |
+| `github.com/deepseek-ai/deepseek-harness` repository metadata (via `gh api`) | This session (1 Sept 2026) | Confirms DeepSeek Harness is a real, public, MIT-licensed, actively-pushed TypeScript monorepo (207,555 stargazers, `pushed_at` 2026-08-31, `master` branch) |
+| `github.com/deepseek-ai/deepseek-harness` full recursive tree (via `gh api`, `master` branch) | This session (1 Sept 2026) | Confirms no path in the repository contains `embed`, `vector-store`, `vector-db`, `semantic-search`, or `rag`; identifies the `tool-fs-search`, `tool-session-query`, and `session-query-sqlite` packages as the only search-related paths |
+| `github.com/deepseek-ai/deepseek-harness`'s `docs/architecture.md` (raw fetch, `master`) | This session (1 Sept 2026) | Confirms the "everything is a plugin" architecture, the profiles/bundles composition model, the turn flow, and the "Where new behavior goes" table including "Add a model-facing capability -- register on `ctx.tools`; its schema joins prompt assembly" |
+| `github.com/deepseek-ai/deepseek-harness`'s `docs/subsystems/filesystem.md` (raw fetch, `master`) | This session (1 Sept 2026) | Confirms the `ctx.fs` filesystem provider seam, its three implementations (local, sandbox, E2B), the observation-policy gate, and the separation of search tools from the filesystem provider contract |
+| `github.com/deepseek-ai/deepseek-harness`'s `docs/subsystems/tools.md` (raw fetch, `master`) | This session (1 Sept 2026) | Confirms the `ctx.tools` tool registry and guarded execution pipeline, `ToolDefinition` fields, scoped restrictions, and the presentation vocabulary including `search` and `read` card types |
+| `github.com/deepseek-ai/deepseek-harness`'s `docs/subsystems/lsp.md` (raw fetch, `master`) | This session (1 Sept 2026) | Confirms the four-operation LSP capability seam (`goToDefinition`, `findReferences`, `goToImplementation`, `hover`), the closed `LspOperation` union, and the `LspService`/`LspProvider` plugin architecture |
+| `github.com/deepseek-ai/deepseek-harness`'s `docs/subsystems/session-query.md` (raw fetch, `master`) | This session (1 Sept 2026) | Confirms the session-query service's full-text search interface, cursor-paginated results, semantic-text extraction, and the `SESSION_QUERY_SEARCH_DISABLED` error code for deployments with search off |
+| `github.com/deepseek-ai/deepseek-harness`'s `docs/capability-seams.md` (raw fetch, `master`) | This session (1 Sept 2026) | Confirms every `ctx.*` service, provider, and consumer in the product; no embedding, vector, or semantic-code-search capability exists in the graph |
+| `github.com/deepseek-ai/deepseek-harness`'s `packages/fs/tool-fs-search/README.md` (raw fetch, `master`) | This session (1 Sept 2026) | Confirms the `glob`/`grep` discovery tools, packaged ripgrep binary, no host `rg` install needed, configurable caps, spill-store integration, and the explicit statement "no filesystem provider is required" |
+| `github.com/deepseek-ai/deepseek-harness`'s `packages/fs/tool-fs-search/src/index.ts` (raw fetch, `master`) | This session (1 Sept 2026) | Confirms the plugin's `inject: ['tools', 'systemPrompt', 'subprocess']` (no `fs`, no embedding/vector service), the Config schema, and the module docstring stating search "deliberately NOT `fs`" |
+| `github.com/deepseek-ai/deepseek-harness`'s `packages/session-query/tool-session-query/README.md` (raw fetch, `master`) | This session (1 Sept 2026) | Confirms the five workspace-authorized session-history tools, cursor-free results, opt-in deployment model ("not mounted by shipped host compositions"), and workspace-scoped access model |
+| `github.com/deepseek-ai/deepseek-harness`'s `packages/session-query/session-query-sqlite/README.md` (raw fetch, `master`) | This session (1 Sept 2026) | Confirms the SQLite FTS5 full-text search backend, `unicode61` tokenizer, literal-phrase query treatment, derived-index database separate from session persistence, and `openAt` configuration controlling index lifecycle |
+| `github.com/deepseek-ai/deepseek-harness`'s `.agents/notes/implemented/architecture/2026-08-01-packaged-ripgrep-search.md` (raw fetch, `master`) | This session (1 Sept 2026) | Confirms the design history from bash-backed to packaged-ripgrep search, the `--no-config` security precaution, the removal of the shell-quoting boundary, and the explicit rejection of pure-JS glob/search alternatives |
 
 Not consulted this session, and therefore not cited above as a
 harness-specific source: `sourcegraph.com`'s own documentation for

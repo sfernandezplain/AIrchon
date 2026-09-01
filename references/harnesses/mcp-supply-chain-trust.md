@@ -914,7 +914,51 @@ full-process-privilege extension model (§8.4). Copilot CLI's default-on per-ser
 toggle (§6.3) remains the sole exception among the five harnesses this page's own MCP-process
 containment research now covers.
 
-## 10. Synthesis
+## 10. DeepSeek Harness
+
+Sources fetched fresh this session (1 September 2026), all directly from `github.com/deepseek-ai/deepseek-harness`, `master` branch, read via WebFetch or `gh api`: `README.md` (root), `SAFETY.md`, `docs/architecture.md`, `docs/defensive-patterns.md`, `docs/subsystems/tools.md`, `docs/subsystems/sandbox.md`, `docs/subsystems/approval.md`, `docs/subsystems/extensions.md`, `docs/subsystems/permission-presets.md`, `docs/capability-seams.md`, `docs/config-catalog.md`, `docs/tool-execution-pipeline.md`, `packages/mcp/README.md`, `packages/mcp/mcp-client/README.md`, `docs/user/guide/mcp-memory.md`, `.agents/notes/implemented/feature/2026-07-07-mcp-client-plugin.md`, and `.agents/notes/implemented/feature/2026-08-06-mcp-client-auto-reconnect.md`. Cross-referenced against this book's own prior DeepSeek Harness coverage in [MCP integration](mcp-integration.md) (discovery, configuration, and the `dsh-mcp-client` bridge's naming, lifecycle, and transport semantics) and [Permissions & sandboxing architecture](permissions-and-sandboxing.md) (the process-sandbox seam, the per-call `SandboxMode` vocabulary, and the `approval/policy` system), neither re-derived here. DeepSeek Harness is open-source and in developer preview; everything below is VERIFIED against the fetched sources unless flagged. The developer-preview status means these mechanisms may change -- cited accordingly where it matters.
+
+### 10.1 No registry; `serverName` is local configuration, not a trusted identity
+
+This session's complete read of `packages/mcp/README.md` and `packages/mcp/mcp-client/README.md` found no mention of a built-in registry, catalog, curated server list, allowlist, denylist, or any publisher-identity verification step for MCP servers -- an absence confirmed against every documentation page and agent-note file fetched, not inferred. The MCP client is a single package, `@deepseek-ai/dsh-mcp-client`, instantiated once per server via a `cordis.yml` configuration entry. There is no analogue of §4.1's DNS/GitHub-OAuth namespace proof, §4.2's GitHub MCP Registry, or §9.1's Hermes PR-reviewed catalog -- the only gate on which servers enter a DeepSeek Harness session is the `cordis.yml` file (or a `--patch` overlay) the operator wrote, and no DSH component inspects or validates the server behind that configuration entry beyond connecting to it and fetching its initial `tools/list`.
+
+The one identity-adjacent design decision this session's research did find concerns how DSH *namespaces* a connected server's tools, and it is worth stating precisely because it explicitly *declines* to derive identity from the server itself. The plugin's own Agent Note (`.agents/notes/implemented/feature/2026-07-07-mcp-client-plugin.md`) states the rationale at length: "`serverName` is the stable local identity that namespaces this server's tools in the model-facing name (below). It is deliberately user configuration, NOT the remote `serverInfo.name`: the remote name is untrusted, is not unique across deployments (prod and staging instances of one server report the same name), and may change on server upgrade -- none of which may silently rename model-facing tools." Read against this page's Q1 framing, DSH is explicit that it does not trust the server to identify itself -- but the local `serverName` the operator types carries no verification of its own. It is a short string (`^[A-Za-z0-9_-]{1,32}$`, per the README's config table) chosen by the person who wrote the `cordis.yml`, with no DSH-run check that the server it points to is entitled to that name, or that the same `serverName` always points to the same server. The resulting tool names -- `mcp__<serverName>__<rawName>` -- are stable within a session because they are deterministic functions of `(serverName, rawName)`, but that stability is purely a naming contract, not an identity proof: a misconfigured or compromised `serverName` that shadows a legitimate namespace surface has no structural barrier preventing it beyond a per-scope uniqueness constraint (a duplicate `serverName` within one registration scope fails at load, per the README).
+
+The `docs/user/guide/mcp-memory.md` page's framing of its three bundled reference configurations reinforces the same delegation of trust to the operator, in words worth quoting directly rather than paraphrasing: "These third-party configurations are provided as interoperability examples only. Their inclusion does not imply endorsement, recommendation, partnership, or ongoing support by DeepSeek." This is the same first-pass-not-warranty framing found in §5.1 for Claude Code's connectors ("doesn't security-audit or manage any MCP server") and §9.1 for Hermes' catalog ("you should still read the manifest before installing"), now independently confirmed from a third harness's own documentation -- three different organizations reaching the identical scopal boundary.
+
+### 10.2 Tool schemas pass through unmodified: the "garbage-in-garbage-out" boundary
+
+The MCP client README states the Q2 boundary plainly: "MCP servers may expose poorly-described tools (vague descriptions, incomplete JSON schemas). The harness passes them through as-is -- garbage-in-garbage-out; that is the server author's responsibility, not the bridge's." The `docs/subsystems/tools.md` page confirms that raw JSON Schema from MCP registrations is accepted through the same `assertSupportedJsonSchema()` subset enforcement used for subagents and workflows -- but that enforcement is a schema-validity check (rejecting unsupported keywords and malformed structures), not a semantic review of what the schema describes or whether the tool's `description` field accurately represents the tool's behavior. The `tools.md` page's own registration contract reinforces this: "Registration is a trusted same-process contract. The registry borrows the typed definition as readonly input, requires `output`, validates its raw schema, and checks semantic requirements such as a positive finite `timeoutMs`; `schemas()` constructs the model-facing projection when building a request, so execution and presentation share one resolved definition without leaking callbacks onto the wire." Read precisely, "trusted same-process contract" is a statement about the *mechanical* trust model (an in-process `register()` call is not a remote, spoofable input), not a claim that the registry audits the semantics of what was registered -- which is the same Q2 delegation found in §5-§9 above, now stated independently by a fourth harness.
+
+### 10.3 Continuity (Q3): automatic re-sync on `notifications/tools/list_changed`, with no re-approval
+
+This is the section where DeepSeek Harness's research surfaces a mechanism directly relevant to the rug-pull gap named in §3 -- and its behavior matches Hermes Agent's §9.3(a) finding, independently re-implemented.
+
+The `dsh-mcp-client` README states the mechanism plainly: "When the server changes its tool list, the model's tool set updates automatically; if the update fails, the previous tool set keeps working." The plugin's own Agent Note and auto-reconnect note confirm that this re-sync listens for `notifications/tools/list_changed` and queues a fresh `tools/list` discovery, then swaps the entire tool generation atomically -- "dispose previous generation, register new." The naming stability contract means that unchanged tools keep their `mcp__<serverName>__<rawName>` names across the swap (the names are deterministic), and a registration conflict during the swap rolls back the entire attempted generation, leaving the previous tool set intact.
+
+Read against this page's Q3 framing, this is the same "approval bound to a name, not to current content" pattern found for Hermes in §9.3(a) and inferred as a silence for Claude Code (§5.3), Copilot CLI (§6.2), and OpenCode (§7.1) -- but it arrives at that pattern through an explicit, engineered re-sync mechanism rather than through an absence of documentation. A server whose `tools/list` response changes on a later connection -- because a tool's `description` was silently rewritten to include a poisoning payload, because a new tool was added that shadows a native one, because an existing tool's `inputSchema` was broadened to accept exfiltration-shaped parameters -- will have those changes adopted into the running tool registry without any re-approval step, re-diff of descriptions, or re-prompting of the operator. The only structural protection against a malicious re-sync is the registration-conflict rollback: if a tool in the new generation collides with a tool registered by a *different* plugin (not a different server, but a foreign registrant squatting on the `mcp__<serverName>__` namespace), the entire generation is rejected. This protects against cross-plugin namespace collisions, not against a server quietly changing its own tool descriptions within the same `serverName` namespace -- which is precisely the rug-pull mechanism ReversingLabs' research describes (§3).
+
+The re-sync has one narrower property worth naming because it partially addresses a *different* continuity question than the rug pull: deterministic naming means session history and permission rules survive a re-sync unchanged. A tool call logged as `mcp__github__create_issue` references the same `(serverName, rawName)` identity before and after the re-sync, so replay, audit, and the `tools/pre-execute` policy pipeline continue to match correctly. This is a stability property of the naming contract, not a verification property of the content -- it ensures the *names* do not flap, not that the *definitions* behind those names have not drifted.
+
+### 10.4 Environment scrubbing: the one MCP-specific supply-chain mitigation
+
+This session's research found one real, contained mitigation that specifically covers the stdio MCP transport: the child environment is scrubbed before a local MCP server process is launched. The README states it as a design boundary: "The stdio bridge deliberately removes ambient variables whose names usually identify credentials and all `DSH_*` variables before launching a child; other ambient variables remain inherited. Each example adds only the baseline override it needs." The Agent Note gives the implementation detail: "Build the child environment from the subprocess seam's shared `scrubbedParentEnv()` base, which removes ambient names matching `/KEY|PASSWORD|SECRET|TOKEN/i` and ambient `DSH_*` names, then merge `config.env` on top. Explicit env overrides survive the scrub." The `docs/defensive-patterns.md` page restates the same pattern at the process level: "Spawned commands get a scrubbed env (drop `*KEY*`/`*SECRET*`/`*TOKEN*`/`*PASSWORD*`) so harness credentials cannot leak into output, `env`, or spill files."
+
+Read precisely, this is the same containment-adjacent shape found in Hermes' stdio env-variable filtering (§9.2): it narrows what a malicious or rug-pulled MCP server can *exfiltrate* through its own process environment specifically (API keys, tokens, and DSH-internal secrets are stripped before the server's code ever runs), but it does not address Q1 (the server's claimed identity), Q2 (whether the server's code is benign), or Q3 (whether a server that was benign at approval time remains so after re-sync). A server that exfiltrates through its tool-call results rather than its environment variables -- the primary vector Invariant Labs' tool-poisoning research describes (§3) -- is unaffected by this mitigation.
+
+The Streamable HTTP transport receives no analogous filtering because the server is a remote endpoint: secrets that must reach the server travel in the per-request `headers` config, and nothing in the fetched documentation describes credential-redaction on tool results the way Hermes' security docs do (§9.2). This is BEST CURRENT UNDERSTANDING, UNCONFIRMED-as-absent: this session found no fetched source explicitly saying DSH does *not* redact credentials in MCP tool-result text, but neither did it find any source describing such a feature.
+
+### 10.5 The sandbox exists for Bash and FS but does not wrap MCP server processes
+
+This is where the DeepSeek Harness research surfaces a structural finding that parallels the Claude Code (§5.4), OpenCode (§7.2), and Hermes (§9.5) findings, but reaches it through a different architectural path.
+
+DeepSeek Harness has a genuine, multi-backend process-sandbox seam (`ctx.sandbox`), documented in `docs/subsystems/sandbox.md` and verified in the capability-seams graph. The `SandboxMode` vocabulary -- `read-only`, `workspace-write`, `danger-full-access` -- is carried per-call, resolved from `ctx.sandboxPolicy` by each enforcing consumer. The local provider (`dsh-sandbox-local`) supplies Linux bwrap/Landlock, macOS Seatbelt, and Windows ACL backends. The capability-seams graph confirms two consumers: `dsh-bash-sandbox` (shell execution) and `dsh-terminal-bash` (persistent PTY), plus `dsh-fs-sandbox` for filesystem mutations. These are real, OS-enforced containment boundaries for Bash and filesystem operations.
+
+**MCP server processes are not among those consumers.** The MCP client's transport layer (`src/transport.ts`, per the Agent Note's source map) spawns stdio servers through the official `@modelcontextprotocol/sdk`'s `StdioClientTransport`, not through `ctx.subprocess` or `ctx.sandbox`. The capability-seams graph confirms that `ctx.subprocess`'s consumers are `bash-local`, `bash-sandbox`, `terminal-bash`, `lsp-stdio`, and the out-of-process ACP/Codex/Claude Code subagent backends -- `dsh-mcp-client` is not listed. The sandbox documentation page names `dsh-bash-sandbox` and `dsh-fs-sandbox` as the consumers that call `ctx.sandbox.confine()`; nowhere in the fetched sandbox, subprocess, or MCP documentation does this session find a statement that an MCP stdio server's spawned child process is placed inside any of those containment backends. **BEST CURRENT UNDERSTANDING, UNCONFIRMED-as-absent: on a default DeepSeek Harness install, a locally-spawned MCP server runs directly on the host with the same process, filesystem, and network reach as the DSH host process itself**, mitigated only by the environment-scrubbing control in §10.4, not by a second, OS-enforced containment layer -- the same structural gap found for Claude Code's default posture (§5.4), OpenCode's total absence of OS-level containment (§7.2), and Hermes' own env-filtering-only posture for MCP (§9.5). Only Copilot CLI's default-on per-server MCP sandbox toggle (§6.3) closes this gap among the six harnesses this page now covers.
+
+The E2B remote-sandbox backend provides full container isolation for Bash and filesystem operations when composed into a profile, but `ctx.e2b`'s consumers are `fs-e2b` and `subprocess-e2b` -- the MCP client is not among them, and this session found no fetched source describing an MCP-server-inside-E2B deployment path. The `SAFETY.md` file's own guidance confirms the blast-radius consequence in general terms: "Do not rely on DeepSeek Harness as the sole security control for untrusted workloads" and "Prefer a disposable virtual machine, container, or dedicated environment" -- a whole-machine delegation that parallels pi's `security.md` (§8.4) and OpenCode's no-sandbox finding (§7.2), where the recommended containment for untrusted work is external to the harness rather than provided by it.
+
+## 11. Synthesis
 
 ```mermaid
 flowchart TD
@@ -924,18 +968,21 @@ flowchart TD
         GHid["Copilot CLI: GitHub MCP\nRegistry preview, criteria\nnot published; custom registry\nis admin-owned"]
         OCid["OpenCode: none found"]
         Hid["Hermes Agent: PR-reviewed catalog\n(optional-mcps/, 'presence = approval')\nfor catalog entries; none for a\nplain, self-added mcp_servers entry"]
+        DSHid["DeepSeek Harness: none;\nserverName is local config,\nnot a verified identity"]
         Piid["pi: N/A -- no built-in MCP\nclient at all; MCP arrives only\nvia an ordinary third-party\npi package/extension"]
     end
     subgraph Q2["Q2 -- Code safety: is it benign?"]
         RegQ2["Official Registry: explicitly\ndelegated to npm/PyPI/Docker Hub\nand downstream aggregators"]
         AllQ2["Claude Code / Copilot CLI / OpenCode:\nno harness-run code review found;\nadministrator/user judgment only"]
         HQ2["Hermes: catalog gets a real Nous\nPR-review first pass, but docs say\n'still read the manifest yourself'"]
+        DSHQ2["DeepSeek Harness: 'garbage-in-\ngarbage-out; that is the server\nauthor's responsibility'\n-- dsh-mcp-client README"]
         PiQ2["pi: same, one level down --\n'review source code before\ninstalling third-party packages'\nis pi's own stated policy"]
     end
     subgraph Q3["Q3 -- Continuity: still true after an update?"]
         RegQ3["Official Registry: no documented\nre-review on version publish"]
         AllQ3["Claude Code / Copilot CLI / OpenCode:\napproval is a name/URL/command-scoped,\npoint-in-time event -- no\nre-verification found on change"]
         HQ3["Hermes: catalog installs pinned\n(never auto-updated) BUT live\ntools/list_changed is auto-accepted,\nno re-approval, on every server"]
+        DSHQ3["DeepSeek Harness: automatic\nre-sync on tools/list_changed,\natomic generation swap; no\nre-approval step -- same\nrug-pull shape as Hermes §9.3(a)"]
         PiQ3["pi: package spec is version- or\nref-pinned, but never content-hash\npinned -- same point-in-time gap,\none layer removed from MCP itself"]
     end
     Q1 --> Q2 --> Q3
@@ -951,7 +998,9 @@ code the identified publisher ships. Claude Code's own docs say this about conne
 specifically ("doesn't security-audit or manage any MCP server"); the official registry
 says it about every server it hosts metadata for ("relying on the broader ecosystem for
 security scanning of actual server code"); GitHub's custom-registry feature says it by
-omission (no security-review language found anywhere in the fetched pages). Three
+omission (no security-review language found anywhere in the fetched pages); DeepSeek
+Harness's MCP client README says it with unusual directness ("garbage-in-garbage-out;
+that is the server author's responsibility, not the bridge's"). Four
 independently-governed sources reach the identical division of responsibility. **Hermes
 Agent's own catalog (§9.1) is the one identity-adjacent mechanism this page found that goes
 further than a bare namespace proof** -- presence in `optional-mcps/` on GitHub means a
@@ -960,19 +1009,29 @@ commands before merging it, a real, if narrow, code-review gate rather than a do
 substitute -- but Hermes' own docs are explicit that this is a first pass, not a warranty
 ("you should still read the manifest before installing"), and it applies only to catalog
 entries: a plain, user-added `mcp_servers` entry in `~/.hermes/config.yaml` carries no
-identity check of any kind, the same posture Claude Code's plain `.mcp.json` and OpenCode's
-own `mcp_servers` config carry for the vast majority of servers any user actually runs.
-**pi sits outside this comparison on a different axis entirely** -- it has no MCP-facing
-identity question to answer at all, having shipped no MCP client to begin with (§8.2); the
-closest analogue is the ordinary npm/git-source identity question §8.3 already found
-unanswered for pi's own package-installation mechanism, which is the general
-package-supply-chain problem every language ecosystem has, not an MCP-specific one.
+identity check of any kind, the same posture Claude Code's plain `.mcp.json`, OpenCode's
+own `mcp_servers` config, and DeepSeek Harness's `cordis.yml` entry carry for the vast
+majority of servers any user actually runs. DeepSeek Harness's own `serverName` design
+(§10.1) is worth citing precisely here because it states the identity question in the
+negative and makes that negation a load-bearing design contract: the `serverInfo.name`
+an MCP server announces over the wire is "untrusted, not unique across deployments, and
+can change on upgrade, none of which may silently rename model-facing tools" -- an
+explicit refusal to trust the server's own self-description that no other harness this
+page researched documents in comparable detail, but which arrives at the same Q1-negative
+result: the operator-chosen `serverName` carries no cryptographic or organizational proof
+of who the server actually is. **pi sits outside this comparison on a different axis
+entirely** -- it has no MCP-facing identity question to answer at all, having shipped no
+MCP client to begin with (§8.2); the closest analogue is the ordinary npm/git-source
+identity question §8.3 already found unanswered for pi's own package-installation
+mechanism, which is the general package-supply-chain problem every language ecosystem
+has, not an MCP-specific one.
 
 **Code safety is uniformly delegated, never owned.** No harness researched this session
 runs its own static or dynamic analysis of an MCP server's source before a user can add
 it; the official registry punts explicitly to npm/PyPI/Docker Hub's own scanning and to
 downstream aggregators; GitHub's enterprise custom-registry feature punts to whichever
-team populates that registry. The moderation policy findings in §4.1 sharpen this
+team populates that registry; DeepSeek Harness's MCP client README punts to the server
+author in the sentence quoted in §10.2. The moderation policy findings in §4.1 sharpen this
 further -- a server "with security vulnerabilities" is explicitly *not* grounds for
 registry removal on its own, meaning even a disclosed, known weakness does not
 automatically get a listed server delisted. This is a consistent, cross-organization
@@ -1014,19 +1073,22 @@ model (§8.3) shows the identical shape one layer removed: a version-qualified n
 a pinned git ref is stable against silent upgrade, but neither is a content hash, so a
 package publisher able to push a new release under the same pinned reference faces no
 re-verification step pi itself performs -- the same rug-pull shape, applied to the
-package bridging MCP in rather than to an MCP server directly. **Hermes Agent is the one
-harness this page found that moves past mere silence on this question, in both directions
-at once (§9.3).** Its catalog-install pinning is a genuine, narrow positive: catalog
-entries are "never auto-updated," and a `manifest_version` mismatch surfaces a visible
-warning rather than silently applying, so a locally-bootstrapped catalog entry's install
-state cannot drift under a user without an explicit, human-triggered `hermes mcp install`.
-But its live runtime behavior is a genuine, and more consequential, negative: Hermes
+package bridging MCP in rather than to an MCP server directly. **Both Hermes Agent and
+DeepSeek Harness move past mere silence on this question, in the same direction.** Hermes'
+catalog-install pinning is a genuine, narrow positive (§9.3(b)): catalog entries are
+"never auto-updated," and a `manifest_version` mismatch surfaces a visible warning rather
+than silently applying, so a locally-bootstrapped catalog entry's install state cannot
+drift under a user without an explicit, human-triggered `hermes mcp install`. But Hermes'
+live runtime behavior is a genuine, and more consequential, negative (§9.3(a)): Hermes
 actively honours `notifications/tools/list_changed` by auto-re-fetching and silently
 adopting an already-approved server's changed tool definitions into the running registry,
-with no re-approval step at all -- not an absence of a check the way this page finds for
-Claude Code, Copilot CLI, and OpenCode, but an engineered mechanism that performs the
-rug-pull-enabling behavior ReversingLabs' research warns against by design, on every MCP
-server Hermes connects to, catalog-sourced or not.
+with no re-approval step at all. DeepSeek Harness independently implements the same
+live-runtime behavior (§10.3): `dsh-mcp-client` listens for `notifications/tools/list_changed`,
+queues an atomic generation swap, and adopts the server's new tool definitions without
+any re-approval, re-prompt, or content diff -- the same explicitly-engineered,
+rug-pull-enabling mechanism, now confirmed across two separate harnesses from two
+separate organizations, not treated as an AUTHORITY OVERREACH from either to the other
+because each was independently verified against its own fetched source.
 
 **The one axis where the harnesses meaningfully diverge is OS-level containment, and it
 tracks [Permissions & sandboxing architecture](permissions-and-sandboxing.md)'s existing
@@ -1041,21 +1103,27 @@ MCP servers included; Hermes Agent's own container-isolation layer (`--cap-drop 
 backends and, per §9.5, was not found to extend to spawned MCP server subprocesses either
 -- leaving Hermes' own env-var allowlist and credential-redaction controls (§9.2) as the
 only mitigation between a locally-spawned MCP server and the host, a containment posture
-structurally the same as Claude Code's default; pi likewise provides no OS-level
-containment for anything, including whatever a third-party MCP-bridging extension does
-once loaded, naming the same container/VM/micro-VM escape hatch OpenCode's own gap is left
-to (§8.4). None of these, and no layer of the registry infrastructure surveyed in §4,
-addresses Q1-identity-fraud or Q3-rug-pull risk through that sandbox at all -- a sandbox
-contains what an already-
-approved, already-running server can *do* to the host, it does not detect or prevent the
-server *lying* about what it does or *changing* what it does after approval. Those two
-problems, per every source fetched this session, remain open at the protocol level,
-unaddressed at the registry level beyond namespace-identity proof (Hermes' own catalog
-review in §9.1 being the one partial, and explicitly self-limited, exception), and left to
-the same one-time human judgment call at approval time across every harness researched
-here -- pi's variant of that judgment call happening one step earlier, at "should I install
-this extension at all," rather than at "should I trust this MCP server," because pi never
-presents the latter question as a distinct decision in the first place.
+structurally the same as Claude Code's default; DeepSeek Harness has a genuine,
+multi-backend process-sandbox seam (`ctx.sandbox`, with bwrap/Landlock/Seatbelt/ACL
+backends) for Bash and FS operations, but the MCP client's stdio transport spawns through
+the MCP SDK's own `StdioClientTransport`, not through `ctx.sandbox` or `ctx.subprocess`,
+so an MCP server process runs directly on the host with the same reach as the DSH process
+(§10.5), mitigated only by the environment-variable scrubbing in §10.4 -- a containment
+posture structurally the same as Claude Code's default and Hermes' MCP-specific finding;
+pi likewise provides no OS-level containment for anything, including whatever a third-party
+MCP-bridging extension does once loaded, naming the same container/VM/micro-VM escape
+hatch OpenCode's own gap is left to (§8.4). None of these, and no layer of the registry
+infrastructure surveyed in §4, addresses Q1-identity-fraud or Q3-rug-pull risk through
+that sandbox at all -- a sandbox contains what an already-approved, already-running server
+can *do* to the host, it does not detect or prevent the server *lying* about what it does
+or *changing* what it does after approval. Those two problems, per every source fetched
+this session, remain open at the protocol level, unaddressed at the registry level beyond
+namespace-identity proof (Hermes' own catalog review in §9.1 being the one partial, and
+explicitly self-limited, exception), and left to the same one-time human judgment call at
+approval time across every harness researched here -- pi's variant of that judgment call
+happening one step earlier, at "should I install this extension at all," rather than at
+"should I trust this MCP server," because pi never presents the latter question as a
+distinct decision in the first place.
 
 ---
 
@@ -1187,6 +1255,26 @@ public catalog manifests; fetched fresh this session, 1 September 2026):**
   independently-sampled entry, and that most catalog entries observed this session are
   `transport: {type: http}` remote services rather than locally-bootstrapped stdio
   servers, cited in §9.3's closing paragraph).
+
+**DeepSeek Harness (authoritative for its own documented behavior, open-source
+implementation, and its own public agent notes; fetched fresh this session,
+1 September 2026, all from `github.com/deepseek-ai/deepseek-harness`, `master` branch):**
+- `README.md` (repository root) -- the developer-preview status, the `npx @deepseek-ai/dsh web` launch, and the `dsh-plugin` GitHub topic convention.
+- `SAFETY.md` -- §10.5's experimental-status notice, sandbox-limitations caveat, responsible-use guidance ("prefer a disposable virtual machine"), and no-warranty statement.
+- `docs/architecture.md` -- the everything-is-a-plugin architecture, profiles and bundles, the `dsh-base` first layer (including "sandbox and approval policy"), and the core-packages table mapping `ctx.tools`, `ctx.sandbox`, `ctx.approval`, etc.
+- `docs/defensive-patterns.md` -- §10.4's scrubbed-environment rule ("drop `*KEY*`/`*SECRET*`/`*TOKEN*`/`*PASSWORD*`") and the symlink-safety pattern.
+- `docs/subsystems/tools.md` -- the `ToolDefinition` contract, the `tools/pre-execute`/`tools/execute`/`tools/post-execute` waterfall, `ToolGuard` monotonic policy, `ToolRestriction` per-scope filtering, the enforced JSON Schema subset, and the "trusted same-process contract" statement.
+- `docs/subsystems/sandbox.md` -- `SandboxMode` vocabulary, `SandboxExecutionPolicy` per-call resolution, `SandboxProvider.confine()` fail-closed contract, and the `ctx.sandbox`/`ctx.sandboxPolicy` API.
+- `docs/subsystems/approval.md` -- the `ApprovalOutcome` closed vocabulary (`allowed-once` / `rejected` / `cancelled` / `unavailable`), `ApprovalPolicy` (`ask` / `never`), and the `approval/request` waterfall.
+- `docs/subsystems/extensions.md` -- the `ctx.dynamicCordisRunner` dynamic-plugin registry and the `approveFutureVersions` parameter on `runHostHalf`.
+- `docs/subsystems/permission-presets.md` -- the preset table (`workspace-write` / `danger-full-access`) bundling sandbox mode and approval policy.
+- `docs/capability-seams.md` -- the complete service graph confirming `ctx.sandbox` consumers (`bash-sandbox`, `fs-sandbox`, `terminal-bash`) and `ctx.subprocess` consumers (bash-local, bash-sandbox, terminal-bash, lsp-stdio, subagent backends), confirming the MCP client is not a consumer of either seam.
+- `docs/tool-execution-pipeline.md` -- the full pipeline mermaid diagram and the `tools/pre-execute` → guards → approval → `tools/execute` → `tools/post-execute` → `finalizeContent` → `tools/result` flow.
+- `packages/mcp/README.md` -- §10.1's summary that the `mcp/` group "connects the harness to the Model Context Protocol (MCP) ecosystem of tool servers," one package, nothing ships enabled.
+- `packages/mcp/mcp-client/README.md` -- §10.1's `serverName`-is-local-config rationales, §10.2's "garbage-in-garbage-out" quote, §10.3's automatic re-sync on tool-list changes and the generation-swap mechanics, §10.4's scrubbed-environment rule and the `env` merge semantics, the `reconnect` config block, and the tool-naming algorithm.
+- `docs/user/guide/mcp-memory.md` -- the three default-off reference configurations and the "interoperability examples only" non-endorsement statement.
+- `.agents/notes/implemented/feature/2026-07-07-mcp-client-plugin.md` -- §10.1's detailed `serverName` rationale ("the remote name is untrusted, not unique across deployments, and can change on upgrade"), the naming invariants, the full-generation-or-none swap, the public-name normalization algorithm, and the rejected alternatives (raw names, `serverInfo.name` derivation, server-only namespace).
+- `.agents/notes/implemented/feature/2026-08-06-mcp-client-auto-reconnect.md` -- the reconnect supervisor design, the bounded exponential backoff, the per-outage attempt budget, and the `isCurrent` fence preventing interleaved generations.
 
 **pi (authoritative for its own documented behavior and package.json manifests; fetched
 fresh this session directly from `github.com/earendil-works/pi`, `main` branch, via `gh api`):**

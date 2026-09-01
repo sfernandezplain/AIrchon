@@ -1117,9 +1117,336 @@ grep of the kind §3.3 ran against OpenCode's repository -- a narrower evidentia
 than that section's own finding, which is why this paragraph is tagged BEST CURRENT
 UNDERSTANDING rather than VERIFIED.
 
+## 6. DeepSeek Harness
+
+Sources for this section: VERIFIED, fetched this session (1 September 2026) directly from
+`github.com/deepseek-ai/deepseek-harness`'s `master` branch -- `docs/subsystems/credentials.md`,
+`docs/subsystems/token-meter.md`, `packages/credentials/credentials/README.md`,
+`packages/credentials/credentials-local/README.md`, `packages/credentials/authorization/README.md`,
+`packages/llm/token-meter/README.md`, direct raw-source reads of
+`packages/llm/llm-pi-ai/src/auth.ts`, `packages/llm/token-meter/src/route-pricing.ts`,
+`packages/client/ui-chat/src/client/chat/token-format.ts`, and
+`packages/subagent/subagent-claude-code/src/run.ts`, plus eight `.agents/notes/implemented/`
+architectural decision records dated between 29 July and 24 August 2026 (named inline below).
+DeepSeek Harness is a sixth, independent, Cordis-plugin-architecture product -- see
+[Permissions & sandboxing](permissions-and-sandboxing.md) §6 for this book's fuller
+architectural introduction, not repeated here. On this page's two axes, DeepSeek Harness turns
+out to be architecturally the most elaborate credential design examined in this book -- two
+fully disjoint key spaces, a dedicated human-authorization seam, and a documented real-world
+cross-tenant-billing bug fixed at the seam level -- while being the only one of the six harnesses
+whose own accounting surface stops at the token and never converts that count into a currency
+figure at all, even an approximate one.
+
+### 6.1 Two disjoint key spaces: `CredentialRef` (layered, env-var-shaped) and `CredentialKey` (plugin-owned, unlayered)
+
+VERIFIED (`docs/subsystems/credentials.md`, fetched this session in full): the credential seam
+(`@deepseek-ai/dsh-credentials`) answers two structurally different questions through two
+disjoint types. A `CredentialRef` is a branded, POSIX-style environment-variable name and answers
+"what is behind this environment-variable name" -- it is the shape an API key takes, and it
+*layers*: `resolve(ref)` walks a fixed source-priority stack and returns the first value found,
+never caching across operations, so a rotated key reaches "the very next request without any
+restart." A `CredentialKey` (`<scope>/<id>`, the scope naming the *owning plugin*, not the
+provider) answers "what credential does this plugin hold for this id" and *does not layer at
+all* -- there is no environment a human-obtained OAuth grant could be read from, so presence of
+the stored record is the whole fact. VERIFIED (`.agents/notes/implemented/architecture/2026-08-13-credential-records-and-authorization-flows.md`,
+quoted): "The key is `<scope>/<id>` where the scope is the owning plugin's registered name, not
+the provider's. A user knows `openai-codex`; which adapter family answers for the bytes inside
+that record is exactly what a bare provider name loses" -- the `/` deliberately keeps the two
+grammars disjoint so a settings-style reference and a plugin-owned grant record can never
+collide, and this design assumes one adapter registers a given provider route, an invariant this
+book's own [model-routing-and-selection.md](model-routing-and-selection.md) §6.3 documents the
+`ctx.llm` registry enforcing (`DUPLICATE_ADAPTER`).
+
+VERIFIED (`docs/subsystems/credentials.md`; `packages/credentials/credentials-local/README.md`,
+"Where keys come from" section, fetched this session in full): a `CredentialRef`'s four-source
+resolution order, first match wins --
+
+1. **The environment the process was launched in** (`DEEPSEEK_API_KEY=... dsh`) -- read-only,
+   outranks everything, because "a per-run override... is this run's explicit intent" and cannot
+   be edited from inside the product; writes to a ref shadowed this way are refused rather than
+   silently swallowed.
+2. **The provider-managed store** (`$DSH_HOME/.credentials.yaml`) -- writable via `set`/`unset`,
+   wins over both `.env` layers below it, which is why a key saved through the Models page takes
+   effect immediately even when an older key sits in a `.env` file.
+3. **The invoking directory's `.env`** (`<cwd>/.env`).
+4. **The Harness home's `.env`** (`$DSH_HOME/.env`).
+
+A `CredentialKey` record instead carries one of two shapes, VERIFIED
+(`packages/credentials/credentials-local/README.md`'s worked YAML example, and
+`.agents/notes/implemented/architecture/2026-08-13-credential-records-and-authorization-flows.md`):
+`{ kind: 'api-key', key?, env? }` (structural, so the seam can describe it without exposing the
+key) or `{ kind: 'grant', payload }` (opaque JSON, because "a library that owns a token format
+keeps owning it" -- an OAuth refresh/access-token pair is stored verbatim, round-trip-checked
+against JSON on the way in and the way out, and never interpreted by the store itself).
+
+```mermaid
+flowchart TD
+    subgraph REF["CredentialRef (layered, e.g. DEEPSEEK_API_KEY)"]
+        R1["1. Launch environment\n(read-only, wins outright)"] --> R2["2. .credentials.yaml\n(writable store)"]
+        R2 --> R3["3. Project .env\n(cwd/.env)"]
+        R3 --> R4["4. Home .env\n($DSH_HOME/.env)"]
+    end
+    subgraph KEY["CredentialKey (unlayered, e.g. llm-pi-ai/openai-codex)"]
+        K1["No environment source --\npresence of the stored record\nis the whole fact"]
+        K1 --> K2{"Record kind?"}
+        K2 -->|"api-key"| K3["Structural: {key?, env?}\ndescribable by the seam"]
+        K2 -->|"grant"| K4["Opaque JSON payload\n(OAuth refresh/access, verbatim)"]
+    end
+    REF -.->|"disjoint grammars,\nsame .credentials.yaml file,\ndifferent top-level sections"| KEY
+```
+
+### 6.2 The credential file, its 0600 boundary, and an honest limit the maintainers name directly
+
+VERIFIED (`packages/credentials/credentials-local/README.md`, fetched this session in full): the
+default store is a single versioned YAML document (`refs:` and `records:` sections, `version: 1`)
+at `$DSH_HOME/.credentials.yaml`, written under an exclusive writer lock with comments and
+untouched-entry formatting preserved across product writes; a live file-watcher reloads it
+automatically on external edits. On POSIX, the provider refuses to *load* a file any other user
+can read at all ("the error tells you to run `chmod 600`"), checked at both boot and every
+reload; Windows has no equivalent mode to inspect, so the check is skipped there rather than
+faked. Diagnostics never quote a value: because a YAML parser's own error message would normally
+quote the offending source line -- which in this document is the secret itself -- every
+diagnostic in this store carries only an error code and position.
+
+VERIFIED, same source, "Known Limitations" and "Who can read the file" sections, quoted
+directly: **"the product never hands the agent the file's path... That is discretion, not a
+boundary: a deployment that must keep provider keys away from its own agent cannot get there
+with file permissions."** The agent's own tool processes run as the same OS user as the harness,
+so `0600` stops a different OS user, not the model the harness is driving -- a limitation the
+maintainers record as a same-UID gap rather than paper over, with an OS-keychain provider named
+explicitly as the deferred, not-yet-shipped answer (`.agents/notes/implemented/architecture/2026-07-30-credential-boundaries-and-atomic-registration.md`
+independently corroborates this, describing the same `0600`-stops-other-users-not-the-model limit
+and recording a considered-and-withdrawn sandbox read-denial policy that broke confinement for
+every host without a stored credential yet). VERIFIED
+(`.agents/notes/implemented/architecture/2026-08-04-credentials-yaml-and-user-environment-layer.md`):
+this credential document was split out of `$DSH_HOME/.env` specifically because that one file had
+"two incompatible jobs" -- a provider-managed secret store that could never be hoisted into
+`process.env` (hoisting would make every stored key read back as an unrotatable read-only launch
+override) and an ordinary environment file users expected to also carry non-secret values, which
+were silently ignored because only the credential provider ever read the document. Splitting it
+gave `$DSH_HOME/.env` back its ordinary role (layer 4 in §6.1's stack) while `.credentials.yaml`
+became the sole provider-managed store.
+
+### 6.3 OAuth and other human-obtained credentials: the `dsh-authorization` seam, and the `openai-codex` incident it fixed
+
+VERIFIED (`packages/credentials/authorization/README.md`, fetched this session in full):
+`@deepseek-ai/dsh-authorization` is the seam that "obtains credentials that configuration cannot
+supply, because getting one means a conversation with a human" -- a plugin registers exactly one
+flow per `CredentialKey`, declaring a user-facing label and an ordered list of sign-in methods
+(`oauth`, `api-key`, etc.); a UI surface calls `begin({key, method, interaction})`, and the flow's
+`run()` talks to the human through `notify()`/`prompt()` calls scoped to that one request, never
+a registry-wide ambient dialog. One attempt runs per key at a time (`ALREADY_IN_FLIGHT` on a
+second concurrent `begin()`); a declined prompt settles the attempt as `cancelled`, the same
+outcome as a withdrawn signal, so "the human said no" is distinguished from "the flow broke."
+The load-bearing design rule, VERIFIED, quoted: **"the flow owns the write... the seam confirms a
+commit it observed during the attempt -- presence alone would let a re-authorization pass a stale
+record off as fresh -- and refuses a flow that resolved without one"** (`NOT_COMMITTED`) --
+`begin()` reports `authorized` only once `ctx.credentials.modifyRecord()` has actually committed
+the new grant and the seam has observed that commit via the `credentials/record-updated` event,
+not merely because the flow's promise resolved.
+
+This seam exists because of a real, dated defect. VERIFIED
+(`.agents/notes/implemented/architecture/2026-08-13-credential-records-and-authorization-flows.md`,
+quoted throughout): before this record/authorization design landed, the harness's credential
+plane "could only express one kind of secret: a value behind an environment-variable name" --
+which "covers an API key exactly and covers nothing else." The `PiAiAdapter` therefore built its
+provider collection with pi-ai's own in-memory-default `CredentialStore` ("empty at every boot,
+discarded on every configuration change"), so `openai-codex` -- whose only sign-in method is
+OAuth -- failed every request with `Provider is not configured` and had to be
+[withheld from the provider directory as a release fix](https://github.com/deepseek-ai/deepseek-harness)
+(`.agents/notes/implemented/bug-fix/2026-08-13-oauth-only-providers-withheld.md`, cited by this
+same ADR, not independently re-fetched this session), which "removed the broken offer without
+adding the capability." The fix landing the same day restored it: as of that ADR, quoted
+directly, **"All 38 installed providers offer sign-in: 31 collect a key through pi-ai's own
+prompt, six offer that beside a subscription login, and Codex offers only the subscription
+login."** Treat "38"/"31"/"6" as a snapshot at that ADR's date rather than a figure this session
+independently re-verified against the current provider count.
+
+VERIFIED (direct raw-source read of `packages/llm/llm-pi-ai/src/auth.ts`, fetched this session in
+full, 231 lines): `llm-pi-ai` implements exactly three translations between pi-ai's own auth
+model and the two harness seams above, each confined to this one adapter package so "another
+adapter family can arrive with a different auth model and share the same two seams" --
+
+- **`credentialStoreFrom(ctx)`** builds a pi-ai `CredentialStore` backed by `CredentialKey`
+  records scoped to `llm-pi-ai/<providerId>`: `read()`/`list()`/`modify()`/`delete()` each
+  translate between pi-ai's `Credential` union (`api_key` / OAuth-shaped) and the harness's
+  `{kind: 'api-key', ...} | {kind: 'grant', payload}` record union, field by field for the
+  structural half and verbatim (via a `jsonImage()` helper that strips `undefined` members a
+  strict JSON validator would otherwise refuse) for the opaque OAuth-grant half.
+- **`authContextFrom(ctx)`** answers pi-ai's own ambient-discovery questions: `env(name)` checks
+  the harness credential seam *first* (so a key a deployment stored through the Models page is
+  visible to a provider's own ambient discovery, not only the process environment) before
+  falling back to the launch-environment snapshot; `fileExists(path)` checks the *host process's*
+  own filesystem (`~/.aws/credentials`, application-default-credentials paths) rather than the
+  workspace's own `ctx.fs` seam, "because the paths it is asked about... are facts about where
+  this process runs, not about the project under edit."
+- **`registerPiAiFlows`** (named in the ADR, not re-derived from this file) restates pi-ai's own
+  `AuthEvent`/`AuthPrompt` vocabulary in the neutral `notice`/`prompt` vocabulary
+  `dsh-authorization` defines, and runs pi-ai's own `Models.login()` to actually perform the
+  provider-specific OAuth exchange.
+
+VERIFIED (`.agents/notes/implemented/architecture/2026-07-30-credential-boundaries-and-atomic-registration.md`,
+quoted): a related, real, dated cross-tenant-billing defect existed before request-level
+credential resolution was hardened: "pi-ai handed the SDK `undefined` when a configured
+`apiKeyEnv` resolved to nothing, letting pi-ai's own environment discovery authenticate with an
+unrelated provider key -- **another tenant, silently billed**." The fix makes a configured
+reference that resolves to nothing fail loud instead, with `MISSING_CREDENTIAL` naming the route
+and the reference (`.agents/notes/implemented/architecture/2026-07-29-request-level-llm-config-credentials.md`
+names the same code, `MISSING_CREDENTIAL`, as the deliberate "request-time actionable failure"
+this design chose over a plugin-load-time failure that would leave a route unregistered and
+uncatalogued the moment its key went missing). This "one request, one generation" discipline --
+resolving a credential fresh per request rather than freezing it into an adapter at plugin load --
+is the same architectural axiom this book's own
+[model-routing-and-selection.md](model-routing-and-selection.md) §6.1 already documents for
+model/route selection generally (a session's resolved config is captured immutably per epoch, not
+mutated live by a later settings change); here it additionally prevents exactly the silent-billing
+failure mode quoted above.
+
+### 6.4 A distinct, non-billing auth layer: the Web Host's own launch-token session cookie
+
+VERIFIED (`.agents/notes/implemented/architecture/2026-08-24-browser-token-authentication.md`,
+fetched this session in full): DeepSeek Harness's Web Host authenticates *browser sessions*
+against its own local tool-capable server through a mechanism unrelated to any LLM-provider
+credential above -- worth naming precisely so it is not confused with §6.1-6.3's provider-facing
+auth. Each Host process generates a random, never-persisted launch token at startup and prints it
+once in the root URL's query string; visiting that URL exchanges the token for a signed,
+HMAC-verified, `HttpOnly`/`SameSite=Strict` cookie (30-day default absolute lifetime,
+`cookieMaxAgeDays`), and every subsequent API Proxy call, Remote unary call, or WebSocket stream
+requires that same cookie regardless of endpoint or method name. The HMAC signing secret is
+itself a `grant`-kind `CredentialKey` record (`client-connection/browser-session`) stored through
+the exact same `ctx.credentials` seam §6.1-6.3 describe -- deleting that record and restarting the
+process is the only revocation mechanism, since there is no logout operation. This is a session-
+authentication layer protecting *who may drive the harness's own tool-capable Host*, analogous in
+kind (a local API/session credential distinct from an LLM-provider key) to Hermes Agent's own
+`API_SERVER_KEY`-gated API server or OpenCode's `mcp auth` subcommand family documented elsewhere
+on this page (§2.1, §3.1) -- not a mechanism this page's cost/budget questions apply to at all.
+
+### 6.5 Token/cost tracking: a replay-exact, per-token accounting service that never prices a currency figure
+
+VERIFIED (`docs/subsystems/token-meter.md` and `packages/llm/token-meter/README.md`, both fetched
+this session in full): `@deepseek-ai/dsh-token-meter` exposes `ctx.tokenMeter`, a per-session
+replay fold over the durable event log that answers "how many tokens" at two grains --
+`measure(session, requestHeader?)` returns a detached `TokenMeasurement` (`totalTokens`
+request-and-response pressure, `surfaceTokens` the route-priced surface-only total, and an
+ordered `nodes[]` array, each carrying both a route-priced `tokens` figure and a
+route-independent `heuristicTokens` figure for replacement bookkeeping), and
+`estimateMessage(message)` prices one message in isolation with a fixed four-characters-per-token
+heuristic. A measurement's `baseline.kind` is `'usage'` only when the latest successful provider
+call's canonical request envelope matches exactly and its reported total is no lower than the
+full route-priced anchor for that same call; any mismatch -- a changed prompt, tool set, provider,
+model, or call config -- falls back to `'estimated'`, a complete heuristic re-price of the whole
+envelope and surface. Image occurrences are the one case priced exactly rather than heuristically,
+and only when the routed adapter declares pricing: VERIFIED (direct raw-source read of
+`packages/llm/token-meter/src/route-pricing.ts`, fetched this session in full, 68 lines),
+`priceSurface()` converts each image occurrence into `visualTokens` plus the model-visible text
+around it via an adapter-supplied `LlmImageRequestPricing.priceImages()` callback -- this is a
+token-to-token conversion (an image occurrence priced as an equivalent token count), not a
+token-to-dollar one; every route without declared image pricing keeps the plain heuristic.
+
+VERIFIED (`packages/llm/token-meter/README.md`, "Session projections" section; corroborated by
+`.agents/notes/implemented/architecture/2026-07-29-projected-token-usage-and-request-context.md`
+and `.agents/notes/implemented/feature/2026-08-24-web-per-turn-token-usage.md`, both fetched this
+session in full): three durable session projections ride this same fold for UI consumption --
+`tokenUsage` (cumulative `uncachedInputTokens`/`outputTokens`/`cacheReadTokens`/`cacheWriteTokens`
+across the complete log, with a retry-boundary rule that a later `llm/retry-started` event closes
+the prior attempt's usage-replacement scope so a same-step retry contributes a genuinely new
+billed attempt rather than double-counting or silently dropping one), `contextPressure`
+(`pressureTokens` -- the newest provider-reported prompt size -- and `contextWindow`, the two
+kept as independent last-wins fields *by design*, so occupancy is "a user-facing reference figure"
+the harness itself never makes decisions from), and `contextBreakdown` (heuristic
+system/tools/message composition, explicitly documented as "an approximate composition, never a
+total"). A separate, stricter fold, `deriveTurnTokenUsage()`, computes exact per-attempt and
+per-Turn totals for Web Chat's `TurnUsagePanel` component and is deliberately fail-closed: VERIFIED
+(`.agents/notes/implemented/feature/2026-08-24-web-per-turn-token-usage.md`, quoted): "Every
+started attempt must close with safe non-negative integer usage and an exact total... incomplete
+or contradictory evidence produces no row" -- a Turn whose evidence cannot support an exact figure
+shows nothing rather than an under-counted subtotal that "would be indistinguishable from a
+complete bill."
+
+**The load-bearing finding for this page's own comparative question is what this accounting
+surface never does.** VERIFIED (direct raw-source read of
+`packages/client/ui-chat/src/client/chat/token-format.ts`, fetched this session in full, 98
+lines): the one client-side formatting module this session found for token figures implements a
+compact scaled-count formatter (`517 / 12.2K / 517K / 1.2M`), an exact-digit-grouped formatter,
+and a cache-hit-percentage formatter -- there is no currency-formatting function anywhere in this
+file, and this session's broader repository-wide code search (`gh api search/code` for `USD`,
+`cost_usd`, and `currency` scoped to `deepseek-ai/deepseek-harness`) found no dollar-denominated
+pricing table, no per-token-to-cents conversion, and no cost field on any session, Turn, or
+projection type documented in this section's sources. This stands in direct, sourced contrast to
+every other harness on this page: Claude Code's `/usage` (§1.3), OpenCode's `models.dev`-priced
+accumulator (§3.2), pi's structured `Usage.cost` (§4.3), and Hermes' `/usage`/`hermes insights`
+(§5.4) all compute and display a locally-estimated USD figure from token counts, even while
+documenting (per their own sections above) that the figure is an approximation and not
+authoritative billing data. DeepSeek Harness's own token-meter service goes one step further in
+the opposite direction: it never takes that last step at all, tracking and projecting token
+counts with a documented, replay-exact accounting discipline while stopping short of pricing them
+in any currency, anywhere in the surfaces this session read.
+
+```mermaid
+flowchart TD
+    LOG["Durable session event log\n(step/start, request/header,\nassistant/chunk, assistant/message,\nllm/retry-started, request/context)"] --> FOLD["ctx.tokenMeter replay fold\n(per-session, isolated cursor)"]
+    FOLD --> MEASURE["measure(session, requestHeader?)\n-> TokenMeasurement\n(totalTokens, surfaceTokens, nodes[])"]
+    FOLD --> PROJ1["tokenUsage projection\n(cumulative input/output/\ncacheRead/cacheWrite)"]
+    FOLD --> PROJ2["contextPressure projection\n(pressureTokens, contextWindow --\nindependent last-wins fields)"]
+    FOLD --> PROJ3["contextBreakdown projection\n(heuristic system/tools/message\ncomposition, never a total)"]
+    FOLD --> TURN["deriveTurnTokenUsage()\nexact per-Turn/per-attempt fold\n(fail-closed: omits rather than guesses)"]
+    MEASURE --> IMG{"Route declares\nimage pricing?"}
+    IMG -->|Yes| VISUAL["priceSurface(): image -> visual tokens\n+ model-visible text (still tokens, not $)"]
+    IMG -->|No| HEUR["Fixed heuristic:\n4 chars/token + overhead"]
+    PROJ1 --> UI["Web Chat TurnUsagePanel,\nTUI stats line -- token counts only,\nno currency formatter found"]
+    TURN --> UI
+```
+
+### 6.6 Budget enforcement: none found in core; a documented recognition (not enforcement) of Claude Code's own budget cap when delegating to it
+
+BEST CURRENT UNDERSTANDING, UNCONFIRMED, reasoned from a repository-tree keyword search
+conducted this session (the full `master`-branch file tree, filtered for `budget`, `spend`,
+`quota`, `ceiling`, and `limit`, excluding test fixtures and build-tooling scripts such as
+`scripts/doc-budgets.manifest.json`, which govern documentation word-count budgets, and
+`packages/attachment/attachment-local/src/compression-limiter.ts`, which governs image-attachment
+byte size, not spend): **no dollar-denominated spend ceiling was found anywhere in DeepSeek
+Harness's own core packages.** No config key, CLI flag, or `cordis.yml` field this session found
+stops a session once its accumulated token usage (§6.5) crosses an operator-set threshold, and no
+config-catalog entry names a "budget" or "spend limit" concept for any of the credential,
+token-meter, or LLM-adapter packages read this session. This is the same "core ships the seam, not
+the policy" pattern this book's own [model-routing-and-selection.md](model-routing-and-selection.md)
+§6.4 and [context-compression.md](context-compression.md) §6 already document DeepSeek Harness
+applying to model routing and compaction respectively -- here the pattern extends one step
+further, because unlike routing and compaction, this session found no third-party ecosystem
+plugin (comparable to `dsh-model-router`, model-routing-and-selection.md §6.5) that fills the
+budget-enforcement gap either; the DeepSeek Harness ecosystem's ready worked example on this
+specific axis simply was not found this session, which is why this whole finding stays BEST
+CURRENT UNDERSTANDING rather than VERIFIED.
+
+One concrete, narrower, VERIFIED fact sits adjacent to this gap rather than closing it. VERIFIED
+(direct raw-source read of `packages/subagent/subagent-claude-code/src/run.ts`, fetched this
+session in full, 597 lines): DeepSeek Harness ships a subagent backend that delegates to the real
+Claude Agent SDK -- i.e., it can run Claude Code itself as one of its own subagents -- and this
+file's `sdkFailureCategory()` function classifies the SDK's own `error_max_turns`,
+`error_max_budget_usd`, and `error_max_structured_output_retries` `ResultMessage` subtypes
+together into one normalized `'limit'` failure category, surfaced to the rest of DeepSeek
+Harness's own subagent-lifecycle handling as `ClaudeCodeFailure`. Read together with
+[Claude Code's own `max_budget_usd` mechanism](llm-api-contract.md) documented independently in
+§1.5.1 above (cited there to `code.claude.com/docs/en/agent-sdk/agent-loop`, not to this file):
+this session found no code in `subagent-claude-code`'s own source that itself *sets*
+`maxBudgetUsd`/`max_budget_usd` when constructing that subagent's SDK options -- only code that
+*recognizes and categorizes* the SDK's own termination reason after the fact. Per this book's
+AUTHORITY OVERREACH discipline, this narrow fact is a claim about DeepSeek Harness's own
+subagent-classification code, not a second, independent claim about how Claude Code's own budget
+cap works (that claim stands on Claude Code's own docs in §1.5.1 alone) -- but it is worth stating
+precisely because it is the *only* place in DeepSeek Harness's own source this session found any
+concept resembling a dollar-denominated spending limit at all, and it belongs to a sibling
+harness's SDK, recognized rather than implemented by DeepSeek Harness itself. No org- or
+platform-level billing surface analogous to GitHub's budget hierarchy (§2.4) or the Nous Portal's
+subscription billing (§5.3) was found for DeepSeek Harness either -- consistent with the
+enforcement-free posture this page's Synthesis already documents for OpenCode, pi, and Hermes, but
+narrower still: DeepSeek Harness is the only one of the six harnesses examined in this book that
+offers no dollar-denominated cost observability of any kind (§6.5) for a budget-enforcement
+mechanism to sit next to in the first place.
+
 ---
 
-## 6. Synthesis
+## 7. Synthesis
 
 ```mermaid
 flowchart LR
@@ -1158,18 +1485,25 @@ flowchart LR
         HM3["Cost: /usage fuses local $ estimate +\nlive provider quota; hermes insights\n(token/cost/activity, --days); --usage-file\nJSON report per oneshot run"]
         HM4["Budget: none found in the harness itself --\nNous Portal RPM/TPM + pool's reactive\n402-rotation are the only quota reactions"]
     end
+    subgraph DS["DeepSeek Harness"]
+        direction TB
+        DS1["Auth: two disjoint key spaces --\nCredentialRef (layered, 4-source stack)\nvs CredentialKey (unlayered, plugin-owned)"]
+        DS2["OAuth: dsh-authorization seam,\nregisterFlow/begin(), commit-confirmed;\nfixed a real openai-codex OAuth-only outage"]
+        DS3["Cost: ctx.tokenMeter replay-exact\ntoken fold (usage/pressure/breakdown/\nper-Turn) -- NO currency figure anywhere"]
+        DS4["Budget: none found in core; only a\npass-through classification of Claude\nCode's own max_budget_usd as subagent"]
+    end
 ```
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
-|---|---|---|---|---|---|
-| Primary login mechanism | Browser OAuth via `/login` (or API key auto-approval) | OAuth device/web flow via `/login` | `/connect` or `opencode auth login`, per-provider (API key, OAuth, or cloud env vars) | `/login` -- subscription OAuth (Codex/Claude Pro-Max/GitHub Copilot/xAI/OpenRouter/Radius) or an API-key provider, same command | `hermes model` (full setup wizard, terminal-only) or `hermes auth add <provider>`; `/model` mid-session can only switch, never add a provider |
-| Credential storage | OS keychain (macOS) / `.credentials.json` 0600 (Linux/Windows) | OS keychain, with a documented plain-text fallback | `auth.json` 0600, or a full-store env-var override (`OPENCODE_AUTH_CONTENT`) | `~/.pi/agent/auth.json`, `0600`; `key` field supports shell-command execution, env interpolation, escapes, or a plain literal | `~/.hermes/auth.json` `credential_pool` key -- manual entries persist the real token, borrowed entries persist only a `sha256:` fingerprint; `.env` chmod-600 is a documented recommendation, not an enforced mode |
-| CI/headless auth | `CLAUDE_CODE_OAUTH_TOKEN` (via `claude setup-token`) or `apiKeyHelper` | `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` | `.env` file, cloud provider env vars, or `OPENCODE_AUTH_CONTENT` | Any of 29+ named provider env vars (e.g. `ANTHROPIC_API_KEY`), or `auth.json`; OpenRouter's OAuth flow has a documented paste-the-redirect-URL fallback for SSH | 100+ named provider env vars (widest roster in this book), an optional Bitwarden/1Password/command-helper secret ladder above them, or `auth.json` |
-| Cost unit shown to the user | USD, locally computed at "standard list rates" | Premium requests (plus a token-based-billing variant for some plans) | USD, locally computed from the models.dev catalog | USD, computed and stored per-message by `pi-ai` (`Usage.cost`), including compaction/branch-summary generation cost | USD, priced live from provider APIs/models.dev at fetch time (pricing deliberately excluded from Hermes' own curated model manifest) |
-| Live usage command | `/usage` (absorbed `/cost`/`/stats` at v2.1.118) | `/usage` (introduced as such from v0.0.333) | TUI prompt-bar/subagent footer (no dedicated slash command found) | Interactive footer (continuous) + `/session` (message count, tokens, cost) | `/usage` (cost estimate + live provider "Account limits" in one command) and `/insights`/`hermes insights` (30-day token/cost/activity analytics) |
-| Machine-readable export | OpenTelemetry metrics/events (export-only, no enforcement) | Not examined this session | None found | None found on the pages fetched this session | `--usage-file` JSON report per one-shot run (`estimated_cost_usd`, full token breakdown; written even on failure); no OTel-equivalent stream found |
-| In-harness spend cap | Agent SDK `max_budget_usd` (per query) + Workflow `budget` object (per script run) | None in the CLI itself | None found | None found -- `warnings.anthropicExtraUsage` warns about paid-extra-usage risk on one specific subscription but enforces nothing | None found in a broad documentation-corpus search; `sessions prune --max-cost` only filters already-ended sessions retrospectively |
-| Org/platform-level spend cap | Console workspace limits, Team/Enterprise spend limits, cloud-provider budget tools | GitHub billing platform's four-tier budget hierarchy, $0-default hard stop | None documented; only Zen's own internal provider-budget router | None found -- pi has no org/platform product layer of its own to enforce one | Nous Portal's own RPM/TPM tier limits (external, reactive); billing itself managed entirely off-CLI at `portal.nousresearch.com` |
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent | DeepSeek Harness |
+|---|---|---|---|---|---|---|
+| Primary login mechanism | Browser OAuth via `/login` (or API key auto-approval) | OAuth device/web flow via `/login` | `/connect` or `opencode auth login`, per-provider (API key, OAuth, or cloud env vars) | `/login` -- subscription OAuth (Codex/Claude Pro-Max/GitHub Copilot/xAI/OpenRouter/Radius) or an API-key provider, same command | `hermes model` (full setup wizard, terminal-only) or `hermes auth add <provider>`; `/model` mid-session can only switch, never add a provider | Models page/Settings UI stores a key behind a `CredentialRef`, or a plugin-registered `dsh-authorization` flow runs an OAuth sign-in per `CredentialKey` (e.g. `openai-codex`) |
+| Credential storage | OS keychain (macOS) / `.credentials.json` 0600 (Linux/Windows) | OS keychain, with a documented plain-text fallback | `auth.json` 0600, or a full-store env-var override (`OPENCODE_AUTH_CONTENT`) | `~/.pi/agent/auth.json`, `0600`; `key` field supports shell-command execution, env interpolation, escapes, or a plain literal | `~/.hermes/auth.json` `credential_pool` key -- manual entries persist the real token, borrowed entries persist only a `sha256:` fingerprint; `.env` chmod-600 is a documented recommendation, not an enforced mode | `$DSH_HOME/.credentials.yaml`, POSIX `0600` enforced at load (Windows skipped, not faked); `refs:` (API keys) and `records:` (OAuth grants, opaque JSON) as two disjoint sections in one file |
+| CI/headless auth | `CLAUDE_CODE_OAUTH_TOKEN` (via `claude setup-token`) or `apiKeyHelper` | `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` | `.env` file, cloud provider env vars, or `OPENCODE_AUTH_CONTENT` | Any of 29+ named provider env vars (e.g. `ANTHROPIC_API_KEY`), or `auth.json`; OpenRouter's OAuth flow has a documented paste-the-redirect-URL fallback for SSH | 100+ named provider env vars (widest roster in this book), an optional Bitwarden/1Password/command-helper secret ladder above them, or `auth.json` | Launch-environment `CredentialRef` (read-only, wins outright) or a project/home `.env` fallback layer beneath the managed `.credentials.yaml` |
+| Cost unit shown to the user | USD, locally computed at "standard list rates" | Premium requests (plus a token-based-billing variant for some plans) | USD, locally computed from the models.dev catalog | USD, computed and stored per-message by `pi-ai` (`Usage.cost`), including compaction/branch-summary generation cost | USD, priced live from provider APIs/models.dev at fetch time (pricing deliberately excluded from Hermes' own curated model manifest) | Tokens only -- `uncachedInputTokens`/`outputTokens`/`cacheReadTokens`/`cacheWriteTokens`; no currency figure found anywhere in the sources fetched this session |
+| Live usage command | `/usage` (absorbed `/cost`/`/stats` at v2.1.118) | `/usage` (introduced as such from v0.0.333) | TUI prompt-bar/subagent footer (no dedicated slash command found) | Interactive footer (continuous) + `/session` (message count, tokens, cost) | `/usage` (cost estimate + live provider "Account limits" in one command) and `/insights`/`hermes insights` (30-day token/cost/activity analytics) | Web Chat's `TurnUsagePanel`/stats line and the TUI status line, both reading `ctx.tokenMeter`'s session projections (token counts and context-occupancy percentage only) |
+| Machine-readable export | OpenTelemetry metrics/events (export-only, no enforcement) | Not examined this session | None found | None found on the pages fetched this session | `--usage-file` JSON report per one-shot run (`estimated_cost_usd`, full token breakdown; written even on failure); no OTel-equivalent stream found | `ctx.tokenMeter.measure()`/`deriveTurnTokenUsage()` are programmatic APIs any plugin can read (not a dedicated telemetry export); no OTel-equivalent stream found |
+| In-harness spend cap | Agent SDK `max_budget_usd` (per query) + Workflow `budget` object (per script run) | None in the CLI itself | None found | None found -- `warnings.anthropicExtraUsage` warns about paid-extra-usage risk on one specific subscription but enforces nothing | None found in a broad documentation-corpus search; `sessions prune --max-cost` only filters already-ended sessions retrospectively | None found in a repo-tree keyword search; `subagent-claude-code` only *classifies* Claude Code's own `error_max_budget_usd` outcome as a `'limit'` failure, it does not set that cap itself |
+| Org/platform-level spend cap | Console workspace limits, Team/Enterprise spend limits, cloud-provider budget tools | GitHub billing platform's four-tier budget hierarchy, $0-default hard stop | None documented; only Zen's own internal provider-budget router | None found -- pi has no org/platform product layer of its own to enforce one | Nous Portal's own RPM/TPM tier limits (external, reactive); billing itself managed entirely off-CLI at `portal.nousresearch.com` | None found -- DeepSeek Harness ships no billing/console product of its own for one to live in |
 
 The throughline: Claude Code is the only harness examined here that gives the *harness
 layer itself* a programmable, in-product notion of a spending ceiling -- twice over, at
@@ -1231,6 +1565,36 @@ in-harness spending ceiling appear to be orthogonal design investments that no t
 examined in this book has yet made simultaneously -- Claude Code alone builds the latter,
 and Hermes joins pi and OpenCode in building extensively toward the former while leaving
 the latter to the provider or platform layer above it.
+
+DeepSeek Harness (§6) is a sixth, independent data point that pushes the auth-richness axis
+further still while collapsing the cost-observability axis to its floor. Architecturally, its
+credential design is the most elaborate examined in this book on a dimension none of the other
+five harnesses name this precisely: two genuinely disjoint key spaces -- a layered,
+environment-variable-shaped `CredentialRef` for API keys, and an unlayered, plugin-owned
+`CredentialKey` for OAuth grants and other human-obtained secrets, addressed as `<scope>/<id>`
+specifically so that *which plugin* owns a credential's byte format is never lost the way a bare
+provider name would lose it. Its dedicated `dsh-authorization` seam -- one registered flow per
+credential, one attempt in flight per key, a write the seam itself confirms was actually
+committed before reporting success -- is a purpose-built human-authorization primitive this book
+has not found a comparable dedicated abstraction for in Claude Code's, Copilot CLI's, OpenCode's,
+pi's, or Hermes' own login surfaces, and it is backed by two real, dated defects the maintainers'
+own architectural decision records describe fixing: an entire OAuth-only provider
+(`openai-codex`) withheld from the directory for a period because the harness had nowhere to put
+a stored OAuth grant, and a cross-tenant-billing bug where a missing configured credential
+silently fell through to an unrelated provider's own ambient credential instead of failing loud.
+On cost, though, DeepSeek Harness is the clear floor of this page's comparison rather than its
+ceiling: its `ctx.tokenMeter` service is a genuinely sophisticated, replay-exact, retry-aware
+token accountant -- arguably more rigorously specified than any other harness's own token
+counting on this page, with a documented fail-closed discipline for its own per-Turn exactness
+claim -- but this session found no code path anywhere in the harness that converts any of those
+token counts into a currency figure at all, not even the deliberately-approximate "standard list
+rate" style estimate Claude Code, OpenCode, pi, and Hermes each compute locally and label as
+non-authoritative. Combined with finding no in-core spend ceiling and no org/platform billing
+surface either, DeepSeek Harness ends up in the same enforcement-free bucket as OpenCode, pi, and
+Hermes, but for a structurally different reason: the other three at least give a user a dollar
+figure to watch even though nothing acts on it, while DeepSeek Harness gives a user only a token
+figure, leaving the currency conversion itself -- not merely its enforcement -- to whatever sits
+outside the harness the operator has chosen to point it at.
 
 ## Sources
 
@@ -1408,3 +1772,68 @@ September 2026, from Nous Research's own docs site):**
   `spend_limit`, `cost_limit`, `max_cost`, `spending_limit`, `cost_ceiling`) -- the basis
   for §5.4's BEST CURRENT UNDERSTANDING, UNCONFIRMED finding that no dollar-denominated,
   session-halting spend ceiling exists anywhere in Hermes' documented surface.
+
+**DeepSeek Harness (authoritative for its own documented behavior and, for the `master`
+branch specifically, its own real implementation; fetched this session, 1 September 2026,
+from `github.com/deepseek-ai/deepseek-harness`, `master` branch):**
+- `docs/subsystems/credentials.md` (raw source, fetched via `raw.githubusercontent.com`) --
+  §6.1's full primary source: the `CredentialRef`/`CredentialKey` two-key-space design, the
+  generated `ctx.authorization`/`ctx.credentials`/`ctx.credentialsController` Cordis surface,
+  and the `credentials/reference-updated`/`credentials/record-updated` event contracts.
+- `packages/credentials/credentials/README.md` -- §6.1's identity/resolution/description
+  vocabulary for `CredentialRef`.
+- `packages/credentials/credentials-local/README.md` (fetched this session in full) --
+  §6.1/§6.2's full primary source: the four-source resolution order, the `.credentials.yaml`
+  file format (`refs:`/`records:` sections, `version: 1`), the `0600`-on-POSIX/skipped-on-
+  Windows load check, the "never hands the agent the file's path... discretion, not a
+  boundary" quote, and the deferred OS-keychain-provider note.
+- `packages/credentials/authorization/README.md` (fetched this session in full) -- §6.3's
+  full primary source: `registerFlow`/`begin`/`cancel`, the one-attempt-per-key lifecycle,
+  the commit-confirmation design ("the flow owns the write"), and the notice/prompt
+  interaction vocabulary.
+- `packages/llm/llm-pi-ai/src/auth.ts` (raw source, fetched this session in full, 231
+  lines) -- §6.3's `credentialStoreFrom`/`authContextFrom` implementation: the three
+  pi-ai-to-harness-seam translations, the `env()`-checks-credential-seam-before-launch-
+  environment behavior, and the host-filesystem `fileExists()` design.
+- `.agents/notes/implemented/architecture/2026-08-04-credentials-yaml-and-user-environment-layer.md`
+  (fetched this session in full) -- §6.2's rationale for splitting `$DSH_HOME/.env` into
+  the managed `.credentials.yaml` store and the ordinary user `.env` layer.
+- `.agents/notes/implemented/architecture/2026-08-13-credential-records-and-authorization-flows.md`
+  (fetched this session in full) -- §6.1/§6.3's full primary source for the `<scope>/<id>`
+  key design rationale, the `openai-codex` OAuth-only outage and fix, and the "31 collect a
+  key... six offer that beside a subscription login... Codex offers only the subscription
+  login" provider-count quote.
+- `.agents/notes/implemented/architecture/2026-07-29-request-level-llm-config-credentials.md`
+  and `.agents/notes/implemented/architecture/2026-07-30-credential-boundaries-and-atomic-registration.md`
+  (both fetched this session in full) -- §6.3's "one request, one generation" per-operation
+  credential-resolution design, the `MISSING_CREDENTIAL` request-time failure code, and the
+  verbatim-quoted cross-tenant-billing defect ("another tenant, silently billed").
+- `.agents/notes/implemented/architecture/2026-08-24-browser-token-authentication.md`
+  (fetched this session in full) -- §6.4's full primary source: the Web Host's launch-token/
+  cookie-exchange design, the HMAC-secret-as-a-`grant`-record mechanism, and the
+  delete-the-record-to-revoke-everything design.
+- `docs/subsystems/token-meter.md` and `packages/llm/token-meter/README.md` (both fetched
+  this session in full) -- §6.5's full primary source: the `ctx.tokenMeter` service
+  (`measure()`/`estimateMessage()`), the `TokenMeasurement`/`TokenSurfaceNode` types, the
+  `usage`-vs-`estimated` baseline rule, and the `tokenUsage`/`contextPressure`/
+  `contextBreakdown` session-projection semantics.
+- `packages/llm/token-meter/src/route-pricing.ts` (raw source, fetched this session in
+  full, 68 lines) -- §6.5's confirmation that image-occurrence pricing converts to a
+  token count, never a currency figure.
+- `packages/client/ui-chat/src/client/chat/token-format.ts` (raw source, fetched this
+  session in full, 98 lines) -- §6.5's load-bearing negative finding: no currency-
+  formatting function exists in this client-side token-display module.
+- `.agents/notes/implemented/architecture/2026-07-29-projected-token-usage-and-request-context.md`
+  and `.agents/notes/implemented/feature/2026-08-24-web-per-turn-token-usage.md` (both
+  fetched this session in full) -- §6.5's `tokenUsage`/`contextPressure` retry-boundary
+  design and the fail-closed `deriveTurnTokenUsage()` exactness discipline.
+- `packages/subagent/subagent-claude-code/src/run.ts` (raw source, fetched this session in
+  full, 597 lines) -- §6.6's full primary source: `sdkFailureCategory()`'s classification
+  of Claude Code's own `error_max_budget_usd`/`error_max_turns`/
+  `error_max_structured_output_retries` `ResultMessage` subtypes into one `'limit'`
+  category, and the absence of any `maxBudgetUsd`-setting code in the same file.
+- This session's own repository-tree keyword search (the full `master`-branch file tree,
+  filtered for `budget`, `spend`, `quota`, `ceiling`, `limit`) and code search (`gh api
+  search/code` for `USD`, `cost_usd`, `currency`) -- the basis for §6.5's and §6.6's
+  BEST CURRENT UNDERSTANDING, UNCONFIRMED findings that no currency figure and no
+  dollar-denominated spend ceiling exist anywhere in DeepSeek Harness's own core.

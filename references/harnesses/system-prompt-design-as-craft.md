@@ -492,8 +492,10 @@ documentation:
   `examples/` absolute paths on disk and instructs the model to consult them "only when
   the user asks about pi itself, its SDK, extensions, themes, skills, or TUI," with a
   further instruction to "follow .md cross-references before implementing" once a pi-topic
-  question is in play. This is a distinctive data point among the five harnesses this
-  book covers: a harness whose own default system prompt tells the model where its own
+  question is in play. This is a distinctive data point among the six harnesses this
+  book covers (no comparable instance found in DeepSeek Harness's own system-prompt
+  package either, §7, though that search was scoped to the package itself, not its
+  whole `docs/` tree): a harness whose own default system prompt tells the model where its own
   manual lives on the local filesystem, gated behind a topical trigger condition rather
   than always injected -- the same "right altitude" tradeoff §1.6 names in the abstract
   (a small, conditional pointer rather than always paying the token cost of inlining the
@@ -1526,7 +1528,246 @@ is shown tuning its system-prompt text.
 
 ---
 
-## 7. Synthesis: what "good" system-prompt authorship actually looks like
+## 7. DeepSeek Harness (Cordis plugin architecture)
+
+Primary sources, all VERIFIED this session (1 September 2026), fetched via `gh api` against
+`github.com/deepseek-ai/deepseek-harness`, `master` branch (the repo's own confirmed default
+branch; note there is no `CHANGELOG.md` at the repo root -- checked and absent, unlike Claude
+Code's and Copilot CLI's own §4.1-4.2 changelogs -- so DSH's iterated-craft evidence in §7.5
+below takes a different documentary shape entirely, not a gap in this section's research):
+`docs/subsystems/system-prompt.md` (the cross-package type reference and generated Cordis
+surface for `ctx.systemPrompt`), `packages/core/system-prompt/README.md` (the package's own
+usage contract, "Model Experience," and "Known Limitations" sections), `packages/core/system-prompt/src/index.ts`
+(the `SystemPrompt` service implementation in full: `SECTION_ORDERS`, the constructor's
+built-in section registration, `section()`, `assemble()`, `renderPrompt()`), `packages/core/system-prompt/tests/system-prompt.spec.ts`
+(43 `it()` cases, read in full), two per-tool source files demonstrating the `tool:<name>`
+convention concretely (`packages/shell/tool-bash/src/index.ts`, `packages/fs/tool-fs/src/read.ts`),
+and two dated architectural-decision records from `.agents/notes/implemented/architecture/`:
+`2026-07-05-prompt-variables-and-tool-guidance-ownership.md` and
+`2026-08-25-sparse-first-party-prompt-section-orders.md`. DeepSeek Harness is, like OpenCode,
+pi, and Hermes Agent and unlike Claude Code and Copilot CLI, a harness whose own implementation
+source is public -- so, as with those three, this section verifies documented behavior directly
+against the code that produces it, not merely a docs page's own claims about itself.
+
+```mermaid
+flowchart TD
+    Config["'@deepseek-ai/dsh-system-prompt' config:\nincludeHarnessIdentity / persona / toolOrder /\nincludeRuntimeContext"]
+    Config --> Ident["'harness:identity' section, order -1000\n'You are an AI agent powered by DeepSeek Harness.'"]
+    Config --> Persona["'deployment:persona' section, order 0\n(scoped section shadows this per-agent)"]
+    ToolPkgs["Every tool package registers its OWN\n'tool:<name>' section at ITS OWN load time\n(tool:bash 1000, tool:read 1100, tool:write 1200, ...\ncentrally allocated via getSectionOrder(name))"]
+    ToolPkgs --> Waterfall
+    Ident --> Waterfall["'system-prompt/assemble' waterfall\n(scope-filtered; a plugin can add/replace/short-circuit)"]
+    Persona --> Waterfall
+    Vars["ctx.systemPrompt.variable('model'/'cwd'/...)\nregistered by dsh-agent-loop and any plugin\nthat owns the fact"]
+    Waterfall --> Complete{"one section marked\ncomplete: true?"}
+    Complete -->|yes| Sole["that exact section becomes\nthe SOLE prompt section\n(waterfall's tools/contexts/vars still run)"]
+    Complete -->|no| Render
+    Sole --> Render["renderPrompt(assembly):\ninterpolate {{var}} strictly, drop empty\nsections, join non-empty with blank lines"]
+    Vars --> Render
+    Render --> Out["one system prompt string\n+ ordered ToolSchema[] (toolOrder)"]
+```
+
+### 7.1 The system prompt is a Cordis-plugin registry assembled per turn, not a template rendered from one file
+
+Confirming the handoff's own hypothesis directly: yes, DSH's system prompt is Cordis-plugin-contributed
+in exactly the same architectural sense the harness's compaction, subagent, MCP, retry, and
+orchestration subsystems already are (per the prior session's cross-page finding, §6.1-6.5's
+Hermes coverage and this book's other DeepSeek sections). `packages/core/system-prompt/src/index.ts`
+defines `SystemPrompt` as a Cordis service exposing `ctx.systemPrompt.section()`, `.context()`,
+`.tools()`, `.variable()`, and `.assemble()` -- a registry any mounted plugin can contribute to at
+its own load time, not a fixed document any one package owns outright. `assemble(context)` merges
+the global layer with the requested `AssembleContext.scope`'s layer (an agent-scoped section or
+variable shadows a same-named global, confirmed directly from the `ScopedLayers` construction),
+canonicalizes section order by number and then by code-unit name for ties, runs the scope-filtered
+`system-prompt/assemble` waterfall (an "expert waterfall," per the generated Cordis-catalog
+JSDoc, over the mutable in-progress assembly -- meaning a plugin can inspect, add to, or entirely
+replace what an earlier-registered section contributed before the model ever sees it), and finally
+restores any section marked `complete: true` as the sole surviving prompt section once the
+waterfall has run. `renderPrompt()` is a genuinely separate second stage: it interpolates every
+`{{variable}}` reference, drops sections whose resolved text is empty, and joins the survivors
+with blank lines -- and it is documented, in the package's own words, to fail loudly rather than
+silently on any malformed input: "an unknown reference, a registered-but-valueless reference, or
+a malformed complete group throws, because a malformed prompt is worse than a loud failure." This
+two-stage split (`assemble()` resolves; `renderPrompt()` interpolates and joins) is architecturally
+closest, among the harnesses this book has sourced, to OpenCode's own dynamic-tier `Effect.all([...])`
+resolution followed by `request.ts`'s separate `.filter(Boolean).join("\n")` join step (§2.6) --
+independently arrived at by a different engineering team, on a different plugin substrate (Cordis
+versus `Effect`), for the same underlying reason: separating "what facts does each contributor
+currently believe" from "how do those facts become one string" makes the composition step testable
+on its own, which `system-prompt.spec.ts`'s 43 cases exploit directly (§7.5).
+
+### 7.2 Tool guidance ownership as an explicit, ADR-documented rule -- the structural fix pi's docs only offer as an authoring convention
+
+The `tool:<name>` convention the handoff flagged as worth covering specifically is real,
+widespread (confirmed via `gh` code search: 22 files across `packages/fs`, `packages/shell`,
+`packages/web`, `packages/lsp`, `packages/subagent`, `packages/workflow`, `packages/session-query`,
+`packages/terminal`, and `packages/extensions` register a `name: 'tool:...'` section), and -- unlike
+pi's `promptGuidelines` bullets (§1.7, a single flat list several tools contribute into
+side by side with no structural separation, "fixed only by convention") -- DSH's per-tool
+sections are individually named, independently orderable, and independently disposable
+Cordis registrations, so referential ambiguity between two tools' guidance is structurally
+impossible: each section's own `name` field is the tool it concerns, not a sentence a reader has
+to parse for an implicit antecedent. Two concrete, source-read examples: `tool-bash`'s package
+registers `{ name: 'tool:bash', order: ctx.systemPrompt.getSectionOrder('TOOL_BASH'), text: 'Check
+the [exit code: N] marker on every bash result; investigate failures before moving on.' }`, and
+`tool-fs`'s `read.ts` registers `{ name: 'tool:read', ..., text: 'Use the read tool — not shell
+commands like cat — to inspect text files. Results include line numbers. Use offset and limit to
+continue reading large files.' }` -- both colocated in the exact same source file as the tool's own
+`defineTool()` registration, the same "tool description authored where the tool is defined, not
+maintained centrally" pattern §2.5 documents for pi's `promptSnippet`/`promptGuidelines`, but with
+an additional structural guarantee pi's own mechanism lacks.
+
+More consequential than the naming convention itself is the ownership *rule* the
+2026-07-05 Agent Note states as the fix for a real, dated defect: "The assembled system prompt had
+four defects, all of one family: facts the harness already knows were restated by hand somewhere
+else, and drifted... Tool guidance was hand-written prose in leaf YAML... loading or dropping a
+tool plugin meant editing every deployment's persona by hand." The decision drawn from that
+postmortem is stated as a single governing principle: "**One principle: every fact in the prompt
+has exactly one owner.** The model name and workspace are config/session facts → the harness
+exposes them as variables and the persona references them. Per-tool semantics and when-to-use →
+the tool's `description`. Cross-call habits a description cannot carry → the tool package's prompt
+section. The product name and SDK identity line → the static `harness:identity` section.
+Deployment role and behavior → the deployment's persona." This is a direct, source-documented
+answer to exactly the question §1.5-§1.6 raise from Anthropic's own guidance in the abstract
+("is it obvious how to use this tool, or would you need to think carefully about it") and §2.5
+raises concretely for pi's own tool-owned fragments -- DSH's answer is that a *tool description*
+carries selection/usage semantics (the one-call contract), while a *prompt section* carries only
+"cross-call habits a description cannot carry" (the worked, dated example given directly: "checking
+bash exit markers or preferring filesystem tools over shell commands"), and some tools (the ADR
+names `todo_write` and the subagent tools specifically) need no section at all because their
+description already contains the full contract. Read against §1.6's Anthropic-sourced "minimal set
+of information that fully outlines expected behaviour" principle, DSH's ownership rule is the same
+altitude judgment turned into an enforced architectural boundary rather than an editorial habit --
+a fact that is genuinely owned by one artifact type cannot silently duplicate into another without
+a maintainer actively choosing to break the rule, because assembling a persona from hand-typed
+prose (the pre-fix state the ADR describes) is a different code path than registering a section
+through the shared registry (the post-fix state), not merely a style preference within one path.
+
+### 7.3 Centralized, sparse order allocation: an ADR-governed fourth mechanism for the same ordering-conflict problem OpenCode and Hermes each solve differently
+
+§2.6 documents OpenCode's dynamic tier as a fixed concatenation order hardcoded in one function
+(`[...env, ...instructions, ...mcpInstructions, ...skills]`), and §6.1 documents Hermes' three
+named tiers (`stable`/`context`/`volatile`) joined in a fixed sequence chosen specifically so the
+volatile tail never displaces the cacheable stable prefix. DSH's own 2026-08-25 Agent Note
+documents arriving at a comparable ordering-discipline need from a genuinely different failure
+mode: "Repository-owned system-prompt sections declared unrelated numeric literals across more
+than twenty packages... A later change could therefore collide with an existing section without
+seeing the complete allocation," and, worse, ties broke on "stable JavaScript sort behavior,
+which made plugin activation order the effective tie-breaker" -- meaning two otherwise-identical
+compositions that merely *loaded their plugins in a different order* could silently produce a
+different model-visible prompt and a different KV-cache shape, a failure the ADR's own linked,
+earlier bug-fix note is stated to have already hit once (`2026-08-24-system-prompt-section-order-ties.md`,
+referenced but not independently re-fetched this session). The fix is centralization behind a
+named, service-owned lookup rather than a style guideline asking contributors to pick non-colliding
+numbers carefully: every first-party section or context resolves its placement through
+`ctx.systemPrompt.getSectionOrder(name)`/`getContextOrder(name)` against a single private table
+(`SECTION_ORDERS`, confirmed directly in `index.ts` -- `HARNESS_IDENTITY: -1000`,
+`HARNESS_SOURCE: -900`, `WEB_SURFACE: -800`, `DEPLOYMENT_PERSONA: 0`, `PLAN_POLICY: 500`,
+`TEAM_POLICY: 600`, `TOOL_BASH: 1000` through `TOOL_STRUCTURED_OUTPUT: 9900`), with a stated
+spacing invariant ("adjacent allocated section values differ by at least ten") that `system-prompt.spec.ts`'s
+own first test (`'keeps repository section placements unique, integral, and at least ten apart'`)
+enforces as a running regression check, not a one-time audit. Equal-order ties among *external*
+(non-first-party) contributions fall back to deterministic code-unit name ordering rather than
+activation order -- the same "don't let load order silently become a behavioral input" discipline,
+solved here by a governance ADR plus a service API rather than either OpenCode's single hardcoded
+array or Hermes' three named tiers. The same note documents a genuine model-visible consequence
+worth pairing with this book's cache-hygiene thread (§2.6, §6.1): "Bash, or PowerShell... leads
+per-tool guidance" was a deliberate reordering the ADR made explicitly, and the note states plainly
+that renumbering "may invalidate provider prefix reuse from the first moved paragraph" -- the same
+prefix-cache fragility §2.6 raises as an open question for OpenCode and §6.1 documents Hermes
+fixing for its date line, reconfirmed here from a third angle: not a timestamp this time, but a
+section-ordering change itself is named, in the ADR's own "Consequences" section, as a cache-invalidating
+event a maintainer must account for before shipping.
+
+### 7.4 Strict, fail-loud variable interpolation, and the `complete` flag as DSH's own version of the whole-prompt-replacement lever
+
+Two further mechanisms worth naming precisely because each closes a comparison this page's
+synthesis (§8 below) already draws across the other harnesses it covers.
+
+**Variables are one-owner facts, resolved per assembly, and interpolation is strict rather than
+permissive by design.** `ctx.systemPrompt.variable(name, provider)` lets exactly one plugin claim
+a given `{{name}}`; `dsh-agent-loop` registers the two built-ins the 2026-07-05 ADR names directly,
+`model` (`= options.model`) and `cwd` (`= session.header.cwd`), described as "pure projections of
+the context agent." The ADR explicitly rejects the alternative of lenient interpolation --
+"leave unknown refs verbatim, or substitute empty" -- with the stated reasoning that a typo
+"ships `{{modle}}` (or a hole) to the model and nobody notices until transcript review," and
+`system-prompt.spec.ts` backs this with dedicated cases: `'throws on a reference to an unregistered
+variable, listing what exists'`, `'throws when a referenced variable has no value for this
+assembly'`, and, notably for this page's §5 injection-resistance thread even though the DSH docs
+never frame it in security terms, `'never re-scans substituted values (a value containing
+{{sneaky}} stays literal)'` and `'rejects {{constructor}} as UNKNOWN — prototype properties are not
+variables'` -- both source-verified regression tests that close off, respectively, a
+second-order template-injection path (a variable's own resolved value being re-scanned for further
+`{{...}}` references) and a prototype-pollution-adjacent lookup path, neither named as a security
+fix in the ADR but both structurally equivalent in shape to the delimiter-integrity concern §5.2
+documents Anthropic recommending for untrusted tool content -- applied here, as with pi's
+`escapeXml()` call (§2.5), to a trusted-but-still-interpolated value as a general hygiene habit
+rather than a threat-specific control.
+
+**A `complete: true` section is DSH's own implementation of the same lever §8's synthesis
+(point 7) names the other four independent implementations of.** Per `PromptSection`'s own documented contract,
+a section flagged `complete` becomes, after the waterfall still runs (so tools, contexts, and
+variables remain resolvable), "the sole prompt section" -- restored verbatim even if other sections
+were registered, with more than one effective `complete` section across a scope making assembly
+fail outright (`system-prompt.spec.ts`'s `'rejects multiple effective complete sections'` test
+confirms this directly). This is architecturally distinct from every other implementation of the
+same underlying design decision this page has sourced -- not a CLI flag (Claude Code's `agent`
+setting, §4.1), not a config-level override chain (pi's `customPrompt`, §2.5; OpenCode's
+`Agent.Info.prompt`, §2.6), not an operator-edited file (Hermes' `SOUL.md`, §6.3) -- but a section
+registration flag any plugin can set on itself through the identical registry every other
+contributor uses, meaning "replace the whole prompt" and "contribute one piece of it" are the same
+API surface with one boolean distinguishing them, rather than two structurally separate mechanisms.
+The README's own stated use case is a compatibility deployment that must own the complete system
+prompt outright (`includeHarnessIdentity: false` is the milder, partial version of the same
+need -- opting only the fixed identity opener out, not the whole prompt).
+
+### 7.5 Dated architectural-decision records as a sixth documentary shape for iterated craft, and a 43-case regression suite as further evidence
+
+§4 and §6.5 catalogue five documentary shapes for the claim that system-prompt authorship is
+continually re-tuned rather than written once: Claude Code's and Copilot CLI's dated changelog
+entries (§4.1-4.2), pi's and OpenCode's automated regression-test assertions over assembly logic
+(§4.4), OpenCode's in-source rationale comment (§2.6), and Hermes' inline, issue-numbered
+maintainer comments (§6.5). DSH has no root `CHANGELOG.md` this session could find (checked and
+confirmed absent via a direct `gh api` 404), so its iterated-craft evidence takes a sixth,
+distinct shape: dated, named, structured **Agent Notes** under `.agents/notes/implemented/architecture/`,
+each following a fixed Problem/Decision/Alternatives-considered/Consequences template and each
+naming, by filename date, exactly when a specific defect in the assembled prompt was found and
+fixed -- `2026-07-05-prompt-variables-and-tool-guidance-ownership.md` (§7.2's ownership-rule fix,
+itself referencing and correcting a false subagent-tool description the same note documents: "The
+fork tool's description was false... the YAML prose corrected the lie out-of-band" before the fix)
+and `2026-08-25-sparse-first-party-prompt-section-orders.md` (§7.3's ordering-governance fix, which
+explicitly documents recurring after an earlier, narrower fix -- "Fixing one collision locally did
+not prevent another package from reusing that value"). This is a documentary shape closer to
+Hermes' issue-numbered comments (§6.5) than to a changelog in spirit -- both name a specific,
+dated defect rather than only describing a shipped feature -- but structurally distinct: a
+changelog is a release-facing artifact describing what changed for a user, an inline comment is a
+one- or two-sentence note beside the code it explains, and an Agent Note is a full design document
+with its own "Alternatives considered" section stating what was rejected and why (for §7.2's fix:
+"Hand-write the model name in each persona -- duplicates the `model:` key one line above and
+silently lies after a config edit; the exact disease this decision cures"), giving a future reader
+access to the rejected options, not only the one that shipped -- a level of process transparency
+none of the other five documentary shapes in this book provide in the same form.
+
+`system-prompt.spec.ts`'s own 43 `it()` cases are, independently, the same "assembly logic under
+test, not the literal prose" craft-maturity model §4.4 documents for pi's and OpenCode's own test
+suites (§4.4), applied to a package whose entire observable output IS assembly logic (there is no
+separate static prompt-text asset to leave untested, unlike OpenCode's `anthropic.txt` or Claude
+Code's/Copilot CLI's undisclosed prompts) -- test names covering registration/duplicate/disposal
+semantics (`'rejects a duplicate section name (a double-loaded plugin must fail, not double its
+text)'`), HMR safety (`'removes contributions when the contributing fiber is disposed'`),
+waterfall-listener rollback on a thrown error (`'rolls back a section when a system-prompt/change
+listener throws (P1-1)'`), and the strict-interpolation guarantees quoted in §7.4. Taken with §7.1's
+architectural finding and §7.2-§7.3's two ADRs, DSH is, among the six harnesses this page now
+covers, the one whose prompt-assembly discipline is most thoroughly captured by process
+documentation specifically designed for that purpose (the Agent Note template) rather than
+retrofitted onto a changelog, a source comment, or a test name alone -- though, as §4.3 already
+cautions for Claude Code and Copilot CLI, this is a comparison of *what each harness's own public
+surface lets this page verify*, not a ranked claim about which team's internal process is
+objectively superior.
+
+---
+
+## 8. Synthesis: what "good" system-prompt authorship actually looks like
 
 Pulling every section above into one operational picture:
 
@@ -1611,7 +1852,15 @@ Pulling every section above into one operational picture:
    contribute into side by side, where the only available fix is an
    authoring convention ("write 'Use my_tool when...', never 'Use this
    tool when...'") rather than a tag boundary, because the assembly code
-   itself does not nest each contributor's bullets separately.
+   itself does not nest each contributor's bullets separately. DeepSeek
+   Harness (§7.2) is the one harness this page has found that closes this
+   exact gap structurally rather than by convention: every tool's own
+   `tool:<name>`-named prompt section is an individually registered,
+   individually orderable Cordis contribution, so a reader (and the
+   assembly code itself) can always attribute a given sentence to the
+   tool it concerns without inferring an antecedent -- the same referential
+   ambiguity pi's docs can only ask an extension author to avoid by
+   habit is, in DSH, foreclosed by the registry's own naming requirement.
 6. **Every mechanism above is empirically iterated, not designed once
    and shipped -- and harnesses differ genuinely in how that iteration
    is evidenced, not merely in how much of it happens.** Two closed-source
@@ -1637,16 +1886,24 @@ Pulling every section above into one operational picture:
    the most exposed tuning evidence sourced anywhere in this book, a live
    bisection against a production model provider's own undocumented
    content-moderation layer, with the fix stated candidly as empirically
-   validated rather than mechanistically understood. Taken together, this
+   validated rather than mechanistically understood. DeepSeek Harness
+   (§7.5) adds a sixth: in the documented absence of any root `CHANGELOG.md`,
+   its iterated-craft evidence lives in dated, named, structured Agent
+   Notes under `.agents/notes/implemented/architecture/`, each following a
+   fixed Problem/Decision/Alternatives-considered/Consequences template --
+   the only one of the six shapes that preserves *rejected* alternatives
+   alongside the shipped fix, backed by a 43-case regression suite over a
+   package whose entire observable output is assembly logic rather than a
+   separate untested prose asset. Taken together, this
    is the strongest available evidence that system-prompt authorship is a
    genuine, ongoing engineering discipline at every harness examined in
    this book, not a one-time creative-writing exercise that happens to
    also involve an LLM -- and that "iterated craft" itself takes at
-   least five observably different institutional shapes across the
-   five harnesses this page has now examined.
+   least six observably different institutional shapes across the
+   six harnesses this page has now examined.
 7. **The lever to replace an entire base system prompt for one named
    agent identity, rather than only ever appending to a fixed document,
-   was arrived at independently by all four source-inspectable-or-changelogged
+   was arrived at independently by all five source-inspectable-or-changelogged
    harnesses this page covers.** Claude Code's v2.0.59 changelog entry
    -- "Added `agent` setting to configure main thread with a specific
    agent's system prompt, tool restrictions, and model" (§4.1) -- pi's
@@ -1658,15 +1915,22 @@ Pulling every section above into one operational picture:
    a user-defined one configured via JSON or a Markdown file with
    frontmatter (§2.6) -- and Hermes Agent's `~/.hermes/SOUL.md`, which
    replaces `DEFAULT_AGENT_IDENTITY` outright as the identity slot at the
-   head of the stable tier (§6.3) -- are four independent implementations
-   of the same underlying design decision. OpenCode's version is the most
-   granular of the four: the override is keyed per named agent, of
-   which a single session may have several defined at once, each
-   independently swappable, rather than a single global session-level
-   flag or a single default template with one override slot; Hermes'
-   version is the most operator-legible of the four, a single named file
-   an administrator edits directly rather than a config key, CLI flag, or
-   JSON/Markdown agent definition.
+   head of the stable tier (§6.3) -- and DeepSeek Harness's `complete: true`
+   section flag, which restores one registered section as the sole surviving
+   prompt section after the assembly waterfall still runs, on the identical
+   registry every partial contribution also uses (§7.4) -- are five
+   independent implementations of the same underlying design decision.
+   OpenCode's version is the most granular of the five: the override is
+   keyed per named agent, of which a single session may have several
+   defined at once, each independently swappable, rather than a single
+   global session-level flag or a single default template with one
+   override slot; Hermes' version is the most operator-legible of the
+   five, a single named file an administrator edits directly rather than a
+   config key, CLI flag, or JSON/Markdown agent definition; DeepSeek
+   Harness's is the most structurally unified of the five -- "replace the
+   whole prompt" and "contribute one piece of it" are the same API with
+   one boolean distinguishing them, rather than a separate override
+   mechanism sitting beside the normal contribution path.
 8. **Cache-hygiene and injection-provenance concerns recur across harnesses
    independently, and Hermes Agent's own documented incident history
    supplies the clearest evidence yet that this recurrence is genuine
@@ -1685,6 +1949,15 @@ Pulling every section above into one operational picture:
    the *problem* (long-lived cached prompts under provider-side prefix
    caching; provenance-ambiguous mid-conversation channels under an
    injection-aware model), not idiosyncrasies of any one team's prompt.
+   DeepSeek Harness's own 2026-08-25 ordering-governance Agent Note (§7.3)
+   reconfirms the cache-hygiene half of this convergence from a third,
+   structurally distinct angle: not a changing timestamp this time, but a
+   deliberate reordering of *which* section comes first, named candidly in
+   the note's own "Consequences" as a change that "may invalidate provider
+   prefix reuse from the first moved paragraph" -- the same prefix-cache
+   fragility Claude Code's changelog and Hermes' source comment each name
+   from their own angle, recurring a third time in a third codebase built
+   by a third organization.
 
 ---
 
@@ -1694,7 +1967,8 @@ All fetched fresh this session (2026-08-17) unless noted otherwise. pi's own sou
 (below) were fetched fresh in a later session, 1 September 2026, per their own dated
 citation. The additional OpenCode sources supporting §2.6 (below) were fetched fresh in
 that same later session, 1 September 2026. Hermes Agent's sources (below) were fetched
-fresh in that same later session, 1 September 2026.
+fresh in that same later session, 1 September 2026. DeepSeek Harness's sources (below)
+were fetched fresh in that same later session, 1 September 2026.
 
 **Anthropic (authoritative for Claude's documented prompting behavior
 and Anthropic's own recommended prompt-engineering technique; not
@@ -1864,6 +2138,60 @@ HTTP 200, this session):**
   incident comment, `DEVELOPER_ROLE_MODELS`), plus `load_soul_md()` and
   `build_context_files_prompt()`'s priority-chain and security-scan/truncation logic;
   covers §6.1-§6.5.
+
+**DeepSeek Harness (authoritative for its own documented behavior AND, like OpenCode, pi,
+and Hermes Agent and unlike Claude Code and Copilot CLI, its own real implementation;
+`github.com/deepseek-ai/deepseek-harness`, `master` branch (confirmed the repo's own
+default branch this session), fetched fresh this session, 1 September 2026, via `gh api`
+to read full contents and `gh api search/code` to locate registrations across packages;
+no root `CHANGELOG.md` exists in this repo -- checked and confirmed absent via a direct
+`gh api` 404):**
+- `docs/subsystems/system-prompt.md` (read in full) -- the cross-package `AssembleContext`/
+  `PromptSection`/`PromptContext`/`ToolProviderResult` type reference and the generated
+  Cordis-catalog surface for `ctx.systemPrompt` (`section()`, `context()`, `tools()`,
+  `variable()`, `assemble()`, the `system-prompt/assemble` waterfall, and the
+  `system-prompt/change` event); covers §7.1's diagram and assembly-pipeline description.
+- `packages/core/system-prompt/README.md` (read in full) -- the package's own "Use this
+  package"/"Understand the implementation"/"Model Experience"/"Known Limitations" sections:
+  the `includeHarnessIdentity`/`persona`/`toolOrder`/`includeRuntimeContext` config table,
+  the `tool:bash` worked registration example, the two-stage assemble-then-render design
+  concept, and the explicit KV-cache-effect and token-effect statements for both the system
+  prompt and tool schemas; covers §7.1 and the cache-hygiene claims in §7.3 and synthesis
+  point 8.
+- `packages/core/system-prompt/src/index.ts` (full file) -- the `SystemPrompt` service
+  implementation: the private `SECTION_ORDERS` table (`HARNESS_IDENTITY: -1000` through
+  `TOOL_STRUCTURED_OUTPUT: 9900`), the constructor's built-in `harness:identity`/
+  `deployment:persona` section registration, `section()`'s finite-order validation,
+  `assemble()`'s scope-merge/canonicalization/waterfall/complete-section-restoration
+  pipeline, and `renderPrompt()`'s strict-interpolation/empty-section-dropping logic;
+  covers §7.1, §7.3, and §7.4 in full.
+- `packages/core/system-prompt/tests/system-prompt.spec.ts` (43 `it()` cases, read in
+  full) -- the section-placement spacing/uniqueness regression test, the duplicate-
+  registration/HMR-disposal/waterfall-rollback cases, the `complete`-section restoration
+  and multiple-complete-sections-rejection tests, and the strict-variable-interpolation
+  suite (unregistered-reference, valueless-reference, malformed-complete-reference,
+  `{{sneaky}}` non-re-scanning, and `{{constructor}}`-rejection cases); covers §7.4 and
+  §7.5's regression-suite evidence.
+- `packages/shell/tool-bash/src/index.ts` (grepped and read in context) -- the `tool:bash`
+  prompt-section registration (`'Check the [exit code: N] marker on every bash result;
+  investigate failures before moving on.'`) colocated with the tool's own `defineTool()`
+  call; covers §7.2's worked example.
+- `packages/fs/tool-fs/src/read.ts` (grepped and read in context) -- the `tool:read`
+  prompt-section registration (`'Use the read tool — not shell commands like cat — to
+  inspect text files...'`); covers §7.2's second worked example.
+- `.agents/notes/implemented/architecture/2026-07-05-prompt-variables-and-tool-guidance-ownership.md`
+  (read in full) -- the four-defect postmortem (unstated model name, hand-written leaf-YAML
+  tool guidance, persona rendering after tool guidance, the false fork-tool description),
+  the "every fact in the prompt has exactly one owner" decision, the `{{model}}`/`{{cwd}}`
+  built-in variables, the persona-as-order-0-section design, and the rejected-alternatives
+  list (lenient interpolation, hand-writing the model name, per-instance subagent wording);
+  covers §7.2 and part of §7.4 in full.
+- `.agents/notes/implemented/architecture/2026-08-25-sparse-first-party-prompt-section-orders.md`
+  (read in full) -- the numeric-literal-collision-and-activation-order-tiebreak problem, the
+  centralized `getSectionOrder()`/`getContextOrder()` fix, the full named-allocation table
+  quoted in §7.3, the deliberate Bash/PowerShell-leads-per-tool-guidance reordering, and the
+  explicit prefix-cache-invalidation consequence quoted in §7.3 and synthesis point 8; covers
+  §7.3 in full.
 
 **Checked this session but explicitly NOT cited as a source of any
 claim above, per this project's grounding discipline (UNOFFICIAL /

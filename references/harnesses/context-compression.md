@@ -1,4 +1,4 @@
-# Context compression -- Claude Code, GitHub Copilot CLI, OpenCode, pi, and Hermes Agent
+# Context compression -- Claude Code, GitHub Copilot CLI, OpenCode, pi, Hermes Agent, and DeepSeek Harness
 
 **Scope note.** [instruction-context-budget.md](instruction-context-budget.md)
 covers the *eagerly-loaded instruction* tier (CLAUDE.md/rules/skill
@@ -18,9 +18,9 @@ neither page went into.
 Every claim is tagged VERIFIED (fetched this session, or already
 verified and cited in a page linked above) or BEST CURRENT
 UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, pi
-(Earendil Works), and Hermes Agent (Nous Research) are five separate
-products from five separate organizations/authors -- nothing confirmed
-for one is assumed for another.
+(Earendil Works), Hermes Agent (Nous Research), and DeepSeek Harness
+(DeepSeek AI) are six separate products from six separate
+organizations/authors -- nothing confirmed for one is assumed for another.
 
 ---
 
@@ -1259,25 +1259,558 @@ Hermes' own docs do here.
 
 ---
 
-## 6. Synthesis
+## 6. DeepSeek Harness
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
-|---|---|---|---|---|---|
-| Verifiability | Docs-only; no public implementation | Docs + changelog only; no public implementation | Source-verified, `dev` branch (caveat applies) | Docs-only, but source-available (this session read the docs, not the TypeScript source itself, so treat as docs-verified rather than source-verified) | Docs-only, but source-available (this session read the docs, which name and quote Python source files/methods precisely, but did not read that source directly -- docs-verified, same posture as pi) |
-| Documented shape | Two-phase: evict tool outputs, then summarize if still needed | Background, checkpointed; internal algorithm undocumented | Two *independently scheduled* mechanisms: background eviction-only `prune()` + on-demand summarizing `process()` | Two *independently triggered* mechanisms sharing one summary format: threshold/manual compaction, and `/tree`-navigation branch summarization | **Two independently-thresholded layers** (85% pre-agent gateway hygiene, 50%-default in-loop `ContextCompressor`) around a **pluggable** `ContextEngine` ABC, whose default implementation is itself a 4-phase algorithm (prune, bound, summarize, assemble); plus an optional, opt-in, per-turn micro-compaction path that defers rather than replaces it |
-| Trigger | ~967K tokens default for Sonnet 5's 1M window (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`); 200K-class threshold not documented as a %; 80% warning UI | 95% of token limit (origin entry, still matches docs) | `usable(cfg, model)` = input limit minus a reserved buffer (default min(20K, max-output)); checked proactively per-turn and reactively on a provider overflow error | `contextTokens > contextWindow - reserveTokens` (default `reserveTokens` 16,384); a separate reactive overflow-error path also exists (§4.5), structurally distinct from ordinary retry-with-backoff | `prompt_tokens >= threshold × context_length`, default `threshold` **0.50** of the *main* model's window -- the earliest-firing default this page has sourced -- with a substring-matched, longest-match-wins, floor-clamped (`0.75` below 512K) per-model override map, plus a route-specific 85% autoraise for gpt-5.5 on Codex OAuth (§5.2) |
-| Eviction-only pass | Implicit first phase of the same mechanism ("clears older tool outputs first") | "Evicting transient events after compaction" -- a later, separate pass per changelog | Explicit separate service method (`prune()`), forked fire-and-forget every turn, own thresholds (`PRUNE_PROTECT`=40K, `PRUNE_MINIMUM`=20K), exempts `skill` tool output | None documented -- pi's only two mechanisms are the two summarization paths in the row above; no fire-and-forget eviction-only pass distinct from compaction itself was found in the docs fetched this session | Phase 1 of the built-in compressor: tool results over 200 chars outside the tail replaced with a fixed marker string, no LLM call; a separately-named "proactive prune" gated behind a reclaim-size floor (`proactive_prune_min_reclaim_tokens`, default 4,096) is described in the micro-compaction doc specifically -- BEST CURRENT UNDERSTANDING, UNCONFIRMED that this is the identical Phase 1 mechanism rather than a related, separate pass (§5.5) |
-| Summarization content model | Fixed six-part list (intent, concepts, files+snippets, errors+fixes, pending tasks, current work) | Undocumented internally | Fixed six-section Markdown template (Objective, Important Details, Work State [Completed/Active/Blocked], Next Move, Relevant Files) with explicit terse-bullet/preserve-identifiers rules | Fixed six-section Markdown template (Goal, Constraints & Preferences, Progress [Done/In Progress/Blocked], Key Decisions, Next Steps, Critical Context) plus tagged `<read-files>`/`<modified-files>` blocks; shared verbatim between compaction and branch summarization | Fixed **seven-section** Markdown template (Goal, Constraints & Preferences, Progress [Done/In Progress/Blocked], Key Decisions, **Relevant Files**, Next Steps, Critical Context) -- the one harness of the five folding file tracking into a named section rather than a separate tagged block; a distinct `lean` tail mode additionally carries a regex-extracted "anchor index" and a `session_search` recovery pointer alongside the summary (§5.4), found nowhere else on this page |
-| Incremental vs. from-scratch re-summarization | Not stated either way in docs fetched | Not stated | VERIFIED anchored/incremental: later compactions update the prior summary text rather than resummarizing full history | Docs state the previous summary is passed "as iterative context" into each new summarization call, but do not state whether the summary text itself is edited in place or freshly generated with the old text as a reference -- BEST CURRENT UNDERSTANDING, UNCONFIRMED as strictly anchored in OpenCode's specific verified sense | VERIFIED anchored/incremental, stated unambiguously: "the previous summary is passed to the LLM with instructions to update it rather than summarize from scratch" -- resolving, for Hermes specifically, the exact ambiguity pi's own docs leave open in the column to its left |
-| Split-turn handling | Not named as a distinct case in docs fetched | Not named as a distinct case | `splitTurn()` finds a message index within the oldest-still-considered turn where the remaining slice fits the leftover budget | Named explicitly as `isSplitTurn`; generates and merges *two* summaries (a history summary and a turn-prefix summary) rather than finding one split index -- the only harness in this book's coverage that produces two summarization calls for one oversized turn | Not named as a distinct case in the docs fetched this session; boundary alignment (`_align_boundary_backward()`) prevents a cut from splitting one `tool_call`/`tool_result` pair, the same constraint independently enforced by name in Copilot CLI, OpenCode, and pi, but no oversized-single-turn special case is documented |
-| Thrash/failure guard | 3-consecutive-refill circuit breaker -> actionable error | Newest entry (v1.0.76): "automatic compaction blocked" state + early warning when unreclaimable overhead nears the limit | Hard single-shot abort (`ContextOverflowError`) when the summarization prompt itself won't fit, no retry counter | Reactive overflow path retries the request exactly **once** after compacting (§4.5); no documented multi-attempt thrash counter comparable to Claude Code's three-strikes guard was found | Two distinct guards, at two layers: a **silent-drop** failure mode when the summary model's own context window is smaller than the main model's (drops the middle turns with no summary at all, named in the docs as "the most common cause of degraded compaction quality," §5.3) -- the opposite response from Claude Code's own refusal-to-shrink-with-a-smaller-model behavior -- and, for micro-compaction specifically, a per-exchange 3-consecutive-failure skip-forward (§5.5) |
-| Pre-compaction hook | `PreCompact`, can block (exit 2 / `{"decision":"block"}`) | `preCompact` exists; blocking capability unconfirmed | Plugin hook `experimental.session.compacting` can inject context or replace the prompt entirely; `experimental.compaction.autocontinue` gates the post-compaction nudge | `session_before_compact` extension event can cancel (`{cancel: true}`) or fully replace the compaction with a custom `{summary, firstKeptEntryId, tokensBefore, usage?, details?}` object, including one authored by an entirely different model; a sibling `session_before_tree` hook offers the identical contract for branch summarization | No single pre-compaction hook analog documented; instead a formal `ContextEngine` ABC lets a plugin replace `should_compress()`/`compress()` wholesale (own tools, own policy, own lifecycle), plus two narrower orthogonal hooks -- `select_context()` (per-request message replacement) and `on_turn_complete()` (post-turn observation) -- a larger, class-based swap-out surface than any single hook point documented for the other four harnesses (§5.1) |
-| Post-compaction continuation | No documented auto-nudge; user's next message resumes naturally | Not documented | Explicit synthetic "Continue if you have next steps..." message appended when the triggering compaction was automatic | Not documented as an auto-nudge in the pages fetched this session | Not documented as an auto-nudge in the pages fetched this session |
-| Observability marker | `compact_boundary` `ResultMessage` subtype (Agent SDK) | OTel `gen_ai.conversation.compacted=true` + `CompactionPart` | Typed events (`Compaction.Started`/`Compaction.Ended`/`Compacted`) via Effect-TS spans | `session_compact`/`session_compact_failed` extension events, explicitly framed by the docs as a telemetry-pairing point (matching a failure back to its originating attempt) rather than a dedicated schema | Content-free JSON telemetry line per micro-compaction pass (`occupancy_pct`, `tokens_before/after`, `tokens_saved_total`, `passes_total`, `duration_ms`, counts only, no transcript text), plus a `session:compress` event carrying `in_place`/`old_session_id` for the batch path (§5.8) |
-| Model-fallback interaction | Won't fall back to a smaller-context model during compaction | Context-tier (200K/1M) selection "enforced end-to-end" across compaction/truncation/token display | Compaction reads the same `usable()` budget the overflow check uses; no documented model-fallback-during-compaction behavior found | Not documented; pi's overflow-recovery path (§4.5) retries on the *same* model rather than falling back to a different one, per the pages fetched this session | The `auxiliary.compression` model slot carries its own independent fallback chain (see [model-routing-and-selection.md](model-routing-and-selection.md) §5.1/§5.2), separate from the main chat model's own fallback chain -- a per-task fallback surface none of the other four harnesses document for their own compaction/summarization model specifically |
-| Provider-owned compaction | Not documented | Not documented | Not documented | Not documented | For two specific routes (Codex app-server threads; gpt-5.6 on direct OpenAI/Codex-OAuth Responses API), compaction runs on the **provider's own infrastructure** and Hermes only observes or relays an opaque result (§5.6) -- a compaction-ownership pattern this page has not found documented for any of the other four harnesses |
+Sources for this section: VERIFIED, fetched 1 September 2026 directly
+from `github.com/deepseek-ai/deepseek-harness` (`master` branch, via `gh
+api repos/deepseek-ai/deepseek-harness/contents/<path>`, full files) --
+`docs/subsystems/compaction.md`, `docs/subsystems/spill.md`,
+`packages/compaction/compaction-basic/README.md`,
+`packages/compaction/compaction-tool-result-pruner/README.md`,
+`packages/compaction/README.md`,
+`packages/compaction/command-compact/README.md`,
+`packages/spill/spill-policy/README.md`,
+`packages/llm/token-meter/README.md`, and the source files
+`packages/compaction/compaction-basic/src/index.ts`,
+`packages/compaction/compaction-basic/src/region.ts`,
+`packages/compaction/compaction-basic/src/summarizer.ts`,
+`packages/compaction/compaction-basic/src/config.ts`,
+`packages/compaction/compaction-basic/src/types.ts`,
+`packages/compaction/compaction-tool-result-pruner/src/types.ts`,
+`packages/compaction/compaction-tool-result-pruner/src/config.ts`. This
+session read both the docs *and* the TypeScript source directly -- unlike
+pi or Hermes, DeepSeek Harness is fully open source, and this section
+cites by function name and source-verified behavior wherever the docs
+leave a mechanism implicit, the same posture as OpenCode's own
+source-verified section (§3). The harness is a developer preview; `master`
+is not a tagged stable release.
 
-**The design lesson.** All five harnesses converge on the same
+### 6.1 A capability-seam architecture: compaction is one swappable plugin, not part of the loop spine
+
+DeepSeek Harness (abbreviated "dsh" throughout its own codebase and
+docs) is architecturally distinct from every other harness this page
+covers: its entire product, including compaction, is composed from
+**Cordis plugins** at boot time, with no privileged core to patch.
+VERIFIED, `docs/architecture.md`: "Every part of the product is a
+plugin, including the model adapter, the tool registry, the session log,
+and the agent loop itself, so each is replaceable from configuration."
+Compaction is **explicitly not part of the agent-loop spine** -- its
+docs state directly that "the vocabulary lives here, not in core.md" and
+that a "tokenizer- or template-based backend is a sibling package
+implementing the same interface."
+
+The compaction capability is split on a **capability seam** with three
+separate roles, mirroring the same three-role split the architecture
+uses for bash, filesystem, and every other swappable capability:
+
+- **Service Definition** (`dsh-compaction`, `ctx.compaction`): the
+  abstract `CompactionEngine` base class declaring `compactIfNeeded()`,
+  `compactNow()`, and `compactRegion()`, plus the `compaction/*` session
+  event vocabulary and the `CompactionResult` type.
+- **Service Provider** (`dsh-compaction-basic`): the shipped default
+  implementation, registering itself as `ctx.compaction`. A
+  tokenizer- or template-based alternative would be a sibling package
+  implementing the same seam.
+- **Consumer** (`dsh-command-compact`): the `/compact` command that
+  calls `compactNow()` on whatever backend is loaded.
+
+Both the abstract seam and the basic backend consume a further optional
+companion service: `ctx.toolResultPruner`
+(`dsh-compaction-tool-result-pruner`) for deterministic tool-output
+trimming (§6.4), and a separate, orthogonal spill-storage seam
+(§6.7) for proactive oversized-output offloading that runs before
+compaction is even triggered. The token measurement that decides *when*
+to compact is yet another separate service (`ctx.tokenMeter`,
+`dsh-token-meter`, §6.2) -- not owned by the compaction backend at all.
+
+This is a different factoring from any of the other five harnesses:
+Hermes Agent also offers a pluggable `ContextEngine` ABC (§5.1), but
+that ABC owns both the *trigger policy* and the *compression
+algorithm*; DeepSeek Harness separates those into two services -- the
+measurement fold in `ctx.tokenMeter` versus the compaction engine in
+`ctx.compaction` -- and inserts the optional pruner *between* the
+trigger decision and the summarization call, so a backend can skip the
+LLM call entirely when pruning alone relieves pressure (§6.4).
+
+### 6.2 The singleton token meter: one measurement fold prices every decision
+
+VERIFIED, `packages/llm/token-meter/README.md` and
+`packages/compaction/compaction-basic/README.md`: the
+`ctx.tokenMeter` service advances one **isolated replay fold** per
+session from the durable event log, and "several plugins should agree on
+one replay-based measurement -- compaction planning, occupancy UIs, and
+pressure checks all read the same fold." The meter is not part of the
+compaction package at all; compaction consumes it via dependency
+injection (`BasicCompactionEngine` declares `static inject = ['llm',
+'tokenMeter', 'sessions']`, VERIFIED from source).
+
+The measurement operates at the **durable log** level -- not against a
+live streaming buffer or a provider-side token-count response (though
+provider-reported usage is reused as an *anchor* when its canonical
+envelope matches exactly). Text and undeclared-image routes use a fixed
+heuristic of approximately four characters per token plus structural
+overhead; routes whose adapter declares request-image pricing carry
+provider-exact visual tokens. This is the same *kind* of split
+(between a heuristic default and an anchor-of-opportunity for
+provider-reported counts) that pi's `providers/` tokenization and
+OpenCode's own token-estimation logic implement, but dsh makes the
+separation architecturally explicit: `contextBreakdown` projections carry
+heuristic figures explicitly labeled as estimates that "will not sum to
+`projectedTokens`," while `measure()` returns **both** route-priced
+`tokens` and route-independent `heuristicTokens` per node -- the later
+used for the shadow-price protocol (§6.3) so the O(1) projection fold
+stays deterministic across route changes, the former used for the
+shrink-comparison check (§6.5) that asks the real question: "does the
+replacement lower the next request's pressure on this specific route?"
+
+### 6.3 The log-recorded bracket: a transaction, not just a pass
+
+```mermaid
+flowchart TD
+    Trigger["Trigger fires:<br/>agent/pre-step (pressure)<br/>agent/request-error (overflow)<br/>or /compact (manual)"] --> Lock{"Lock check:<br/>unmatched compaction/start?"}
+    Lock -->|"Active or stale pre-seed"| Busy["Busy / error"]
+    Lock -->|"No active lock"| Validate["Validate surface span,<br/>tool-call/result pairing"]
+    Validate --> StartLock["Append compaction/start<br/>(lock acquired synchronously)"]
+    StartLock --> Prune{"ctx.toolResultPruner<br/>available?"}
+    Prune -->|"Yes"| Trim["Trim over-budget tool results<br/>(no LLM call)"]
+    Prune -->|"No"| Remeasure
+    Trim --> Remeasure["Remeasure via ctx.tokenMeter"]
+    Remeasure --> Select["selectCompactableRange():<br/>head-anchored, retain-tail budget,<br/>tool-pairing boundaries"]
+    Select --> Summarize["summarize() through ctx.llm.stream()<br/>(replays conversation prefix<br/>for KV-cache reuse)"]
+    Summarize --> Validate2{"Revalidate:<br/>whole-surface or<br/>selected-span stability?"}
+    Validate2 -->|"Changed"| Abort["compaction/end (error);<br/>durable lock left detectable"]
+    Validate2 -->|"Stable"| Shrink{"Summary < shadowed<br/>route tokens?"}
+    Shrink -->|"No (did not shrink)"| Abort2["compaction/end (error)"]
+    Shrink -->|"Yes"| Commit["Append compaction/summary +<br/>replacement user/message<br/>(surfaceOp: replace, start, end)"]
+    Commit --> End["Append compaction/end<br/>(lock released)"]
+    End --> Flush{"Manual path?<br/>Flush durability checkpoint"}
+    Flush --> Done["Compaction complete"]
+```
+
+VERIFIED, `packages/compaction/compaction-basic/src/region.ts` and
+`docs/subsystems/compaction.md`: every compaction, regardless of
+trigger, runs through one shared **bracket-first transaction** whose
+steps are ordered deliberately:
+
+1. **Validate the surface span and the durable lock.** An unmatched
+   `compaction/start` with no later `compaction/end` is the
+   compaction lock. An unmatched start that precedes a newer
+   `session/end-seed` is stale evidence from a prior lifecycle and is
+   ignored; one *after* that boundary means compaction is active.
+2. **Append `compaction/start` synchronously**, before any async work
+   yields. This is the lock -- a crash mid-operation produces a
+   detectable orphaned start rather than a falsely-released end.
+3. **Run the optional pruner, then remeasure** (§6.4).
+4. **Select the compactable range** (§6.5).
+5. **Summarize** through the `summarize()` hook (§6.6).
+6. **Revalidate stability.** Automatic compaction requires the
+   *whole surface* to be unchanged (`assertWholeSurfaceUnchanged`);
+   manual `/compact` requires only the *selected span* to be stable
+   (`assertSelectedSpanStable`) -- context injected between the start
+   and end markers is allowed and survives the checkpoint.
+7. **Reject a summary that does not shrink its source.** The framed
+   summary's route-priced token cost must be strictly less than the
+   shadowed span's route-priced token cost. A non-shrinking summary
+   is not a "better summary" -- it is a bug, and the transaction
+   aborts.
+8. **Append `compaction/summary` plus the replacement `user/message`.**
+   The replacement uses `surfaceOp: { op: 'replace', start, end }` --
+   the *only* surface mutation compaction performs. The summary is
+   framed inside `<compacted-summary>` tags (§6.6).
+9. **Append `compaction/end`** (releases the lock). A failed close
+   *deliberately* leaves a blocking orphan so the next attempt
+   detects that the previous one did not finish cleanly.
+
+The three `compaction/*` events are **log-only** -- they never reach
+the model. Only the replacement `user/message` (carrying the
+`<compacted-summary>` content) is model-visible. `SurfaceEventType` is
+not extended by compaction at all; the docs state explicitly that "the
+summary itself rides on a separate `user/message` with `surfaceOp: { op:
+'replace', start, end }`," and an [Agent
+Note](../../.agents/notes/implemented/feature/2026-06-18-compaction-capability-seam.md)
+owns the rationale for reusing `user/message` rather than introducing a
+new surface event type.
+
+### 6.4 Tool-result pruning: a separate, optional, deterministic companion that can skip the LLM call entirely
+
+VERIFIED, `packages/compaction/compaction-tool-result-pruner/README.md`
+and its `src/config.ts`/`src/types.ts` source: the pruner
+(`ctx.toolResultPruner`) is an **optional, loadable companion** to the
+compaction backend -- the backend calls `ctx.get('toolResultPruner')` and
+proceeds without it when the key is absent. When it is loaded, the
+backend invokes `pruneSession()` *after* a compaction trigger qualifies
+but *before* selecting a summary range, then remeasures through the
+token meter; if the remeasured total now falls below threshold, the
+entire summarization pass is skipped. This is the same *kind* of
+pruning-first optimization Claude Code's two-phase mechanism (§1.1) and
+Hermes' Phase 1 (§5.3) both implement, but with a significant
+difference: the pruner is **model-free and deterministic** -- it
+replaces each over-budget tool result with a bounded head/tail pair
+joined by a fixed marker string (`\n\n[... tool result middle pruned
+...]\n\n`), using Unicode code point slicing with fixed character
+budgets (default `thresholdChars: 8192`, `headChars: 4096`, `tailChars:
+1024`), and it runs only when compaction is already triggered -- "a
+below-pressure conversation is never touched."
+
+The pruner is not only cheaper than a summarization call (no LLM call
+at all), it is also *sufficient by itself* in many real sessions where
+tool output dominates the token budget. The pruner's output is strictly
+smaller than its input by construction (the sum of head + marker + tail
+must fit within `thresholdChars`), and it preserves the original event
+in the append-only log -- the replacement cites it through
+`sourceEventSeqs` so replay recovers the exact input. Each replacement
+is immediately preceded by a `compaction/prune` **shadow-price event**
+that prices the replaced range through the token meter so pure
+projection consumers can subtract it without per-node state.
+
+This "shadow-price protocol" is worth calling out as a genuinely
+distinct mechanism from any of the other five harnesses' own pruning
+approaches: Claude Code's eviction and Hermes' Phase-1 prune both
+replace content in-place with no separate accounting event; OpenCode's
+`prune()` marks messages with `compacted = Date.now()` but does not emit
+a priced replacement event alongside; pi does not document an
+eviction-only pass at all. DeepSeek Harness' shadow-price protocol
+exists specifically to keep the token-meter's O(1) projection fold
+in agreement with its own append-only history, without requiring a
+full re-scan of the session log on every measurement -- a design choice
+rooted in the same "measurements replay the durable session log, so they
+are deterministic and cost no model calls" commitment that the token
+meter's own docs state as its core invariant.
+
+### 6.5 Range selection: head-anchored, priced-tail retention, and tool-pairing boundaries
+
+VERIFIED, `packages/compaction/compaction-basic/src/region.ts`,
+`selectCompactableRange()`: the algorithm walks backward from the end
+of the priced surface, accumulating per-node `tokens` (route-priced)
+until `retainTokens` is reached. This determines the first node that
+falls *outside* the retained tail. It then walks backward further to
+find the nearest `toolPairingBalancedBefore()` boundary, so the cut
+never splits an assistant tool-call/result pair -- the same structural
+constraint independently enforced by Copilot CLI's changelog (§2.1),
+OpenCode's `select()`/`splitTurn()` (§3.5), pi's valid-cut-point rules
+(§4.2), and Hermes' `_align_boundary_backward()` (§5.3), now confirmed
+a sixth, independent time. If the walk reaches the very first surface
+node, there is no compactable range and the function returns `null`.
+
+The retained-tail budget `retainTokens` is resolved from the
+conversation's active model route. VERIFIED,
+`packages/compaction/compaction-basic/src/config.ts`:
+`resolveCompactSpec()` computes `thresholdTokens = floor(contextWindow ×
+thresholdRatio)` and `retainTokens = floor(contextWindow × retainRatio)`
+(or the absolute `retainTokens` override when set). Defaults are
+`thresholdRatio: 0.8` and `retainRatio: 0.16`, meaning compaction
+triggers at 80% of the routed model's context window and keeps the
+newest 16% verbatim -- between Copilot CLI's 95% (§2.1) and Hermes'
+50% (§5.2) on the aggressiveness spectrum, and using a ratio rather
+than a flat subtraction (like pi's `keepRecentTokens: 20000`) or a
+clamped formula (like OpenCode's `25%-of-usable-[2000,8000]`).
+
+A meaningful difference from the other five harnesses: the retention
+budget is expressed as a **fraction of the model's context window**, not
+as a number of recent turns or messages -- the `selectCompactableRange`
+function accumulates *tokens*, not turns. The cut boundary is the
+position in the surface where that token budget is exhausted, adjusted
+outward for tool-pairing balance. This is conceptually closest to pi's
+`keepRecentTokens` walk (§4.2) and Hermes' `tail_token_budget`
+(§5.2), and furthest from OpenCode's `tail_turns` (§3.5) which is
+counted in turns rather than tokens.
+
+**Exact provider/model overrides** via `modelPolicies` let the trigger
+and retention vary per route: each entry is an exact `{ provider, model
+}` match (not a substring match like Hermes' `model_thresholds`),
+duplicate targets fail plugin load, and an override can set any subset
+of the shared policy fields. The top-level `auto: true` (default)
+enables both the automatic `agent/pre-step` pressure listener and the
+`agent/request-error` overflow-recovery listener; setting it to `false`
+disables both, leaving only manual `/compact` and programmatic
+`compactRegion()`.
+
+### 6.6 Summarization: a KV-cache-reusing one-shot, with an explicit incremental-update instruction
+
+VERIFIED, `packages/compaction/compaction-basic/src/summarizer.ts`:
+the default `summarize()` implementation runs a single `ctx.llm.stream()`
+call whose input is the conversation's own **system prompt, tool schemas,
+and shadowed-region messages** replayed byte-for-byte from the last
+routed request, followed by one final user message containing the
+compaction instruction. The docs state the reason directly:
+"Replaying the last routed request's system prompt, tools, and
+shadowed-region messages byte-for-byte makes the auxiliary call a
+genuine prefix of the conversation, so only the trailing instruction and
+the summary output are uncached." This is a verifiable, source-confirmed
+claim about KV-cache alignment that none of the other five harnesses'
+fetched sources state this explicitly for their own summarization calls,
+though Hermes' docs describe a similar prefix-replay strategy
+implicitly. The call sets `GenerateOptions.purpose: 'compaction'`; only
+returned text enters the checkpoint (reasoning and tool calls in the
+output are rejected; image output fails with `UNSUPPORTED_CONTENT`).
+
+The summarization model resolves in a specific, layered fallback:
+(1) the explicitly configured `summarizationProvider`/`summarizationModel`
+pair, (2) the latest logged request target (from the durable
+`request/header`), (3) the `AgentOptions` pair -- all three checked in
+`summarizeWithLlm()` in that order. If none resolves, compaction fails
+with a clear error ("set both BasicCompactionConfig summarization
+fields, route one request, or set both AgentOptions fields"). The
+summarization call does **not** run through the loop-only
+`agent/request` extension point -- it bypasses the normal request
+pipeline and calls the LLM adapter directly.
+
+The **compaction instruction** (the literal `COMPACTION_INSTRUCTION`
+constant in `summarizer.ts`) is a fixed Markdown template requiring
+exactly eight sections -- the most sections of any harness on this page:
+
+1. **Primary Request and Intent** -- "the user's original and evolving
+   goals; quote verbatim where the exact wording matters"
+2. **Key Technical Concepts** -- "technologies, frameworks, patterns,
+   and conventions in play"
+3. **Files and Code** -- "exact path: why it matters, key changes or
+   snippets"
+4. **Errors and Fixes** -- "error: how it was resolved, plus any
+   related user feedback"
+5. **Pending Jobs** -- "explicitly requested work not yet completed"
+6. **Current Work** -- "precisely what was in progress at this
+   checkpoint"
+7. **Next Step** -- "the single next action, directly in line with the
+   most recent request, or '(none)'"
+8. **Critical Context** -- "decisions and their rationale, constraints,
+   user preferences, open questions, data needed to continue"
+
+Plus explicit rules: preserve exact identifiers, capture user feedback
+faithfully (especially corrections), do not mention the compaction
+process, and -- critically -- **"If the conversation already contains a
+`<compacted-summary>` block, it is a PRIOR checkpoint. Do not copy it
+forward verbatim: preserve still-true facts, drop stale ones, and merge
+newer information into a single consolidated summary under the same
+structure."** That is a VERIFIED anchored/incremental instruction,
+resolved in the same sense as OpenCode's `buildPrompt` anchor (§3.5)
+and Hermes' own "update it rather than summarize from scratch" (§5.3):
+each later compaction receives the prior `<compacted-summary>` block as
+part of its replayed input and is explicitly told *not* to copy it
+verbatim, but to merge it into a fresh, consolidated summary. This
+resolves the exact ambiguity this page flags as open for pi (§4.3): for
+DeepSeek Harness, the compaction instruction itself states the
+incremental-update expectation directly.
+
+The replacement user message frames the summary with a **checkpoint
+preamble** ("This is an automatically generated checkpoint condensing an
+earlier span of the conversation to free up context. Treat the captured
+context as established background and build on it without restating it.
+Continue the task directly from the messages that follow, without
+acknowledging this checkpoint.") and wraps the summary inside
+`<compacted-summary>`/`</compacted-summary>` tags -- a tagged
+artifact the model can detect on subsequent passes for incremental
+merging. No other harness on this page uses this specific
+tag-wrapped-and-preamble-framed format; Claude Code's six-part
+keeps/drops list (§1.2), OpenCode's six-section template (§3.5), pi's
+six-section-plus-tagged-files template (§4.3), and Hermes'
+seven-section template (§5.3) all produce a summary message but do not
+wrap it in a detectable tag pair whose presence the compaction
+instruction itself checks.
+
+### 6.7 Spill storage: proactive oversized-output offloading before compaction is triggered
+
+Orthogonal to both pruning and compaction, DeepSeek Harness ships a
+**spill-storage seam** that runs at tool-execution time, *before* any
+compaction decision. VERIFIED, `packages/spill/spill-policy/README.md`
+and `packages/spill/spill/README.md`: the `dsh-spill-policy` plugin (a
+`tools/post-execute` listener) caps how much plain-text tool result the
+model sees: when a final result exceeds `maxInlineBytes` (configurable,
+in UTF-8 bytes; omitted = disabled), it saves the full text through
+`ctx.spillStore` and replaces the model-facing result with a bounded
+head/tail preview plus the backend's locator and a `retrievalHint`
+instructing the model how to re-access the full text (e.g. "Use `read`
+with offset/limit, or `grep` this path to search within it"). The local
+backend (`dsh-spill-local`) writes to a private, 0700-permission
+directory under a `sha256(sessionId)` session subdirectory with
+exclusive owner-only (`0o600`) file creation -- a security discipline
+the docs state explicitly: "a planted symlink cannot redirect it."
+
+Spill runs **before** compaction is triggered and is **best-effort**:
+a save failure keeps the original inline result rather than turning a
+successful tool call into an error. The model-facing replacement is at
+most `maxInlineBytes` UTF-8 bytes and stays in history until compaction
+replaces it; the full spill text is never resent to the model. The same
+cap also bounds the durable-log copy of `run_code` sub-call results, so
+"replay and UIs never grow unbounded either."
+
+No other harness on this page documents an equivalent *proactive*
+spill-to-disk mechanism that runs at tool-result time before any
+compaction trigger. Hermes' lean tail mode (§5.4) re-accesses
+summarized-away content via `session_search`, but that is a
+*retroactive* recovery pointer into the session transcript -- not an
+eager write of oversized output to a retrievable file before it ever
+enters the conversation context. pi's `<read-files>`/`<modified-files>`
+tagged blocks (§4.3) list every file read or modified, but as part of
+the summary, not as an out-of-band storage mechanism. DeepSeek Harness'
+spill is the first mechanism on this page that removes content from the
+model's view *at the point of production* and gives the model an
+explicit retrieval path back to it.
+
+### 6.8 Two trigger paths: step-boundary pressure and context-overflow recovery
+
+VERIFIED, `packages/compaction/compaction-basic/src/index.ts`:
+`_registerAutomaticCompaction()` installs two Cordis event listeners when
+`config.auto` is true:
+
+1. **Step-boundary pressure** (`agent/pre-step` waterfall listener):
+   before request derivation, prices the latest durable routed request
+   envelope through `ctx.tokenMeter`. When `measurement.totalTokens >=
+   spec.thresholdTokens` (i.e. the measured total crosses the resolved
+   `floor(contextWindow × thresholdRatio)`), it prunes (if the pruner
+   is available), remeasures, and -- if still above threshold --
+   selects and summarizes the oldest balanced span while keeping a
+   priced recent tail. The `compactIfNeeded` call is
+   dynamically dispatched so subclass overrides on `compactIfNeeded` are
+   honored at event time. A `TargetPressureConfigError` (e.g. an
+   adapter that returns no context capacity for a valid route) is
+   warned **once** per exact target key and then suppressed; the turn
+   continues with full history.
+
+2. **Context-overflow recovery** (`agent/request-error` listener):
+   when a provider returns `CONTEXT_WINDOW_EXCEEDED` (a constant
+   `CONTEXT_WINDOW_EXCEEDED_CODE` imported from `dsh-llm`; both
+   DeepSeek adapters normalize recognized context-limit failures to
+   this code), the listener bypasses the normal threshold and
+   retention policy: it calls `pruneSession()` (if available), then
+   `selectCompactableRange(session, measurement, 0)` -- a **zero**
+   retain-tokens argument allowing one maximal balanced head reduction.
+   If the surface's `replaceGeneration` advanced (even if later summary
+   work threw after a prune landed), the listener authorizes a retry
+   (`{ kind: 'retry' }`). The overflow-retry count is tracked per-agent
+   and reset on successful responses (`assistant/message` events) and
+   when the agent goes idle; it is capped at `maxOverflowRetries`
+   (default 1).
+
+The **pressure** path also supports **convergence retries**: when a
+single compaction attempt does not relieve enough pressure
+(`measurement.totalTokens` is still above `thresholdTokens`), the loop
+re-selects a new range and summarizes again, up to
+`compactionRetries + 1` total attempts. If pressure remains above
+threshold after all attempts, compaction throws an error ("still above
+threshold after N compaction attempts") -- a documented failure mode
+that the auto-listener catches and logs as a warning before continuing
+the turn with full over-budget history. This is a bounded multi-attempt
+loop with an explicit cap, distinct from Claude Code's three-strikes
+circuit breaker (§1.4) which counts *consecutive refills* rather than
+*consecutive compaction attempts*, and from OpenCode's single-shot abort
+(§3.5) which makes no further attempt if the first summary doesn't
+shrink enough.
+
+### 6.9 The summarize() subclass hook and the summary-failure contract
+
+VERIFIED, `packages/compaction/compaction-basic/README.md` and
+`src/summarizer.ts`: `summarize()` is the **sole subclass
+customization hook**. A template- or remote-summarizer subclass can
+override it while "pressure, retention, cited source events, shrink
+validation, and shadowed-token accounting stay on the token meter."
+The default implementation (`summarizeWithLlm`) produces a
+`SummaryResult` that carries both the safe text-only summary blocks and
+the complete raw provider output (with an `llmStreamCall: true` marker
+when the result was produced by exactly one call through the LLM seam --
+a reconstructability guarantee the `compaction/summary` event records).
+
+A summarization call that reaches `maxTokens` produces a
+`MAX_TOKENS` error ("summarization truncated at the token cap
+(incomplete checkpoint)"), which the transaction treats as a failed
+summary -- the surface stays at its pre-attempt state, the
+`compaction/end` event records the error, and the session continues with
+full over-budget history. This is the same "fail-safe, don't use a
+truncated summary" posture OpenCode's hard-abort implements (§3.5),
+and opposite in spirit from Hermes' silent-drop-when-model-is-too-small
+(§5.3) where the middle turns disappear with no summary at all.
+
+### 6.10 Manual compaction: idle-only, queued by the agent loop itself
+
+VERIFIED, `packages/compaction/command-compact/README.md` and
+`packages/compaction/compaction-basic/src/region.ts`: `/compact` calls
+`compactNow()`, which uses `owner: null` (a standalone bracket, not an
+open-turn owner) and `stability: 'selected-span'` (not
+`'whole-surface'`). The mathematical consequence of `selected-span`
+stability is that context *injected between* the `compaction/start` and
+`compaction/end` markers survives the checkpoint -- only the selected
+span must remain stable, and the manual path revalidates only its
+selected positional span. The auto path, by contrast, uses
+`stability: 'whole-surface'` because it runs mid-turn and any surface
+change invalidates the summary.
+
+`compactNow()` runs through `agent.runMaintenance()`, which reserves
+idle admission -- if the agent is mid-turn or an already-accepted
+waking prompt has right of way, the call throws `ManualCompactionError`
+with code `'busy'`. The command reports this as "Compaction is
+unavailable because this process has an active compaction, or the agent
+is not idle." The agent loop's own FIFO accepts prompts submitted while
+compaction runs and starts them only after the compaction's durability
+checkpoint and admission release -- they are not lost or reordered.
+
+Expected manual failures use a closed set of `ManualCompactionErrorCode`
+values: `busy`, `cancelled`, `changed` (span mutated mid-compaction),
+`summary` (summary did not shrink), `commit` (partial mutation), and
+`persistence` (in-memory bracket closed but flush failed). Both
+`changed` and `summary` leave the conversation surface unchanged but
+still persist the failed attempt in the log -- a deliberate choice, so
+a manual-failure audit trail is always available in the session events.
+
+### 6.11 Config surface
+
+```yaml
+- name: '@deepseek-ai/dsh-compaction-basic'
+  config:
+    thresholdRatio: 0.8          # default: 0.8
+    retainRatio: 0.16            # default: 0.16; mutually exclusive with retainTokens
+    # retainTokens: 1024         # absolute budget; mutually exclusive with retainRatio
+    summarizationProvider: ''    # default: '' (inherit from routed request)
+    summarizationModel: ''       # default: '' (inherit from routed request)
+    maxTokens: 8192              # default: 8192
+    compactionRetries: 1         # default: 1 (extra attempts after the first)
+    maxOverflowRetries: 1        # default: 1; 0 disables overflow recovery
+    modelPolicies: []            # default: []; exact {provider, model, ...partialPolicy} overrides
+    auto: true                   # default: true (both pressure and overflow listeners)
+```
+
+```yaml
+- name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+  config:
+    thresholdChars: 8192         # default: 8192 Unicode code points
+    headChars: 4096              # default: 4096
+    tailChars: 1024              # default: 1024
+```
+
+```yaml
+- name: '@deepseek-ai/dsh-spill-policy'
+  config:
+    maxInlineBytes: 50000        # default: omitted (disabled); UTF-8 byte cap on inline tool results
+```
+
+Every key above is documented directly in the shipped README.md for its
+package, and the source-verified config-resolution functions confirm the
+types and defaults match. Misconfiguration (unknown keys, both
+retention forms together, `retainTokens` ≥ `thresholdTokens`, duplicate
+model-policy targets) fails fast at plugin load rather than silently at
+runtime -- VERIFIED, `src/config.ts`'s `resolveConfig()` validates and
+detaches all defaults before any compaction runs.
+
+---
+
+## 7. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent | DeepSeek Harness |
+|---|---|---|---|---|---|---|
+| Verifiability | Docs-only; no public implementation | Docs + changelog only; no public implementation | Source-verified, `dev` branch (caveat applies) | Docs-only, but source-available (this session read the docs, not the TypeScript source itself, so treat as docs-verified rather than source-verified) | Docs-only, but source-available (this session read the docs, which name and quote Python source files/methods precisely, but did not read that source directly -- docs-verified, same posture as pi) | **Source-verified** (`master` branch, developer preview) -- this session read both the docs AND the TypeScript source files directly, citing function names and line-level behavior the way §3 does for OpenCode |
+| Documented shape | Two-phase: evict tool outputs, then summarize if still needed | Background, checkpointed; internal algorithm undocumented | Two *independently scheduled* mechanisms: background eviction-only `prune()` + on-demand summarizing `process()` | Two *independently triggered* mechanisms sharing one summary format: threshold/manual compaction, and `/tree`-navigation branch summarization | **Two independently-thresholded layers** (85% pre-agent gateway hygiene, 50%-default in-loop `ContextCompressor`) around a **pluggable** `ContextEngine` ABC, whose default implementation is itself a 4-phase algorithm (prune, bound, summarize, assemble); plus an optional, opt-in, per-turn micro-compaction path that defers rather than replaces it | **Capability-seam architecture**: swappable `CompactionEngine` ABC (`compactIfNeeded`/`compactNow`/`compactRegion`), shipped `BasicCompactionEngine` default, optional `ToolResultPruner` companion, separate `SpillStore` seam for proactive output offloading, and a singleton `TokenMeter` that owns measurement independently -- four separate Cordis plugins composing one compaction capability, not one monolithic engine |
+| Trigger | ~967K tokens default for Sonnet 5's 1M window (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`); 200K-class threshold not documented as a %; 80% warning UI | 95% of token limit (origin entry, still matches docs) | `usable(cfg, model)` = input limit minus a reserved buffer (default min(20K, max-output)); checked proactively per-turn and reactively on a provider overflow error | `contextTokens > contextWindow - reserveTokens` (default `reserveTokens` 16,384); a separate reactive overflow-error path also exists (§4.5), structurally distinct from ordinary retry-with-backoff | `prompt_tokens >= threshold × context_length`, default `threshold` **0.50** of the *main* model's window -- the earliest-firing default this page has sourced -- with a substring-matched, longest-match-wins, floor-clamped (`0.75` below 512K) per-model override map, plus a route-specific 85% autoraise for gpt-5.5 on Codex OAuth (§5.2) | `measurement.totalTokens >= floor(contextWindow × thresholdRatio)`, default `thresholdRatio` **0.80** (80%), resolved per routed model via exact `{provider, model}` overrides in `modelPolicies`; a separate `CONTEXT_WINDOW_EXCEEDED` overflow-recovery path bypasses the threshold and retains zero tail, with its own retry cap (`maxOverflowRetries`, default 1) |
+| Eviction-only pass | Implicit first phase of the same mechanism ("clears older tool outputs first") | "Evicting transient events after compaction" -- a later, separate pass per changelog | Explicit separate service method (`prune()`), forked fire-and-forget every turn, own thresholds (`PRUNE_PROTECT`=40K, `PRUNE_MINIMUM`=20K), exempts `skill` tool output | None documented -- pi's only two mechanisms are the two summarization paths in the row above; no fire-and-forget eviction-only pass distinct from compaction itself was found in the docs fetched this session | Phase 1 of the built-in compressor: tool results over 200 chars outside the tail replaced with a fixed marker string, no LLM call; a separately-named "proactive prune" gated behind a reclaim-size floor (`proactive_prune_min_reclaim_tokens`, default 4,096) is described in the micro-compaction doc specifically -- BEST CURRENT UNDERSTANDING, UNCONFIRMED that this is the identical Phase 1 mechanism rather than a related, separate pass (§5.5) | **Two separate eviction mechanisms at two different points in the pipeline**: (1) the optional `ToolResultPruner` companion (`ctx.toolResultPruner`, configurable Unicode-point budgets: `thresholdChars: 8192`/`headChars: 4096`/`tailChars: 1024`) runs *after* a compaction trigger qualifies but *before* summarization; (2) the orthogonal `SpillStore` seam (`ctx.spillStore`, `maxInlineBytes` cap) runs at tool-execution time *before* any compaction decision, proactively offloading oversized output to disk. Neither makes an LLM call; both can relieve enough pressure to skip summarization entirely |
+| Summarization content model | Fixed six-part list (intent, concepts, files+snippets, errors+fixes, pending tasks, current work) | Undocumented internally | Fixed six-section Markdown template (Objective, Important Details, Work State [Completed/Active/Blocked], Next Move, Relevant Files) with explicit terse-bullet/preserve-identifiers rules | Fixed six-section Markdown template (Goal, Constraints & Preferences, Progress [Done/In Progress/Blocked], Key Decisions, Next Steps, Critical Context) plus tagged `<read-files>`/`<modified-files>` blocks; shared verbatim between compaction and branch summarization | Fixed **seven-section** Markdown template (Goal, Constraints & Preferences, Progress [Done/In Progress/Blocked], Key Decisions, **Relevant Files**, Next Steps, Critical Context) -- the one harness of the five folding file tracking into a named section rather than a separate tagged block; a distinct `lean` tail mode additionally carries a regex-extracted "anchor index" and a `session_search` recovery pointer alongside the summary (§5.4), found nowhere else on this page | Fixed **eight-section** Markdown template (Primary Request and Intent, Key Technical Concepts, Files and Code, Errors and Fixes, Pending Jobs, Current Work, Next Step, Critical Context) -- the most sections of any harness on this page -- wrapped in `<compacted-summary>` tags and framed by a checkpoint preamble. The tag pair is detectable by subsequent compaction passes; the instruction explicitly tells the model to merge prior checkpoints rather than copy them verbatim |
+| Incremental vs. from-scratch re-summarization | Not stated either way in docs fetched | Not stated | VERIFIED anchored/incremental: later compactions update the prior summary text rather than resummarizing full history | Docs state the previous summary is passed "as iterative context" into each new summarization call, but do not state whether the summary text itself is edited in place or freshly generated with the old text as a reference -- BEST CURRENT UNDERSTANDING, UNCONFIRMED as strictly anchored in OpenCode's specific verified sense | VERIFIED anchored/incremental, stated unambiguously: "the previous summary is passed to the LLM with instructions to update it rather than summarize from scratch" -- resolving, for Hermes specifically, the exact ambiguity pi's own docs leave open in the column to its left | VERIFIED anchored/incremental via tagging: prior `<compacted-summary>` blocks remain in the replayed input on subsequent passes; the compaction instruction states "Do not copy it forward verbatim: preserve still-true facts, drop stale ones, and merge newer information into a single consolidated summary under the same structure" (§6.6) |
+| Split-turn handling | Not named as a distinct case in docs fetched | Not named as a distinct case | `splitTurn()` finds a message index within the oldest-still-considered turn where the remaining slice fits the leftover budget | Named explicitly as `isSplitTurn`; generates and merges *two* summaries (a history summary and a turn-prefix summary) rather than finding one split index -- the only harness in this book's coverage that produces two summarization calls for one oversized turn | Not named as a distinct case in the docs fetched this session; boundary alignment (`_align_boundary_backward()`) prevents a cut from splitting one `tool_call`/`tool_result` pair, the same constraint independently enforced by name in Copilot CLI, OpenCode, and pi, but no oversized-single-turn special case is documented | Region boundaries enforce tool-call/result pairing (`toolPairingBalancedBefore`/`toolPairingBalancedAfter`), but do **not** preserve whole turns: "Region boundaries preserve tool-call/result pairing but not whole turns, allowing early closed steps of one oversized turn to compact" (§6.1). No two-summary merge for oversized single turns is documented |
+| Thrash/failure guard | 3-consecutive-refill circuit breaker -> actionable error | Newest entry (v1.0.76): "automatic compaction blocked" state + early warning when unreclaimable overhead nears the limit | Hard single-shot abort (`ContextOverflowError`) when the summarization prompt itself won't fit, no retry counter | Reactive overflow path retries the request exactly **once** after compacting (§4.5); no documented multi-attempt thrash counter comparable to Claude Code's three-strikes guard was found | Two distinct guards, at two layers: a **silent-drop** failure mode when the summary model's own context window is smaller than the main model's (drops the middle turns with no summary at all, named in the docs as "the most common cause of degraded compaction quality," §5.3) -- the opposite response from Claude Code's own refusal-to-shrink-with-a-smaller-model behavior -- and, for micro-compaction specifically, a per-exchange 3-consecutive-failure skip-forward (§5.5) | **Bounded convergence loop** for pressure compaction: up to `compactionRetries + 1` total attempts; if pressure remains above threshold after all attempts, the auto-listener logs a warning and proceeds with full over-budget history. Summarization truncation at `maxTokens` is treated as a failed summary (surface unchanged). Overflow recovery has a separate `maxOverflowRetries` cap (default 1). A failed `compaction/end` deliberately leaves a blocking orphan lock so the next attempt detects the previous failure |
+| Pre-compaction hook | `PreCompact`, can block (exit 2 / `{"decision":"block"}`) | `preCompact` exists; blocking capability unconfirmed | Plugin hook `experimental.session.compacting` can inject context or replace the prompt entirely; `experimental.compaction.autocontinue` gates the post-compaction nudge | `session_before_compact` extension event can cancel (`{cancel: true}`) or fully replace the compaction with a custom `{summary, firstKeptEntryId, tokensBefore, usage?, details?}` object, including one authored by an entirely different model; a sibling `session_before_tree` hook offers the identical contract for branch summarization | No single pre-compaction hook analog documented; instead a formal `ContextEngine` ABC lets a plugin replace `should_compress()`/`compress()` wholesale (own tools, own policy, own lifecycle), plus two narrower orthogonal hooks -- `select_context()` (per-request message replacement) and `on_turn_complete()` (post-turn observation) -- a larger, class-based swap-out surface than any single hook point documented for the other four harnesses (§5.1) | No single pre-compaction hook; instead the `summarize()` method is the **sole subclass hook** -- a replacement engine inherits pressure, retention, validation, and shadow-price accounting from the `BasicCompactionEngine` base class while replacing only the summarization strategy (template, remote, tokenizer-based). The entire `CompactionEngine` ABC can also be swapped out wholesale (a different package registers as `ctx.compaction`), and the `ToolResultPruner` and `SpillStore` are independently loadable/unloadable Cordis plugins -- a composable, multi-seam swap surface rather than a single hook point |
+| Post-compaction continuation | No documented auto-nudge; user's next message resumes naturally | Not documented | Explicit synthetic "Continue if you have next steps..." message appended when the triggering compaction was automatic | Not documented as an auto-nudge in the pages fetched this session | Not documented as an auto-nudge in the pages fetched this session | No auto-nudge; the checkpoint preamble tells the model to "Continue the task directly from the messages that follow, without acknowledging this checkpoint" |
+| Observability marker | `compact_boundary` `ResultMessage` subtype (Agent SDK) | OTel `gen_ai.conversation.compacted=true` + `CompactionPart` | Typed events (`Compaction.Started`/`Compaction.Ended`/`Compacted`) via Effect-TS spans | `session_compact`/`session_compact_failed` extension events, explicitly framed by the docs as a telemetry-pairing point (matching a failure back to its originating attempt) rather than a dedicated schema | Content-free JSON telemetry line per micro-compaction pass (`occupancy_pct`, `tokens_before/after`, `tokens_saved_total`, `passes_total`, `duration_ms`, counts only, no transcript text), plus a `session:compress` event carrying `in_place`/`old_session_id` for the batch path (§5.8) | **Three durable session events** (`compaction/start`, `compaction/summary`, `compaction/end`) plus per-prune `compaction/prune` shadow-price events -- all log-only, never model-visible. `compaction/summary` carries the full summary content, shadowed range/seqs, token count, and the summarization call's provider/model/usage envelope. The `compaction/start`/`end` pair is a lock bracket; an unmatched start is a detectable orphan. Manual attempts log failures with `ManualCompactionErrorCode` |
+| Model-fallback interaction | Won't fall back to a smaller-context model during compaction | Context-tier (200K/1M) selection "enforced end-to-end" across compaction/truncation/token display | Compaction reads the same `usable()` budget the overflow check uses; no documented model-fallback-during-compaction behavior found | Not documented; pi's overflow-recovery path (§4.5) retries on the *same* model rather than falling back to a different one, per the pages fetched this session | The `auxiliary.compression` model slot carries its own independent fallback chain (see [model-routing-and-selection.md](model-routing-and-selection.md) §5.1/§5.2), separate from the main chat model's own fallback chain -- a per-task fallback surface none of the other four harnesses document for their own compaction/summarization model specifically | Summarization model resolves in a three-step fallback: (1) configured `summarizationProvider`/`summarizationModel`, (2) latest logged request target, (3) `AgentOptions` pair. The summarization call bypasses the `agent/request` extension point entirely -- it does not participate in the normal request pipeline or its fallback chain. No documented refusal-to-use-a-smaller-model guard; a `maxTokens` truncation is treated as a failed summary |
+| Provider-owned compaction | Not documented | Not documented | Not documented | Not documented | For two specific routes (Codex app-server threads; gpt-5.6 on direct OpenAI/Codex-OAuth Responses API), compaction runs on the **provider's own infrastructure** and Hermes only observes or relays an opaque result (§5.6) -- a compaction-ownership pattern this page has not found documented for any of the other four harnesses | Not documented; overflow classification is adapter-maintained ("both DeepSeek adapters normalize recognized context-limit failures to `CONTEXT_WINDOW_EXCEEDED`"), but the compaction itself always runs client-side through the `ctx.llm.stream()` seam |
+| Proactive output offloading | Not documented | Not documented | Not documented | Not documented | `lean` tail mode carries a `session_search` recovery pointer and regex-extracted anchor index (§5.4) -- retroactive recovery | **Spill-to-disk** (`ctx.spillStore`): oversized plain-text tool results are saved to a private session-scoped file and replaced with a bounded head/tail preview + retrieval guidance *at tool-execution time*, before any compaction decision. The model can re-access the full text via `read`/`grep` on the spill path. Best-effort: a save failure keeps the original inline. This is the first mechanism on this page that removes content from the model's view at the point of production, not after compaction is triggered (§6.7) |
+
+**The design lesson.** All six harnesses converge on the same
 two-part shape once you look past terminology -- cheap eviction of
 material the model no longer needs verbatim, escalating to an LLM
 re-summarization pass only when eviction alone can't free enough room
@@ -1286,41 +1819,61 @@ and pi complicates the "eviction-then-summarization" framing slightly by
 not documenting a separate eviction-only pass at all: everything this
 page found for pi routes through one of its two summarization mechanisms
 (compaction or branch summarization), with no OpenCode-style `prune()`
-equivalent quietly trimming old tool output in the background. Claude
-Code and Copilot CLI describe the *outward contract* (what categories of
+equivalent quietly trimming old tool output in the background. DeepSeek
+Harness adds a third complication: its eviction happens at *two different
+points in the pipeline* -- the `SpillStore` seam runs at tool-execution
+time *before* any compaction trigger, while the `ToolResultPruner` runs
+*after* a trigger qualifies but *before* summarization -- which makes the
+"eviction then summarization" timeline genuinely three-phase when both
+are mounted, with the pruning-then-remeasure step capable of skipping
+the LLM call entirely, a structural savings none of the other five
+harnesses document at the same pipeline position. Claude Code and
+Copilot CLI describe the *outward contract* (what categories of
 content the summary keeps, what threshold fires it, what survives)
-without publishing the *mechanism* that produces it; OpenCode is the one
-harness where the eviction floor, the token-budget math, the literal
-summarization prompt, and the anchored-vs-from-scratch question are all
-directly readable in a source file rather than inferred from behavior;
-pi and Hermes Agent both sit between the two postures -- their own docs
-describe the mechanism in genuine algorithmic detail (cut-point rules,
-fixed summary templates, settings keys, hook/plugin contracts) without
-this session having cross-checked either description against the
-underlying TypeScript or Python source the way it did for OpenCode, so
+without publishing the *mechanism* that produces it; OpenCode and
+DeepSeek Harness are the two harnesses where the eviction floor, the
+token-budget math, the literal summarization prompt, and the
+anchored-vs-from-scratch question are all directly readable in a source
+file rather than inferred from behavior; pi and Hermes Agent both sit
+between the two postures -- their own docs describe the mechanism in
+genuine algorithmic detail (cut-point rules, fixed summary templates,
+settings keys, hook/plugin contracts) without this session having
+cross-checked either description against the underlying TypeScript or
+Python source the way it did for OpenCode and DeepSeek Harness, so
 treat both pi's and Hermes' entries in this table as docs-verified
 rather than source-verified even though the documentation itself reads
 at source-level precision in both cases. Hermes specifically complicates
 the "one compaction system per harness" framing further than any of the
-other four: where Claude Code, Copilot CLI, OpenCode, and pi each
-document one compaction mechanism (or, for OpenCode/pi, one pair of
-mechanisms), Hermes' own docs describe as many as five overlapping or
-alternative compaction paths for a single session -- gateway session
-hygiene, the built-in `ContextCompressor`'s four phases, an entirely
-swappable `ContextEngine` plugin, opt-in micro-compaction layered on top
-of all of it, and, for two narrow provider/route combinations, a
-provider-owned mechanism Hermes merely observes -- and is explicit in
-its own docs, more than any of the other four harnesses, about the
-concrete cost trade-off of choosing between them (a broken prompt-cache
-prefix every turn versus one long stall per batch compaction, stated
-plainly as "a trade of one cost for another, not a saving"). That
-asymmetry should shape how confidently anything gets asserted about
-*why* a given harness dropped a specific piece of context: for Claude
-Code and Copilot CLI, "the docs/changelog say this is what's preserved"
-is the ceiling of what can honestly be claimed; for OpenCode, the actual
+other five: where Claude Code, Copilot CLI, OpenCode, pi, and (in a
+different way) DeepSeek Harness each document one compaction mechanism
+(or, for OpenCode/pi, one pair of mechanisms), Hermes' own docs
+describe as many as five overlapping or alternative compaction paths for
+a single session -- gateway session hygiene, the built-in
+`ContextCompressor`'s four phases, an entirely swappable `ContextEngine`
+plugin, opt-in micro-compaction layered on top of all of it, and, for
+two narrow provider/route combinations, a provider-owned mechanism
+Hermes merely observes -- and is explicit in its own docs, more than
+any of the other five, about the concrete cost trade-off of choosing
+between them (a broken prompt-cache prefix every turn versus one long
+stall per batch compaction, stated plainly as "a trade of one cost for
+another, not a saving"). DeepSeek Harness' capability-seam architecture
+takes the composability in a different direction: where Hermes
+centralizes the plug-in surface around one ABC, DeepSeek Harness
+decomposes the *entire* compaction capability into four independently
+loadable Cordis plugins (meter, pruner, compaction engine, spill store)
+that compose at boot time and can each be swapped independently -- the
+measurement service is not part of the compaction package at all, the
+pruner is an optional companion the backend discovers at runtime, and
+the spill store runs on a separate seam that firewalls off large tool
+output before compaction is even aware of it. That asymmetry should
+shape how confidently anything gets asserted about *why* a given harness
+dropped a specific piece of context: for Claude Code and Copilot CLI,
+"the docs/changelog say this is what's preserved" is the ceiling of what
+can honestly be claimed; for OpenCode and DeepSeek Harness, the actual
 selection and prompt-construction logic can be cited by function name
-and line-level behavior, with the standing caveat that it was read on
-the `dev` branch, not a tagged release; for pi and for Hermes Agent, the
+and line-level behavior, with the standing caveat that OpenCode was read
+on the `dev` branch and DeepSeek Harness on `master` (a developer
+preview), neither a tagged release; for pi and for Hermes Agent, the
 docs themselves already operate at that level of detail (naming the
 exact settings keys, the exact section headings, the exact hook/event
 shapes), which is unusual among this book's closed-and-partially-open
@@ -1336,7 +1889,8 @@ All fetched 2026-07-30 unless noted otherwise (memory-management.md's §1.7/§2.
 sources, and agent-loop-implementations.md's Claude-Code-SDK source, were fetched in
 a prior session and are cited above by cross-reference rather than
 re-fetched; §4's pi section was added 2026-08-20; §5's Hermes Agent
-section was added 2026-09-01).
+section was added 2026-09-01; §6's DeepSeek Harness section was added
+2026-09-01).
 
 **Claude Code (authoritative for its own documented behavior only):**
 - `https://code.claude.com/docs/en/context-window` -- the interactive
@@ -1398,7 +1952,7 @@ not a stable release tag):**
 
 **pi (authoritative for its own documented behavior; fetched 20 August 2026 from
 `github.com/earendil-works/pi`, `main` branch; this session read the docs, not pi's own
-TypeScript source, for this page specifically -- see §6's verifiability note):**
+TypeScript source, for this page specifically -- see §7's verifiability note):**
 - `packages/coding-agent/docs/compaction.md` (via `gh api
   repos/earendil-works/pi/contents/packages/coding-agent/docs/compaction.md`, in full) --
   §4.1's compaction-vs-branch-summarization split and shared-format statement, §4.2's
@@ -1416,7 +1970,7 @@ TypeScript source, for this page specifically -- see §6's verifiability note):*
 **Hermes Agent (authoritative for its own documented behavior; fetched 1 September 2026
 from `github.com/NousResearch/hermes-agent`, `main` branch, via `gh api
 repos/NousResearch/hermes-agent/contents/<path>`, full files; this session read the docs,
-not Hermes' own Python source, for this page specifically -- see §6's verifiability
+not Hermes' own Python source, for this page specifically -- see §7's verifiability
 note):**
 - `docs/micro-compaction.md` -- §5.5 in full: the amortized per-turn absorption
   mechanism, the cursor and its transcript-scan recovery, the user-messages-never-
@@ -1437,4 +1991,69 @@ note):**
   contract (required/optional methods, class attributes, lifecycle, `select_context()`/
   `on_turn_complete()` hooks and their explicit distinction from a memory-provider
   plugin), cross-referenced against [memory-management.md](memory-management.md) §5.
+
+**DeepSeek Harness (authoritative for its own documented behavior AND its own real
+implementation; fetched 1 September 2026 from
+`github.com/deepseek-ai/deepseek-harness`, `master` branch, via `gh api
+repos/deepseek-ai/deepseek-harness/contents/<path>`, full files; this session read
+both the docs AND the TypeScript source directly -- source-verified, same posture as
+§3's OpenCode coverage; `master` is a developer preview, not a tagged stable release):**
+- `docs/subsystems/compaction.md` -- §6.1's capability-seam architecture
+  (Service Definition / Service Provider / Consumer split), the `compaction/*` session
+  event vocabulary (`compaction/start`/`compaction/summary`/`compaction/end`),
+  `CompactionResult` and `CompactionTrigger` types, the `compactCheckpointSource`
+  constructor, the `toolPairingBalancedBefore`/`toolPairingBalancedAfter` boundary
+  checks, and the `ToolResultPruner` service contract (`measureContent`/`pruneContent`/
+  `pruneSession`).
+- `docs/subsystems/spill.md` -- §6.7's spill-storage seam
+  (`SpillStore`/`saveText`/`SpillLocator`/`SpillRef`), the `dsh-spill-local` backend's
+  private 0700 directory and exclusive 0o600 file creation, and the `dsh-spill-policy`
+  consumer's `maxInlineBytes` cap and head/tail preview.
+- `packages/compaction/compaction-basic/README.md` -- the shipped default backend's
+  complete contract: automatic pressure triggering at `thresholdRatio` (0.8 default),
+  `retainRatio` (0.16 default), `maxTokens` (8192 default), `compactionRetries` (1),
+  `maxOverflowRetries` (1), per-model `modelPolicies` overrides, the `summarize()`
+  subclass hook, the KV-cache-reusing summarization strategy, the checkpoint preamble
+  and `<compacted-summary>` framing, and the eight-section compaction instruction.
+- `packages/compaction/compaction-basic/src/index.ts` -- `BasicCompactionEngine` class
+  (DI declaration `static inject = ['llm', 'tokenMeter', 'sessions']`),
+  `_registerAutomaticCompaction()` method registering the `agent/pre-step` pressure
+  listener and `agent/request-error` overflow-recovery listener, the bounded
+  convergence loop with `compactionRetries`, the overflow-retry cap with
+  `maxOverflowRetries`, and the `compactIfNeeded`/`compactNow`/`compactRegion`
+  dispatch.
+- `packages/compaction/compaction-basic/src/region.ts` -- `selectCompactableRange()`
+  (backward-walk token accumulation and tool-pairing boundary adjustment),
+  `compactSurfaceRegion()` (the bracket-first transaction with `compaction/start` lock,
+  `assertWholeSurfaceUnchanged`/`assertSelectedSpanStable` revalidation, shrink-check
+  comparison, and `surfaceOp: { op: 'replace', start, end }` commit),
+  `buildSummarizationInput()` (prefix replay for KV-cache alignment).
+- `packages/compaction/compaction-basic/src/summarizer.ts` -- `COMPACTION_INSTRUCTION`
+  constant (the literal eight-section template including the incremental-merge directive
+  for prior `<compacted-summary>` blocks), `CHECKPOINT_PREAMBLE`,
+  `SUMMARY_OPEN_TAG`/`SUMMARY_CLOSE_TAG`, `summarizeWithLlm()` (three-step model
+  fallback, `purpose: 'compaction'`, text-only projection, `MAX_TOKENS` error
+  handling), and `frameSummary()`.
+- `packages/compaction/compaction-basic/src/config.ts` -- `resolveConfig()`,
+  `resolveTargetPolicy()`, `resolveCompactSpec()` (threshold/retain/resolution
+  math and all validation), `DEFAULT_THRESHOLD_RATIO` (0.8) and
+  `DEFAULT_RETAIN_RATIO` (0.16).
+- `packages/compaction/compaction-basic/src/types.ts` -- `BasicCompactionConfig`,
+  `CompactionPolicyConfig`, `ModelCompactPolicyConfig`, `ResolvedConfig`,
+  `ResolvedTargetPolicy`, `ResolvedCompactSpec`, `ResolvedRetention`.
+- `packages/compaction/compaction-tool-result-pruner/README.md` -- the optional
+  companion's contract: `thresholdChars`/`headChars`/`tailChars` budgets,
+  Unicode code point slicing, `PRUNE_MARKER`, shadow-price protocol.
+- `packages/compaction/compaction-tool-result-pruner/src/config.ts` -- `PRUNE_MARKER`,
+  `DEFAULTS`, `codePointLength()`, `resolveConfig()`.
+- `packages/compaction/compaction-tool-result-pruner/src/types.ts` --
+  `ToolResultPruneConfig`, `PrunedEntry`, `PruneResult`.
+- `packages/compaction/command-compact/README.md` -- the `/compact` command contract,
+  `ManualCompactionErrorCode` closed set, idle-only admission, queued-prompt behavior.
+- `packages/spill/spill-policy/README.md` -- §6.7's `maxInlineBytes` cap,
+  head/tail preview, retrieval guidance, best-effort failure behavior, and the
+  durable-log copy boundary.
+- `packages/llm/token-meter/README.md` -- §6.2's singleton measurement service, the
+  isolated replay fold, `measure()`/`estimateMessage()`, route-priced vs. heuristic
+  tokens, the shadow-price protocol, and the `contextBreakdown` projection caveats.
 

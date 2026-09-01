@@ -875,24 +875,372 @@ is not one.
 
 ---
 
-## 6. Synthesis
+## 7. DeepSeek Harness
 
-| Dimension | Claude Code (turn-by-turn) | Claude Code (Workflow tool) | Copilot CLI (`/fleet`) | OpenCode (Task + `permission.task`) | pi (reference `subagent` extension, opt-in) | Hermes Agent (`delegate_task`/Kanban/A2A) |
-|---|---|---|---|---|---|---|
-| Who plays the orchestrator role | Claude itself, or the team lead | A JS script, run by a separate runtime | An explicitly named "orchestrator agent" (the main Copilot agent) | The primary agent invoking `Task`, scoped by its own `permission.task` config | The top-level session's own model, turn by turn -- no distinct lead/orchestrator agent at all | Three separate answers depending on layer: the calling model itself (`delegate_task`, optionally `role="orchestrator"` self-nesting); a named Kanban profile whose toolset is scoped to `kanban` only, stepping back from implementation; or the calling model choosing an `a2a_orchestrate` fan-out mode across independently-running peers |
-| Decomposition mechanism | Model judgment, turn by turn | Claude writes the script once; the script's own logic (loops, `pipeline()`) decomposes at run time | Model judgment (dependency/nature analysis of the prompt) at `/fleet` invocation | Model judgment, encouraged toward batching via the tool's own prompt text | Model judgment, optionally nudged by a canned natural-language prompt template (§4.5) | Model judgment for `delegate_task`/A2A; for Kanban, either an orchestrator profile's own `kanban_create`/`kanban_link` calls or the dispatcher's own scheduled `auxiliary.kanban_decomposer` LLM call on triage-column tasks |
-| Coordination/state artifact | Claude's context window (subagents/skills) or a shared file-locked task list (agent teams) | Script variables in an isolated runtime; run state tracked for resumability | SQL-backed todo state machine (`pending/in_progress/done/blocked`) with a `todo_deps` table (SDK-page detail, not CLI-page-confirmed) | No dedicated state store found; ordinary session/subagent-session records only | An in-memory `SingleResult[]`/`SubagentDetails` array, scoped to one `execute()` call; nothing persists past the tool call returning | `delegate_task`: none beyond the calling turn. Kanban: durable SQLite rows (`~/.hermes/kanban.db`) with a `task_links` dependency table, outliving the conversation that created them and surviving process restart. A2A: per-peer `context_id`-keyed conversation state, external to any single Hermes process |
-| Concurrency ceiling | No documented numeric cap (subagents), no cap for teams | 16 concurrent, 1,000 total agents per run (hard runtime limits) | Conditional on dependency analysis; no numeric cap documented | No enforced cap found; model is encouraged, not limited, to batch calls | Hard-coded in the extension: 8 tasks max, 4 concurrent (`MAX_PARALLEL_TASKS`/`MAX_CONCURRENCY`), not a core-runtime limit | `delegate_task`: 3 concurrent children per batch by default, no hard ceiling (`max_concurrent_children`); nested trees bounded by `max_spawn_depth` (1-3, no upper ceiling -- 3x3x3 = 27 leaves at depth 3). Kanban: bounded only by however many profiles the dispatcher can spawn; `auto_decompose_per_tick` caps triage decompositions to 3/tick |
-| Dependency handling between subtasks | Not applicable at this granularity | Script's own control flow (sequential `await`, or `pipeline()` for independent items) | Explicit: "assess... whether these can be efficiently executed... in parallel," `todo_deps` table (SDK-page detail) | Not applicable -- no dependency-aware scheduler documented | Flat linear chain only, with a `{previous}` string-substitution placeholder; no DAG | `delegate_task`: none (parallel batch or sequential nesting only). Kanban: explicit `task_links` parent-child edges; dispatcher promotes `todo -> ready` only once every parent is `done` -- a documented, first-party dependency DAG, not an adjacent-surface inference |
-| Result aggregation | One final message per subagent/teammate, read by Claude/lead | Script's own return value; only that final value reaches Claude's context | Not detailed on the CLI's own `/fleet` page | Last text part of each child session's final message (per handoff-mechanism.md 3.3) | Final assistant text per subprocess, capped 50 KB/task for parallel/chain modes; full transcript kept only in a TUI-only `details` object | `delegate_task`: consolidated summary posted back as a new message (top-level) or synthesized in-turn (orchestrator children). Kanban: `kanban_complete(summary, metadata)` -- a durable row any profile can later read, not a value returned to a caller |
-| Resumability of the orchestration itself | Subagents/teammates individually resumable; no run-level resume concept | Yes -- run-level resume with documented start-order replay semantics | Undocumented | Individual subagent sessions resumable via `task_id`; no fleet-level run object | None -- child processes run `--no-session` (ephemeral) and are killed outright on abort; no persisted run state | `delegate_task`: background completions are durably queued (survive a Hermes restart for delivery, though a running child does not resume after a crash). Kanban: fully resumable by design -- a crashed/stale worker's task is reclaimed and re-dispatched; the board itself is the persistence layer |
-| Declared vs. runtime-enforced boundary | Runtime permission-mode check per action | Fixed `acceptEdits` posture for all workflow agents, set once at launch | Undocumented | Declarative: denied subagents omitted from the Task tool schema itself, pre-empting the request entirely | Project-local agent definitions gated by an explicit `ctx.ui.confirm()` prompt when the project isn't yet trusted; otherwise no declared allow/deny surface | Declarative depth/kill-switch config (`max_spawn_depth`, `orchestrator_enabled: false`) overrides whatever `role` the model requests; Kanban's orchestrator/worker split is enforced by the profile's own toolset configuration simply omitting `terminal`/`file`/`code`/`web`, not a runtime check |
-| Ships active by default | Yes | Yes (opt-in per-workflow approval, but the primitive itself is core) | Yes | Yes | **No** -- the capability exists only as an example extension bundled in the npm package but not auto-loaded; a user must manually install it | `delegate_task`: yes, core. Kanban: requires `hermes kanban init` plus a running gateway (`hermes gateway start`) to dispatch; the toolset itself ships core but is inert until a board exists. A2A: off by default, `hermes tools enable a2a` required per surface |
-| Verifiability | Docs-only | Docs-only, but unusually mechanistic (concrete limits, exact resume algorithm) | CLI docs-only; deeper mechanism only on the separate SDK surface (flagged) | Docs-only for `permission.task`; Task tool mechanics themselves are source-verified (handoff-mechanism.md 3) | Fully source-verified (the example extension's own TypeScript, read in full) -- but source-verifying an opt-in example, not a core-runtime guarantee | Docs-only, but unusually mechanistic for a first-party CLI product (explicit depth-cap arithmetic, dispatcher tick interval, state-machine transitions all stated directly, not inferred from an adjacent SDK) |
+Sources for this section: VERIFIED, fetched fresh 1 September 2026 from
+`github.com/deepseek-ai/deepseek-harness`, `master` branch, via
+`raw.githubusercontent.com` and `gh api` -- `docs/architecture.md`,
+`docs/cordis-primer.md`, `docs/agent-lifecycle.md`,
+`docs/subsystems/subagent.md`, `docs/subsystems/agent-team.md`,
+`docs/subsystems/workflow.md`, `docs/subsystems/core.md`,
+`docs/capability-seams.md`, `README.md`, and
+`.agents/notes/implemented/feature/2026-08-05-agent-teams.md`. VERIFIED
+unless tagged otherwise. DeepSeek Harness (`dsh`) is in developer preview;
+the repo's own README states "THERE WILL BE COMPATIBILITY-BREAKING
+CHANGES," and the Agent Teams feature ships under
+`packages/experimental/` and is explicitly excluded from released CLI/Web
+bundles per the feature note's own "Alternatives considered" section.
 
-**The design lesson.** All four products name or imply the same
+DeepSeek Harness is architecturally unlike any other harness on this page
+in one structural way: it has no monolithic, single-answer orchestration
+primitive. Instead, orchestration is decomposed into **three pluggable
+capability seams** -- `ctx.subagents` (the subagent seam), `ctx.agentTeams`
+(the Agent Teams seam), and `ctx.workflowEngine` (the workflow seam) --
+each of which is an **optional, replaceable plugin** rather than a
+hard-wired runtime feature. The Cordis plugin framework underlying dsh
+makes this possible: "plugins contribute services, typed events, and
+reversible effects to a shared context. Every part of the product is a
+plugin, including the model adapter, the tool registry, the session log,
+and the agent loop itself, so each is replaceable from configuration"
+(VERIFIED, `docs/architecture.md`). A deployment that mounts none of these
+three seams has no multi-agent coordination surface at all; a deployment
+that mounts all three has three structurally distinct answers to "who holds
+the plan," layered over a common event-sourced session log, each with its
+own lifecycle, state artifact, and concurrency model.
+
+### 7.1 The turn-by-turn default: the model itself as orchestrator, via `ctx.subagents`
+
+VERIFIED (`docs/subsystems/subagent.md`): "The subagent seam lets an
+agent delegate work to a child agent. Like bash, it is **one optional
+capability**, not part of the agent loop." The seam exposes
+`ctx.subagents` -- a **named provider registry** ("multiple provider
+implementations coexist in one context, registered by name"), unlike bash
+which allows only one executor. Six provider implementations ship in the
+repo: `subagent-spawn-in-process` (fresh child, no inherited conversation),
+`subagent-fork-in-process` (child seeded with the parent's
+completed-turn prefix), `subagent-acp` (delegates to an out-of-process ACP
+server), `subagent-codex` (delegates to OpenAI Codex CLI), and
+`subagent-claude-code` (delegates to Claude Code), plus `subagent-dsh-sdk`
+(delegates to a child `dsh --profile sdk` process) -- VERIFIED,
+`docs/capability-seams.md`'s own service table lists all six as
+implementations of `ctx.subagents`.
+
+In this seam's default, one-shot mode, the coordination model is
+architecturally identical to Claude Code's turn-by-turn default (§1.1) and
+Copilot CLI's ordinary custom-agent delegation (§2.1): the model
+decides, per tool call, which provider to invoke and what prompt to send.
+The subagent tool (`dsh-tool-subagent`) submits a `SubagentStartRequest`
+to the selected provider, the provider composes and runs the child agent,
+and the terminal `SubagentResult` returns to the parent's context as one
+tool result. There is no separate orchestrator agent, no shared task
+board, and no topology the model did not ask for explicitly -- the
+parent's own context window is the coordination artifact, exactly the same
+shape as sections 1.1 and 2.1 above.
+
+**Delegation depth and capability gating.** VERIFIED
+(`docs/subsystems/subagent.md`): "Delegation depth is durable
+`SessionHeader.delegationDepth` plus the merge-extensible runtime field
+`AgentOptions.subagentDepth`; absence means top-level depth zero, and the
+greater present value is authoritative." The seam rejects a start request
+whose derived depth exceeds a caller-supplied `maxDepth` cap -- "every
+start rejects a derived depth outside the safe-integer domain or above a
+defined absolute `request.maxDepth` cap." This is a declarative,
+config-level boundary on recursion depth, the same *declared-over-model*
+authority shape this page documents for OpenCode's `permission.task`
+(§3.2) and Hermes' `max_spawn_depth` (§5.1), though dsh's implementation
+carries the cap per-request rather than in a global or session-wide config
+key. The seam also validates **start-time capabilities** before dispatch:
+"a request that needs one the provider lacks is rejected loud
+(`SubagentError('UNSUPPORTED_CAPABILITY')`), never accepted-then-ignored."
+The five capability flags -- `agentOptions`, `outputSchema`, `depthLimit`,
+`toolFilter`, `persona` -- each correspond one-to-one to an optional start
+parameter; the service rejects the call at the boundary rather than
+allowing a provider to silently ignore what it cannot fulfill.
+
+### 7.2 Continuable children: moving coordination state into the session log
+
+VERIFIED (`docs/subagents/subagent.md`): a **continuable background
+subagent** is "one durable child Session with at most one process-local
+Activation, the period when a reconstructed child Agent is resident."
+This is dsh's answer to the resumable-subagent pattern this page's §1.2
+(Claude Code's Workflow tool) and §5.2 (Hermes' Kanban board) each
+approach differently. Unlike Claude's Workflow, where a script holds the
+plan, or Hermes' Kanban, where a dispatcher holds it, dsh's continuable
+children store coordination state in the **append-only Session event log**
+itself -- the same log that records model-visible turn/step history.
+"The session log is the source of the context the model sees...
+Model-visible means logged. Anything that reaches a model request must be
+reconstructable from the log" (VERIFIED, `docs/architecture.md`).
+
+The continuation manager owns activation admission, the live ownership
+graph, and a **child-first disposal** order:
+
+```text
+persisted Session
+  -> optional live Activation
+       -> one retained AgentHandle
+       -> Agent inbox as the only turn FIFO
+       -> zero or more owned child Activations
+```
+
+VERIFIED: "An Activation is not a request, result, cancellation, or Task:
+it may execute many FIFO turns and stays resident while descendants it
+created are still running." `followup()` is the sole continuation
+operation, and its behavior depends only on whether an Activation is
+resident:
+
+| Activation state | `followup` behavior |
+|---|---|
+| `running` | Enqueue in the same Activation |
+| `waiting` | Wake the same Activation (quiescent but owns running children) |
+| No Activation | Cold-resume a new Activation from persisted Session |
+
+A settled Activation (quiescent with every owned child disposed) triggers
+handle disposal, removing the Activation entirely. A cold-resumed child
+does not dispatch through the provider at all: "the manager folds the
+generic descriptor, calls `ctx.agents.resume()` through the same
+activation-owner scope, and submits the waiting turn" -- the provider's
+only participation is preparing the initial `ContinuableCreateSpec`
+(whether the child is seeded with parent history).
+
+**The report and settled notices.** VERIFIED: a continuable child can
+explicitly report to its parent via `SubagentRuntime.reportFrom()`, with
+delivery modes `quiet` (inject without waking) or `next-step` (wake an
+idle parent or join a running parent's nearest step boundary). Reporting
+does not conclude the child's turn. Separately, when an Activation
+settles, the continuation manager delivers one unconditional
+`subagent-settled` notice to the durable direct parent, describing how the
+epoch ended and carrying its final assistant content. The docs enforce a
+provenance distinction: "`SubagentSettledMessageSource`... deliberately a
+different kind from `SubagentReportMessageSource`: a report is content the
+child chose, while this message is the manager stating what became of the
+child, and a transcript that merged them would credit the child with words
+it never wrote."
+
+```mermaid
+stateDiagram-v2
+    [*] --> NoActivation: child Session exists, no live Activation
+    NoActivation --> Running: cold-resume via followup()
+    Running --> Waiting: child Agent quiescent, owned children still running
+    Waiting --> Running: followup() wakes the child
+    Running --> Settled: child quiescent, every owned child disposed
+    Waiting --> Settled: every owned child disposed
+    Settled --> [*]: AgentHandle disposed, Activation removed
+    NoActivation --> [*]: parent process teardown drains all forests
+```
+
+### 7.3 Agent Teams: a durable task DAG and peer mailbox over the Lead session
+
+VERIFIED (`docs/subsystems/agent-team.md` and
+`.agents/notes/implemented/feature/2026-08-05-agent-teams.md`): Agent
+Teams is "a private opt-in coordination seam on `ctx.agentTeams`, with a
+durable roster, task board, and mailbox layered over continuable
+subagents." It is architecturally the richest single coordination layer
+any harness on this page ships -- combining a named roster, a peer mailbox,
+and a shared task DAG in one seam -- and also the most explicitly
+experimental: both packages live under `packages/experimental/`, and the
+feature note's "Alternatives considered" section records the decision to
+exclude Team packages from shipped dependency graphs until public contracts
+stabilize.
+
+**The implicit-root Team.** "Every ordinary runtime root is the implicit
+Lead of a Team identified by that root's `SessionId`. The Team has no
+creation event: its Lead pseudo-row exists by identity, while durable
+state begins with the first member, message, or task event." A roster is
+flat (no nested sub-teams) and "contains at most the configured number of
+immutable lowercase-kebab-case names." Each teammate is a continuable
+direct child of the Lead; "only the Lead creates or interrupts teammates."
+Ordinary subagents outside the roster are not Team members. A fork of the
+root creates a new root whose inherited Team records are excluded by their
+ancestor `TeamId` -- "events inherited by an ordinary fork retain the
+ancestor id and never enter the new root's state" (VERIFIED,
+`docs/subsystems/agent-team.md`, `foldTeam()` replay rule).
+
+**The shared task DAG.** VERIFIED, `TeamTaskSnapshot` read directly from
+the docs:
+
+```ts type-equiv
+interface TeamTaskSnapshot {
+  readonly id: TeamTaskId
+  readonly revision: number
+  readonly subject: string
+  readonly description: string
+  readonly status: TeamTaskStatus
+  readonly ownerId?: SessionId
+  readonly blockedBy: TeamTaskId[]
+  readonly writeScopes: string[]
+}
+```
+
+Task status follows: "`pending` is unstarted or released, `in_progress`
+carries an owner, `completed` satisfies blockers, and `deleted` is a
+retained tombstone." `blockedBy` edges "must name non-deleted tasks and
+keep the graph acyclic" -- this is dsh's equivalent of Hermes' `task_links`
+(§5.2) and Copilot CLI's SDK-level `todo_deps` (§2.2), except that dsh
+enforces acyclicity at write time and uses compare-and-set (`expectedRevision`)
+rather than an auto-promoting dispatcher. `writeScopes` are "normalized
+advisory path prefixes" that produce overlap diagnostics but "never block
+claim or authorize a write" -- an explicit decision recorded in the
+feature note: "Treating task ownership or write scopes as locks... false
+mutual exclusion is more dangerous than an explicit warning." `TeamTaskId`
+is Team-local and "monotonically allocated as `task-<n>`," with the same
+safe-integer exhaustion-fails-without-reuse discipline.
+
+**The durable peer mailbox.** "Peer communication is a Lead-log mailbox."
+`team/message/queued` is appended and flushed in the Lead Session before
+delivery. Each message carries a `delivery` mode: `'quiet'` (inject
+without waking the target) or `'wakeup'` (becomes the target's next FIFO
+turn, cold-resuming it if necessary). Receipt acknowledgement
+(`team/message/delivered`) fires after the target's pending inbox item or
+recorded user message is flushed -- "the target Session keeps message
+identity and sender attribution on both the pending inbox item and the
+eventual user message" for de-duplication. "Immediate admission is
+serialized per target in queued-log order" and "recovery retries
+queued-minus-delivered in the same order," so the mailbox is durable
+across process restarts, the same property Hermes' Kanban board provides
+(§5.2), but implemented as event-sourced replay over the Lead session log
+rather than a separate SQLite database.
+
+**Shared checkout boundary.** The feature note records an explicit design
+choice relevant to real concurrent editing: "All members use the same cwd
+and observe writes immediately. The policy tells members to partition
+tasks, record advisory write scopes, order dependent work, and let the
+Lead inspect the final diff and run tests." Worktree isolation is not a
+harness runtime behavior -- "a deployment or prompt may arrange separate
+worktrees, but the Team domain does not infer branches, merge changes, or
+silently change cwd." This is a boundary this page's other harnesses are
+silent on: Claude Code's agent teams share a task list but do not document
+a shared-checkout concurrency policy; Hermes' Kanban workers operate on
+independent tasks with no documented shared-filesystem rule. DSH's
+explicit statement of "advisory, not enforced" is a data point this page
+had not previously sourced.
+
+```mermaid
+flowchart TD
+    Lead["Lead Session (ordinary runtime root)<br/>Team id = Lead's SessionId<br/>Owns: roster, mailbox, task board"] --> Spawn["spawnTeammate()<br/>creates continuable direct child"]
+    Spawn --> T1["Teammate 1<br/>(continuable child Session)"]
+    Spawn --> T2["Teammate 2<br/>(continuable child Session)"]
+    Lead -->|"sendMessage()<br/>Lead-log mailbox"| Mailbox1["T1 inbox<br/>queued-minus-delivered"]
+    Lead -->|"sendMessage()"| Mailbox2["T2 inbox"]
+    T1 -->|"sendMessage()"| MailboxLead["Lead inbox"]
+    T2 -->|"sendMessage()"| MailboxLead
+    Lead -->|"createTask() + task.blockedBy"| DAG["Shared task DAG<br/>pending / in_progress / completed / deleted<br/>compare-and-set revision<br/>acyclic blockedBy edges"]
+    T1 -->|"claim ready unowned task"| DAG
+    T2 -->|"claim ready unowned task"| DAG
+```
+
+### 7.4 The workflow seam: a model-written orchestration script, executed in a worker thread
+
+VERIFIED (`docs/subsystems/workflow.md`): "The workflow seam lets an
+agent run a model-written orchestration SCRIPT that starts subagents. Like
+subagent it is **one optional capability**, not part of the agent loop."
+Like bash, "it permits ONE engine implementation per context to provide
+`ctx.workflowEngine`; there is no named-provider registry." The shipped
+engine is `dsh-workflow-worker-thread` ("a `node:worker_threads` engine --
+one worker per run, the script's vm context inside it"); the model-facing
+consumer is `dsh-tool-workflow`.
+
+This is the same *script-holds-the-plan* category as Claude Code's
+Dynamic Workflows (§1.2): the model writes a JavaScript script at
+invocation time, the engine executes it, and the script orchestrates
+subagent dispatch via `agent()` calls. The `WorkflowMeta` identity block
+("name," "description," optional "whenToUse" and "phases") "matches the
+Claude Code dynamic-workflows meta block" vocabulary (VERIFIED,
+`docs/subsystems/workflow.md`), indicating a deliberate API compatibility
+choice. The script runs with top-level await in its own worker-thread vm
+context; intermediate results live in script variables, not in any agent's
+context window, the same isolation Claude's Workflow tool provides.
+
+**The `WorkflowStartRequest`** carries `parent` (required -- "every
+`agent()` spawned by the script is attributed to that live Agent"), an
+optional `subagentProvider` override, and an optional `maxTotalAgents`
+ceiling ("per-run total-child ceiling") -- contrast Claude Code's
+hard-coded 16-concurrent/1,000-total agent caps (§1.2), which are
+runtime-enforced rather than per-request. DSH's `maxTotalAgents` is set
+per-run by the caller (the tool, not the script), so the ceiling can vary
+between workflow invocations on the same deployment.
+
+**Failure discipline.** VERIFIED: "Hook misuse inside a script... throws
+a `WorkflowError` with `fatal: true`. The `parallel()`/`pipeline()`
+combinators RE-THROW fatal errors instead of mapping the item to `null`:
+a typo'd option must kill the script loudly, never dissolve into something
+that reads as an ordinary child failure." This is a design choice this
+page has not seen stated explicitly for any other harness's workflow
+primitive: Claude Code's Workflow tool documents no analogous
+fail-loud-vs-map-to-null distinction; the closest structural cousin is
+pi's chain mode (§4.2), which returns early with an error the moment one
+step fails, but pi's extension does not distinguish "misconfiguration"
+from "child failure" as separate error categories.
+
+**Events and durable records.** The `workflow/*` events
+(`workflow/start`, `workflow/phase`, `workflow/log`,
+`workflow/agent-start`, `workflow/agent-end`, `workflow/end`) are
+"observe-only emits carrying DATA SNAPSHOTS" that deliberately exclude
+the mutable `WorkflowRun` handle and the result value. The tool consumer
+writes `tool-workflow/run-start` and `tool-workflow/run-end` durable
+records into the calling parent Session, with an invariant checker
+(`dsh-tool-workflow/invariant`) that validates "one start per run,
+positive unique member sequences, paired member endings, no run ending
+with open members, and no updates after the run ending" -- the same
+append-only, invariant-checked session-log discipline the subagent and
+Agent Teams seams already use, applied to the workflow's own lifecycle
+records.
+
+### 7.5 The Cordis architecture consequence: orchestration is declared in composition, not discovered at runtime
+
+A fact that distinguishes dsh from every other harness on this page:
+which orchestration primitives are available to a given agent is a
+**composition-time** decision, not a runtime discovery. A dsh instance is
+composed from an ordered stack of bundles and patches (VERIFIED,
+`docs/architecture.md`, "Profiles and bundles" section); the `dsh-base`
+bundle includes the subagent seam and the workflow engine, while Agent
+Teams requires explicit mounting of the `experimental-agent-team` and
+`experimental-tool-agent-team` packages. A profile that omits those two
+packages has no Team tools at all -- not "present but disabled," but
+genuinely absent from the composed plugin tree. This is a stronger
+version of the composition-gating this page documents for OpenCode's
+`permission.task` (§3.2): where OpenCode edits the tool schema to hide a
+denied subagent from the model, dsh edits the *entire plugin tree* before
+the agent even starts. The Cordis framework's `ctx.effect()` / `ctx.on()`
+registration mechanism is reversible -- "registrations are reversible
+effects... so reload and teardown unwind them predictably" (VERIFIED,
+`docs/cordis-primer.md`) -- so plugin unload during a hot-reload
+genuinely removes the capability from the live context, not merely marks
+it dormant.
+
+BEST CURRENT UNDERSTANDING, UNCONFIRMED: whether the default `web` and
+`headless` profiles mount the workflow engine in the composed plugin tree,
+or whether it too requires an explicit opt-in step analogous to Agent
+Teams' experimental-package installation, was not confirmed from the
+docs fetched this session. `docs/capability-seams.md`'s service table
+lists `ctx.workflowEngine` as a seam owned by `workflow` with
+`workflow-worker-thread` as its implementation and `tool-workflow` and
+`tool-ralph` as consumers, and `dsh-base` is listed as a consumer of
+`ctx.agentLoop`, but the specific question of which profiles include
+`dsh-workflow` in their bundle stack was not traceable from the files
+read this session.
+
+---
+
+## 8. Synthesis
+
+| Dimension | Claude Code (turn-by-turn) | Claude Code (Workflow tool) | Copilot CLI (`/fleet`) | OpenCode (Task + `permission.task`) | pi (reference `subagent` extension, opt-in) | Hermes Agent (`delegate_task`/Kanban/A2A) | DeepSeek Harness (`ctx.subagents`/`ctx.agentTeams`/`ctx.workflowEngine`) |
+|---|---|---|---|---|---|---|---|
+| Who plays the orchestrator role | Claude itself, or the team lead | A JS script, run by a separate runtime | An explicitly named "orchestrator agent" (the main Copilot agent) | The primary agent invoking `Task`, scoped by its own `permission.task` config | The top-level session's own model, turn by turn -- no distinct lead/orchestrator agent at all | Three separate answers depending on layer: the calling model itself (`delegate_task`, optionally `role="orchestrator"` self-nesting); a named Kanban profile whose toolset is scoped to `kanban` only, stepping back from implementation; or the calling model choosing an `a2a_orchestrate` fan-out mode across independently-running peers | Three separate, *composition-gated* answers: the calling model itself (one-shot or continuable subagents, turn-by-turn); the Lead Session of an implicit-root Team (durable roster + task DAG + peer mailbox); or a model-written JS script executed in a worker thread (workflow engine). All three are optional plugins; a deployment need not mount any of them |
+| Decomposition mechanism | Model judgment, turn by turn | Claude writes the script once; the script's own logic (loops, `pipeline()`) decomposes at run time | Model judgment (dependency/nature analysis of the prompt) at `/fleet` invocation | Model judgment, encouraged toward batching via the tool's own prompt text | Model judgment, optionally nudged by a canned natural-language prompt template (§4.5) | Model judgment for `delegate_task`/A2A; for Kanban, either an orchestrator profile's own `kanban_create`/`kanban_link` calls or the dispatcher's own scheduled `auxiliary.kanban_decomposer` LLM call on triage-column tasks | Model judgment for subagents/Teams; for workflows, the model writes a JS script whose own `agent()`/`pipeline()`/`parallel()` calls decompose at run time (same category as Claude Code's §1.2) |
+| Coordination/state artifact | Claude's context window (subagents/skills) or a shared file-locked task list (agent teams) | Script variables in an isolated runtime; run state tracked for resumability | SQL-backed todo state machine (`pending/in_progress/done/blocked`) with a `todo_deps` table (SDK-page detail, not CLI-page-confirmed) | No dedicated state store found; ordinary session/subagent-session records only | An in-memory `SingleResult[]`/`SubagentDetails` array, scoped to one `execute()` call; nothing persists past the tool call returning | `delegate_task`: none beyond the calling turn. Kanban: durable SQLite rows (`~/.hermes/kanban.db`) with a `task_links` dependency table, outliving the conversation that created them and surviving process restart. A2A: per-peer `context_id`-keyed conversation state, external to any single Hermes process | Subagents: the parent's own Session event log (continuable children replay from persisted Session). Agent Teams: the Lead Session's event log (roster snapshots, mailbox queued/delivered records, task snapshots with CAS revisions). Workflow: script variables in a worker-thread vm context (same shape as Claude Code's §1.2); lifecycle events projected into the parent Session log |
+| Concurrency ceiling | No documented numeric cap (subagents), no cap for teams | 16 concurrent, 1,000 total agents per run (hard runtime limits) | Conditional on dependency analysis; no numeric cap documented | No enforced cap found; model is encouraged, not limited, to batch calls | Hard-coded in the extension: 8 tasks max, 4 concurrent (`MAX_PARALLEL_TASKS`/`MAX_CONCURRENCY`), not a core-runtime limit | `delegate_task`: 3 concurrent children per batch by default, no hard ceiling (`max_concurrent_children`); nested trees bounded by `max_spawn_depth` (1-3, no upper ceiling -- 3x3x3 = 27 leaves at depth 3). Kanban: bounded only by however many profiles the dispatcher can spawn; `auto_decompose_per_tick` caps triage decompositions to 3/tick | Subagents: no documented numeric cap per session; delegation depth is per-request (`maxDepth`). Agent Teams: roster size is configured, not hard-coded. Workflow: optional per-run `maxTotalAgents` ceiling (caller-supplied, not runtime-enforced) |
+| Dependency handling between subtasks | Not applicable at this granularity | Script's own control flow (sequential `await`, or `pipeline()` for independent items) | Explicit: "assess... whether these can be efficiently executed... in parallel," `todo_deps` table (SDK-page detail) | Not applicable -- no dependency-aware scheduler documented | Flat linear chain only, with a `{previous}` string-substitution placeholder; no DAG | `delegate_task`: none (parallel batch or sequential nesting only). Kanban: explicit `task_links` parent-child edges; dispatcher promotes `todo -> ready` only once every parent is `done` -- a documented, first-party dependency DAG, not an adjacent-surface inference | Subagents/Workflow: none beyond the script's own control flow (same category as Claude Code's §1.2). Agent Teams: explicit `blockedBy` edges forming an acyclic DAG, enforced at write time; compare-and-set `revision` prevents stale mutations |
+| Result aggregation | One final message per subagent/teammate, read by Claude/lead | Script's own return value; only that final value reaches Claude's context | Not detailed on the CLI's own `/fleet` page | Last text part of each child session's final message (per handoff-mechanism.md 3.3) | Final assistant text per subprocess, capped 50 KB/task for parallel/chain modes; full transcript kept only in a TUI-only `details` object | `delegate_task`: consolidated summary posted back as a new message (top-level) or synthesized in-turn (orchestrator children). Kanban: `kanban_complete(summary, metadata)` -- a durable row any profile can later read, not a value returned to a caller | Subagents (one-shot): `SubagentResult` with `output` (final assistant content blocks), optional `structured` (schema-validated), and `stopReason`. Continuable children: `subagent-settled` notice delivered to the parent when an Activation ends; explicit `reportFrom()` for child-initiated mid-turn reporting. Workflow: `WorkflowResult.value` (script's return value, host-realm JSON) plus `agentsStarted` count |
+| Resumability of the orchestration itself | Subagents/teammates individually resumable; no run-level resume concept | Yes -- run-level resume with documented start-order replay semantics | Undocumented | Individual subagent sessions resumable via `task_id`; no fleet-level run object | None -- child processes run `--no-session` (ephemeral) and are killed outright on abort; no persisted run state | `delegate_task`: background completions are durably queued (survive a Hermes restart for delivery, though a running child does not resume after a crash). Kanban: fully resumable by design -- a crashed/stale worker's task is reclaimed and re-dispatched; the board itself is the persistence layer | Subagents (continuable): cold-resumable from persisted Session via `ctx.agents.resume()`; `--no-session` not used. Agent Teams: fully durable -- roster, mailbox, and task board are event-sourced in the Lead Session's log and replayed by `foldTeam()`. Workflow: per-run `WorkflowRun` handle is process-local; no cross-restart resume of a running script documented |
+| Declared vs. runtime-enforced boundary | Runtime permission-mode check per action | Fixed `acceptEdits` posture for all workflow agents, set once at launch | Undocumented | Declarative: denied subagents omitted from the Task tool schema itself, pre-empting the request entirely | Project-local agent definitions gated by an explicit `ctx.ui.confirm()` prompt when the project isn't yet trusted; otherwise no declared allow/deny surface | Declarative depth/kill-switch config (`max_spawn_depth`, `orchestrator_enabled: false`) overrides whatever `role` the model requests; Kanban's orchestrator/worker split is enforced by the profile's own toolset configuration simply omitting `terminal`/`file`/`code`/`web`, not a runtime check | Composition-level (strongest on this page): which orchestration primitives exist at all is determined by which plugins the profile composes. Capability flags (`SubagentCapabilities`) validated before dispatch, not after. Delegation depth (`maxDepth`) per-request, CAS revision on tasks, acyclic `blockedBy` enforced at write time |
+| Ships active by default | Yes | Yes (opt-in per-workflow approval, but the primitive itself is core) | Yes | Yes | **No** -- the capability exists only as an example extension bundled in the npm package but not auto-loaded; a user must manually install it | `delegate_task`: yes, core. Kanban: requires `hermes kanban init` plus a running gateway (`hermes gateway start`) to dispatch; the toolset itself ships core but is inert until a board exists. A2A: off by default, `hermes tools enable a2a` required per surface | Subagents: yes, in `dsh-base` (the shared first layer of all profiles). Agent Teams: **no** -- ships in `packages/experimental/`, excluded from released bundles, requires explicit profile mounting. Workflow: BEST CURRENT UNDERSTANDING, UNCONFIRMED -- likely in `dsh-base` (capability-seams table lists it alongside core services) but not confirmed this session |
+| Verifiability | Docs-only | Docs-only, but unusually mechanistic (concrete limits, exact resume algorithm) | CLI docs-only; deeper mechanism only on the separate SDK surface (flagged) | Docs-only for `permission.task`; Task tool mechanics themselves are source-verified (handoff-mechanism.md 3) | Fully source-verified (the example extension's own TypeScript, read in full) -- but source-verifying an opt-in example, not a core-runtime guarantee | Docs-only, but unusually mechanistic for a first-party CLI product (explicit depth-cap arithmetic, dispatcher tick interval, state-machine transitions all stated directly, not inferred from an adjacent SDK) | Docs-plus-source (the subagent, agent-team, and workflow subsystem docs include verbatim TypeScript type definitions read from `types.ts` and `runtime-types.ts`; the Cordis API sections are generated from source by `gen-cordis-catalog.ts` and verified by `verify-cordis-catalog` in doc-sync). Developer-preview caveat applies |
+
+**The design lesson.** All five harnesses name or imply the same
 orchestrator/worker role from section 0, but they diverge on where that
-role's *authority* actually lives. Claude Code keeps the orchestrator
+role's *authority* actually lives and on how many structurally distinct
+coordination layers coexist. Claude Code keeps the orchestrator
 inside the conversation by default (Claude itself, turn by turn) and
 offers an explicit escape hatch -- the Workflow tool -- that moves the
 plan into a script the runtime executes with its own hard concurrency
@@ -908,71 +1256,102 @@ orchestration story is (a) prompt-level encouragement to batch `Task`
 calls in one turn, and (b) a declarative, config-level boundary
 (`permission.task`) on *which* subagents a given primary agent is even
 allowed to see as options, enforced by editing the tool schema itself
-rather than by a runtime policy check. pi is the odd one out among all
-four, on a different axis entirely: every other harness on this page
-ships *some* version of its coordination primitive active the moment the
-product is installed, even where that primitive is thin (OpenCode's
-prompt-text nudge) or config-gated (OpenCode's `permission.task`,
-Claude Code's per-workflow approval prompt). pi ships **no** orchestrator
-at all in its core, documented product surface -- what this page
-describes as pi's coordination layer is a single officially-authored but
-inert example extension, bundled in the same npm package yet requiring a
-manual symlink step to activate, after which it behaves like a
-stripped-down, single-file combination of Claude Code's turn-by-turn
-subagents (§1.1, same "the model decides" authority) and Copilot CLI's
-Fleet-mode SQL-todo bookkeeping ambition (§2.2, minus the SQL, the
-dependency graph, and the shared server) -- reimplemented from
-first principles in extension-space TypeScript, using genuine OS-process
-isolation rather than an in-process context boundary as its one
-architecturally distinctive choice. A workflow built assuming "there's a
-name I can point at for the thing coordinating my agents" will find that
-name on Claude Code (the Workflow tool) and Copilot CLI (`/fleet`'s
-orchestrator agent), find only a permission config and a prompt-text
-convention on OpenCode, and find nothing at all on a fresh pi install --
-only an extension a user has to go and turn on themselves.
+rather than by a runtime policy check. pi is the odd one out on a
+different axis entirely: every other harness on this page ships *some*
+version of its coordination primitive active the moment the product is
+installed, even where that primitive is thin (OpenCode's prompt-text
+nudge) or config-gated (OpenCode's `permission.task`, Claude Code's
+per-workflow approval prompt). pi ships **no** orchestrator at all in
+its core, documented product surface -- what this page describes as pi's
+coordination layer is a single officially-authored but inert example
+extension, bundled in the same npm package yet requiring a manual
+symlink step to activate, after which it behaves like a stripped-down,
+single-file combination of Claude Code's turn-by-turn subagents (§1.1,
+same "the model decides" authority) and Copilot CLI's Fleet-mode SQL-todo
+bookkeeping ambition (§2.2, minus the SQL, the dependency graph, and the
+shared server) -- reimplemented from first principles in extension-space
+TypeScript, using genuine OS-process isolation rather than an in-process
+context boundary as its one architecturally distinctive choice.
 
-**Hermes Agent breaks this page's own implicit assumption that a harness
-has *one* coordination layer to look for.** Every other product in this
-table gives one primary answer to "who holds the plan" (a conversational
-model, a script, a permission config, an inert extension); Hermes gives
-three simultaneously-shipped answers scoped to three different lifetimes.
-`delegate_task`'s `role="orchestrator"` flag reproduces §1.1's and
-§2.1's turn-by-turn, model-decides authority almost exactly, but adds a
-depth cap and a global kill switch neither Claude Code's nor Copilot
-CLI's own turn-by-turn cases document -- a declarative ceiling laid over
-model-requested recursion, closer in spirit to OpenCode's
-`permission.task` (§3.2) than to anything either turn-by-turn harness
-does. The Kanban board is this page's first fully first-party-documented
-instance of the durable, SQL-backed, dependency-DAG coordination shape
-that §2.2 could previously only source as adjacent SDK-surface background
-for Copilot CLI's Fleet mode -- and it goes further than that shape by
-running its dispatcher inside a persistent gateway process rather than
-inside the lifetime of any single delegation call, so the coordination
-artifact (the task board) outlives the conversation that created it in a
-way no other mechanism on this page does; the closest structural cousin
-elsewhere in this book is not another harness's subagent primitive at all
-but a durable external work queue, closer to a job scheduler than to a
-context-window-bound Task tool. A2A's `a2a_orchestrate` is this page's
-only sourced example of orchestration reaching *outside* a single running
-process to fan a task across independently-operated peers by advertised
-capability, a coordination boundary (process/machine/organization) none
-of Claude Code, Copilot CLI, OpenCode, or pi's own documented mechanisms
-attempt to cross. Read together, Hermes' own documentation draws its
-three layers' boundaries explicitly rather than leaving a reader to infer
-them -- `delegate_task` for a same-process reasoning answer with no
-human in the loop, Kanban for work that must survive restarts or wait on
-a human, A2A for anything outside the local process -- which is itself a
-data point this page had not previously sourced from any harness: an
-explicit statement, in the product's own docs, of *which* coordination
-primitive to reach for and why, rather than one primitive presented as
-the only option.
+**Hermes Agent and DeepSeek Harness both break this page's earlier
+assumption that a harness has *one* coordination layer to look for.**
+Hermes gives three simultaneously-shipped answers scoped to three
+different lifetimes. `delegate_task`'s `role="orchestrator"` flag
+reproduces §1.1's and §2.1's turn-by-turn, model-decides authority
+almost exactly, but adds a depth cap and a global kill switch neither
+Claude Code's nor Copilot CLI's own turn-by-turn cases document -- a
+declarative ceiling laid over model-requested recursion, closer in spirit
+to OpenCode's `permission.task` (§3.2) than to anything either
+turn-by-turn harness does. The Kanban board is this page's first fully
+first-party-documented instance of the durable, SQL-backed,
+dependency-DAG coordination shape that §2.2 could previously only source
+as adjacent SDK-surface background for Copilot CLI's Fleet mode -- and it
+goes further than that shape by running its dispatcher inside a persistent
+gateway process rather than inside the lifetime of any single delegation
+call, so the coordination artifact (the task board) outlives the
+conversation that created it in a way no other mechanism on this page
+does. A2A's `a2a_orchestrate` is this page's only sourced example of
+orchestration reaching *outside* a single running process to fan a task
+across independently-operated peers by advertised capability.
+
+DeepSeek Harness arrives at the same "three layers" shape from a different
+architectural direction: not three product features sharing one runtime,
+but three *plugin seams* sharing one session log, each optionally
+composed into the deployment. Where Hermes' three layers are all core
+(or core-but-gated) product features, dsh's three layers are
+**composition-level choices** -- a deployment that omits the Agent Teams
+packages has no Team tools, not merely disabled ones; a deployment that
+omits the workflow engine has no script-holds-the-plan primitive at all.
+This is a strictly stronger boundary than any other harness on this page
+enforces: Claude Code's Workflow tool is core infrastructure (you opt in
+per-run, not per-install); OpenCode's `permission.task` edits the tool
+schema but the `Task` tool itself always ships; even pi's inert extension
+is at least *present* in the installed package. DSH's Agent Teams are
+genuinely absent from the plugin tree until a profile mounts them, the
+same way a Cordis plugin that was never installed simply does not exist
+in the composed context. The consequence is that "who holds the plan" on
+DSH is not merely a question of which tool the model calls, but of which
+plugins the deployment author composed -- an orchestration boundary that
+is architectural rather than conversational, set before any agent runs
+its first turn.
+
+The two "three-layer" harnesses also differ in how they persist
+coordination state. Hermes' Kanban board persists in a standalone SQLite
+database (`~/.hermes/kanban.db`) with its own dispatcher process; dsh's
+Agent Teams persist in the Lead Session's own event-sourced log, replayed
+by `foldTeam()` from the same `SessionEvent` stream that records
+turn/step history. This is a genuine architectural split: Hermes' Kanban
+is an outboard coordination artifact, closer to a job scheduler than to a
+conversation log, while dsh's Agent Teams are an *inboard* coordination
+artifact, closer to a specialized projection over the same append-only
+stream the agent loop already reads. Both are durable across process
+restarts, but they answer "where does the plan live?" with different
+physical homes. The only other harness on this page that sources its
+coordination state from the same event stream as its agent-loop history
+is Claude Code's agent teams (§1.1, via the shared file-locked task
+list), but Claude Code's task list is a separate file, not a projection
+over the session log itself -- dsh is this page's first sourced instance
+of the "orchestration state *is* session log state" design.
+
+Read together, the two multi-layer harnesses draw their layers'
+boundaries explicitly rather than leaving a reader to infer them.
+Hermes' own documentation: "`delegate_task` for a same-process reasoning
+answer with no human in the loop, Kanban for work that must survive
+restarts or wait on a human, A2A for anything outside the local process."
+DSH's architecture: subagents for same-process turn-by-turn delegation,
+Agent Teams for named-roster peer work with a durable task DAG, and the
+workflow engine for scripted fan-out at scale. Each harness is itself a
+data point this page had not previously sourced: an explicit statement,
+in the product's own docs, of *which* coordination primitive to reach for
+and why, rather than one primitive presented as the only option.
 
 ---
 
 ## Sources
 
-All fetched 2026-07-31, except the pi and Hermes Agent sources below
-(both fetched fresh 1 September 2026).
+All fetched 2026-07-31, except the pi, Hermes Agent, and DeepSeek Harness
+sources below (pi and Hermes fetched fresh 1 September 2026; DeepSeek
+Harness fetched fresh 1 September 2026).
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `https://code.claude.com/docs/en/workflows` -- the subagents/skills/agent-teams/workflows
@@ -1108,3 +1487,86 @@ vocabulary only, never for any one harness's specific behavior):**
   the orchestrator/manager-agent and managed/worker-agent vocabulary used
   throughout this page's framing, and the stated rationale (memory
   efficiency, focus) for splitting a task across agents at all.
+
+**DeepSeek Harness (authoritative for its own documented behavior and
+additionally source-verified against verbatim TypeScript type definitions
+in the subsystem docs; fetched fresh 1 September 2026 from
+`github.com/deepseek-ai/deepseek-harness`, `master` branch):**
+- `docs/architecture.md` -- the Cordis plugin framework ("everything is a
+  plugin"), profiles and bundles composition model, core packages table,
+  turn-flow sequence, session-log invariant ("Model-visible means logged"),
+  capability-seam definition, the "Where new behavior goes" table, and the
+  Agent Teams positioning as "a private opt-in coordination seam on
+  `ctx.agentTeams`."
+- `docs/cordis-primer.md` -- the five Cordis ideas (plugin as Service,
+  context as repository, inject for dependency, typed events, reversible
+  effects), dispatch modes (emit/waterfall/parallel/serial/bail), waterfall
+  semantics, loader configuration.
+- `docs/agent-lifecycle.md` -- the turn-and-step lifecycle sequence
+  diagram, the `agent/pre-step` rejection/enter decision path, compaction
+  interaction with `agent/pre-step` and `agent/request-error`, the
+  session-event vs. agent-event boundary.
+- `docs/subsystems/subagent.md` (in full, including the generated Cordis
+  API section) -- the subagent seam definition, `SubagentCapabilities`
+  flags and "fail loud, no silent degradation" rule,
+  `SubagentStartRequest` (including `maxDepth`, `toolFilter`, `persona`,
+  `outputSchema`), `SubagentResult` and `SubagentStopReason`,
+  continuable children and Activations (`startContinuable`, `followup`,
+  the running/waiting/settled state machine), `SubagentRuntime.reportFrom()`
+  and `SubagentReportDelivery` modes (quiet/next-step),
+  `SubagentSettledMessageSource` provenance distinction, the continuation
+  manager's ownership graph and child-first disposal, cold-resume via
+  `ctx.agents.resume()`, `ContinuableCreateSpec` and `ContinuableCreateRequest`,
+  provider contract (`SubagentProvider.start` and `prepareContinuable`),
+  `SubagentRuntime.interrupt()` authority model, delegation depth
+  (`SessionHeader.delegationDepth` + `AgentOptions.subagentDepth`),
+  fork seeding (balanced completed-turn prefix via `CreateAgentOptions.seed`),
+  the six shipped provider implementations, `listChildren`/`listDescendants`
+  enumeration, and the projection-backed identity ladder.
+- `docs/subsystems/agent-team.md` (in full, including the generated Cordis
+  API section) -- the implicit-root Team model, `TeamId`/`TeamTaskId`/
+  `TeamMessageId` branded ids, `TeamMemberSnapshot` and the
+  `provisioning`/`active`/`failed` phase model, durable mailbox
+  (`TeamMessageSnapshot`, `TeamMessageSource`, queued/delivered
+  acknowledgement), shared task DAG (`TeamTaskSnapshot` with `blockedBy`,
+  CAS `revision`, `writeScopes` as advisory-only), task status lifecycle
+  (`pending`/`in_progress`/`completed`/`deleted`), `foldTeam()` replay
+  rule (ancestor-id exclusion), the `ctx.agentTeams` service methods
+  (`membership`, `spawnTeammate`, `sendMessage`, `createTask`, `updateTask`,
+  `waitForChange`, `interrupt`, `remoteView`/`remoteCreateTask`/
+  `remoteUpdateTask`).
+- `docs/subsystems/workflow.md` (in full, including the generated Cordis
+  API section) -- the workflow seam definition, `WorkflowStartRequest`
+  (`script`, `meta`, `args`, `subagentProvider`, `maxTotalAgents`), the
+  `WorkflowMeta` identity block (matching Claude Code dynamic-workflows
+  vocabulary), `WorkflowResult` and closed `WorkflowStopReason` union
+  (`completed`/`cancelled`/`error`), `WorkflowRun` handle (cancel, dispose,
+  bounded settlement), `WorkflowError.fatal` failure discipline
+  (re-throw on misuse, null on child failure), observe-only `workflow/*`
+  events, durable Chat records (`tool-workflow/run-start`, `run-end`) and
+  invariant checker, the worker-thread engine.
+- `docs/subsystems/core.md` -- the `Agent` handle interface,
+  `CreateAgentOptions`/`ResumeAgentOptions`, `AgentHandle` disposal
+  contract, `AgentRegistry` factory and initiator scope, `AgentOptions`
+  merge-extensible fields, `AgentStatus` (`idle`/`running`), `Agent.cancel`
+  causes and `CancelOptions.keepInbox`, the `Agent.send`/`followup`/
+  `steer`/`inject` routing, `InboxTarget` (`next-turn`/`next-step`),
+  `PreStepDecision` and request-error recovery, `Session` as append-only
+  log, the `…Map → derived-union` pattern, branded IDs.
+- `docs/capability-seams.md` -- the full service capability graph (mermaid
+  flowchart + table), confirming `ctx.subagents` as a seam with six
+  implementations, `ctx.agentTeams` as core with two experimental
+  consumers, `ctx.workflowEngine` as a seam with one implementation and
+  two consumers (`tool-workflow`, `tool-ralph`), and `dsh-base` as the
+  default composition layer consuming `ctx.agentLoop`.
+- `.agents/notes/implemented/feature/2026-08-05-agent-teams.md` -- the
+  feature decision note: implicit-root Team identity, flat roster, Lead
+  session as transaction home, mailbox delivery serialized by queued-log
+  order, CAS task mutations, acyclic `blockedBy` enforcement, shared
+  checkout policy ("advisory write scopes, not locks"), worktree isolation
+  rejected as a deployment choice, experimental-package exclusion from
+  released bundles, alternatives considered (extend direct-child tools,
+  store mail per-target, treat tasks as locks, auto-worktrees, in-memory
+  board, untyped results -- all rejected with documented rationale).
+- `README.md` -- developer-preview status, "THERE WILL BE
+  COMPATIBILITY-BREAKING CHANGES."

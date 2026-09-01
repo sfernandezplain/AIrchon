@@ -221,7 +221,7 @@ command, retained up to 5 years per data-usage's own retention table, with a loc
 archive fallback under `~/.claude/feedback-bundles/` on third-party-provider or
 credential-less sessions where nothing leaves the machine automatically.
 
-This distinction matters for a from-scratch harness builder (§6 below): a mature
+This distinction matters for a from-scratch harness builder (§7 below): a mature
 harness's observability surface is not one pipe but (at minimum) three separable ones --
 customer-configured cost/usage export, customer-configured execution tracing, and the
 vendor's own default product-reliability telemetry -- each with its own opt-out, its own
@@ -705,7 +705,7 @@ configurable) and pushes the bundle to a public paste service (`paste.rs` then
 `dpaste.com`, tried in order), a private Nous-internal diagnostics store via
 `--nous` (auto-deleting after 14 days), or prints the report locally with
 `--local` instead of uploading at all -- three distinct sharing postures
-(public, vendor-private, none) that none of this page's other five harnesses'
+(public, vendor-private, none) that none of this page's other six harnesses'
 doctor-equivalent commands document choosing between explicitly. `hermes
 status [--all] [--deep]` gives the visual, in-terminal overview `hermes dump`
 intentionally leaves out ("For interactive diagnostics, use `hermes doctor`.
@@ -787,8 +787,8 @@ plainly that "smart observer preparation force-redacts" a command payload
 smart-approval reviewer path specifically cannot be turned off by the same
 switch that governs everything else, a narrower and stricter guarantee than
 the general-purpose toggle. This is a genuinely distinctive design emphasis
-among this page's six harnesses: none of Claude Code's, Copilot CLI's,
-OpenCode's, or pi's own documented logging/tracing surfaces state a
+among this page's seven harnesses: none of Claude Code's, Copilot CLI's,
+OpenCode's, pi's, or DeepSeek Harness's own documented logging/tracing surfaces state a
 comparable blanket "redact before it ever reaches a log file or a context
 window" guarantee as a named, load-bearing security property of the
 observability layer itself, as opposed to a content-gating opt-in (Claude
@@ -891,7 +891,7 @@ by retrying, re-routing, or reporting up. Error text is deliberately reduced
 to "the single most informative line (the exception message, not a traceback
 wall)" for all three surfaces -- a stated design trade-off toward
 readability over completeness that this page has not seen argued explicitly
-by any of the other five harnesses' own subagent-failure documentation. A
+by any of the other six harnesses' own subagent-failure documentation. A
 sharper diagnostic is reserved for one specific pathological case: when a
 hard per-child timeout fires having made **zero** API calls (provider
 unreachable, auth failure, or tool-schema rejection), `delegate_task` writes a
@@ -1029,9 +1029,75 @@ offering the vendor-choice flexibility either Claude Code's/Copilot CLI's
 OTLP path or pi's adapter contract give a customer who already runs a
 different collector.
 
-## 6. Synthesis: instrumenting a from-scratch harness for observability
+## 6. DeepSeek Harness
 
-Read across all five harnesses, a from-scratch harness builder should treat
+VERIFIED (`github.com/deepseek-ai/deepseek-harness`'s own repository, `master` branch, fetched via `gh api` this session -- every cited document, README, and source file was read directly): DeepSeek Harness (`dsh`) is a TypeScript, open-source, developer-preview agent harness whose architectural motto is *everything is a plugin* -- every subsystem, from the LLM adapter to the filesystem to session persistence, is a Cordis plugin loaded through `cordis.yml` composition, with no hard-coded service beyond what the plugin graph provides (VERIFIED, `README.md`, fetched this session, line "built on an **everything-is-a-plugin** architecture and powered by Cordis"). Its observability surface is therefore both architecturally distinct from every other harness on this page (capabilities exist only when a deployment loads the plugin that provides them) and unusually well-documented at the contract level (every capability seam has a README and a subsystem doc page with machine-verified type-equivalent blocks). This section covers four surfaces: the built-in, OTel-JS-SDK-backed session-telemetry seam and its feedback-gated delivery modes; the per-session token meter and stats projections that give an in-session cost and performance accounting independent of any external collector; the runtime-invariants registry that turns package-owned internal assertions into load-time diagnostics; and the deliberately absent Layer-4 vendor-telemetry surface -- DeepSeek Harness phones home nothing by default, by design.
+
+### 6.1 Session telemetry as a capability seam -- OTel logs, not spans, with mandatory deployment redaction
+
+VERIFIED (`packages/session/session-telemetry/README.md`, `packages/session/session-telemetry-otel/README.md`, and `docs/subsystems/session-telemetry.md`, all fetched in full this session): DeepSeek Harness's outbound session reporting is split as a **capability seam** -- a Cordis service definition plus a separate, loadable service provider. The Service Definition package, `@deepseek-ai/dsh-session-telemetry`, owns the `SessionTelemetryBackend` abstract seam (`ctx.sessionTelemetry`), the capture coordinator, the fixed chunk projection, the redaction waterfall, and the minimal backend contract; the Service Provider a deployment loads, `@deepseek-ai/dsh-session-telemetry-otel`, is the OpenTelemetry JS SDK's log pipeline configured verbatim. The seam's own README states the boundary axiom directly: "the harness's aspect ends at `emit()`; batching, retry, queueing, and loss policy belong to the reporting SDK." This is the same boundary pi's own `@earendil-works/pi-telemetry` draws (§4.2 above) -- the schema and capture plumbing are the harness's; the delivery pipeline is the SDK's -- except that DeepSeek Harness *also* ships a concrete, loadable provider backed by the real OTel JS SDK, whereas pi stops at a no-op/in-memory default and leaves adapter authorship entirely to the embedding application.
+
+```mermaid
+flowchart TD
+    SLOG["Session event log\n(append-only SessionEvent stream)"]
+    COORD["SessionTelemetryCoordinator\nproject → structuredClone →\nredact → emit\nzero I/O, synchronous"]
+    WF["session-telemetry/record\nwaterfall (redact)\nships NO rules of its own"]
+    BACKEND["SessionTelemetryBackend\n(ctx.sessionTelemetry)\nemit() / flush?() / shutdown()"]
+    OTEL["@deepseek-ai/dsh-session-telemetry-otel\nLoggerProvider → BatchLogRecordProcessor\n→ OTLP/HTTP log exporter"]
+    OTLP["Remote OTLP collector"]
+
+    SLOG -->|"session/event\n(live capture)"| COORD
+    SLOG -->|"canonical log replay\n(on-demand capture)"| COORD
+    COORD --> WF
+    WF -->|"innermost next() is\na pass-through"| BACKEND
+    BACKEND -->|"[if mode: FULL]"| OTEL
+    OTEL --> OTLP
+    BACKEND -->|"[if mode: FEEDBACK_ONLY]\non feedback/record event"| OTEL
+    OTEL --> OTLP
+    BACKEND -->|"[if mode: DISABLED — default]\nno pipeline constructed"| NOWHERE["nothing leaves the process"]
+```
+
+VERIFIED (same sources): the logical record model is a `SessionTelemetryRecord` with two channels: `ledger` records mirror session-log events one-to-one (with the fixed projection that only the first `assistant/chunk` of each `(turn, step)` ships, so `seq` gaps on the wire are routine and never a loss signal), and `ops` records carry the two signals with no log home (`agent-error`, `shutdown`) -- deliberately omitting `event.seq`-style identity so they can never be mistaken for ledger rows. Severity is pre-mapped at capture: `error` for events whose own outcome flag says so (the tool-result block's `isError`, `turn/end` error reasons) and for `agent-error` operational records; `info` otherwise; `warn` remains available to `session-telemetry/record` policies and backends. Every other session event type, including plugin-merged ones the seam never heard of, passes through whole. Delivery is best-effort: the coordinator marks handed-off records, not delivered ones, records can be lost (crash, reload window) and duplicated (cursor-less re-adoption, SDK retries), so receivers dedupe ledger records on `(session.id, event.seq)`.
+
+VERIFIED (`packages/session/session-telemetry-otel/README.md` and `packages/session/session-telemetry-otel/package.json`, both fetched this session): the OTel backend ships real `@opentelemetry/*` dependencies -- `@opentelemetry/api`, `@opentelemetry/sdk-logs`, `@opentelemetry/exporter-logs-otlp-http`, `@opentelemetry/otlp-exporter-base`, `@opentelemetry/resources`, confirmed by reading the package's `dependencies` block directly. Two instrumentation scopes separate record channels -- ledger records on `@deepseek-ai/dsh-session-telemetry-otel`, operational records on `@deepseek-ai/dsh-session-telemetry-otel/ops` -- so receivers can alert on ops without summing them. Resource identity carries `service.name`/`service.version` from `dsh-llm`'s `APP_IDENTITY` plus the package's anonymous `user.id` (from `$DSH_HOME/.anonymous-user-id`), once per export batch rather than per record. The field mapping is direct: each seam record's `time`, `severity`, `body`, and `attributes` map onto the SDK log record's timestamp, severity, body, and attributes verbatim.
+
+VERIFIED (`packages/session/session-telemetry-otel/README.md`, fetched this session): the backend exposes three explicitly named `mode` values, which are the decisive structural difference from both Claude Code's beta OTel traces (§1.3, always-once-enabled streaming) and Hermes' single-named-backend Langfuse plugin (§5.5, always-on once configured):
+
+| `mode` | Behavior | Analogy on this page |
+|---|---|---|
+| `FULL` | Every projected record, including lifecycle ops records, is handed to the OTel SDK immediately | Claude Code's `CLAUDE_CODE_ENABLE_TELEMETRY=1` + `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` (§1.3) |
+| `FEEDBACK_ONLY` | Each `feedback/record` event replays, projects, and redacts the canonical session-log suffix through that event; later records wait for another feedback event and remain local if none arrives | No exact analogue on this page; Hermes' `/feedback` is user-initiated upload of a log bundle (§5.1), not a gate on streaming telemetry |
+| `DISABLED` (default) | No coordinator, provider, processor, or exporter is constructed; no telemetry record leaves the process, and a `feedback/record` logs that nothing will be shared | pi's plausibly-NOOP default (§4.2), except stated explicitly and with a local feedback warning |
+
+Mode resolution is a closed, fail-before-setup check: an unknown direct-construction value fails before transport configuration is read, only `FULL` accepts direct `ctx.sessionTelemetry.emit()` calls, and `FEEDBACK_ONLY` treats only the exact `feedback/record` object already stored in the canonical log as consent. The mounted service discloses the resolved mode through the seam's `SessionTelemetrySharingStatus` vocabulary (`full` / `feedback-only` / `disabled`), so the `/feedback` acknowledgement reports whether and how the session is shared -- even `DISABLED` discloses `disabled`.
+
+VERIFIED (`packages/session/session-telemetry/README.md` and the revival Agent Note `/.agents/notes/implemented/feature/2026-07-23-session-telemetry-otel-revival.md`, both fetched this session): the `session-telemetry/record` Cordis waterfall is the seam's redaction extension point, and this is where the design departs from every other harness on this page. The seam ships **NO rules of its own**: the innermost `next()` passes the record through unchanged, and with no listener mounted, records reach the backend exactly as captured -- so exported data is precisely as clean as the rules a deployment mounts. Listeners stack by transforming `next()`'s return value; returning without `next()` replaces everything beneath; a throwing listener withholds that one record fail-closed inside the coordinator's containment. Redaction applies to the exported copy only -- the canonical session log is never rewritten. The revival Agent Note records the explicitly rejected alternative of "no in-process redaction point, delegating to receiver-side collector processors" with the rationale "receiver-side redaction ships the secret first and scrubs it second" -- the waterfall puts an auditable, stackable scrubbing point before bytes leave the process. The same note also rejects "a built-in conservative rule set as the waterfall's innermost `next()`" on the ground that "as an SDK we cannot know which patterns are secrets in a given deployment, a shipped list invites false confidence while catching only known shapes, and false positives would corrupt exported bodies" -- the seam owns the mechanism; the deployment owns the policy. This is a third, distinct position in the redaction-design space this page maps: not Claude Code's content-gating opt-in (`OTEL_LOG_TOOL_CONTENT`, §1.3, which defaults to *not capturing* content at all rather than capturing and then redacting it), not Hermes' on-by-default `security.redact_secrets: true` blanket (§5.2, which scrubs known secret patterns before they ever reach a log file or the context window), but a **deployment-authored, waterfall-composable redaction pipeline with no shipped defaults** -- the deployment must opt in to *both* the mechanism (by loading the backend plugin) *and* the policy (by mounting waterfall listeners), or nothing is exported at all (the `DISABLED` default).
+
+VERIFIED (same Agent Note): in uploading modes, records carry the complete `event.data` as the waterfall returns it -- message content, tool arguments and results, the system prompt and tool schemas, todo text, compaction summaries, feedback text, and the session `cwd`. Provider credentials never appear: adapter API keys are constructor parameters, not session events, so they are structurally absent from the log and therefore from telemetry.
+
+VERIFIED (`packages/session/session-telemetry-otel/README.md`, fetched this session): the backend deliberately implements no `flush()`: the batch processor owns ordinary flushing, and forwarding the hint to `forceFlush()` would create the sole source of concurrent flushes whose interaction with shutdown's drain is undocumented -- the OTel JS SDK's concurrent-flush guard can make shutdown's internal drain skip. The Agent Note records three distinct silent-loss paths the initial `flush()` forwarding created, all eliminated by removing it. During shutdown, OTel awaits `exporter.forceFlush()` before the processor's bounded completion promise; if that transport promise never settles, the backend abandons the wait at `shutdownTimeoutMillis` (default 3000ms), logs the contained failure, and lets application teardown continue -- records still pending then may be lost at process exit. The OTel README states directly that receivers can detect crashes by `shutdown`-record absence: the marker is emitted at the session's own disposal or application teardown, and a marker followed by more events is a telemetry reload. In `FEEDBACK_ONLY` mode, a released prefix normally has no later `shutdown` marker, so its absence is not a crash signal.
+
+### 6.2 In-session accounting: the token meter and session-stats projection
+
+VERIFIED (`docs/subsystems/token-meter.md` and `packages/session/session-stats/README.md`, both fetched this session): DeepSeek Harness provides two in-session accounting surfaces independent of the outbound telemetry pipeline above, both operating as projection folds over the append-only session event log.
+
+The **token meter** (`ctx.tokenMeter`, package `@deepseek-ai/dsh-token-meter`) exposes one detached, immutable replay snapshot per session measuring request pressure and positional surface pricing. A `TokenMeasurement` carries `logRevision` (the number of durable events consumed), `baseline` (whether a reusable conservative usage anchor exists from a provider response), `surfaceDeltaTokens` (signed repricing of current surface content relative to that anchor), `totalTokens` (non-negative current request-and-response pressure), `surfaceTokens` (total route-priced request tokens across the current surface), and `nodes` (current surface nodes in positional head-to-tail order, each carrying both route-priced `tokens` and fixed `heuristicTokens`). Every measurement resolves the effective envelope's routed provider/model to that route's declared request-image pricing through `ctx.llm`, so image occurrences are priced as the visual tokens plus model-visible text the request actually sends; routes without declared pricing keep the fixed heuristic. `baseline.kind === 'usage'` means the latest successful provider call has the same canonical request envelope and its total is no lower than that call's full route-priced anchor; `estimated` means no reusable anchor exists, so the complete envelope and surface are priced from scratch. A later successful request replaces the earlier anchor; signed `surfaceDeltaTokens` preserves growth and shrinkage relative to a matching anchor. This is a richer position than the purely-numerical token counts Claude Code exposes through `/context` (§1.2) or Hermes' status-bar percentage (§5.3): the token meter provides an *attributed, positional breakdown* of where tokens live on the surface, so a client UI can render per-section cost rather than a single aggregate number.
+
+The **session-stats** projection unit (`@deepseek-ai/dsh-session-stats`) serves whole-log conversation figures -- turn and step counts plus LLM wall time, tool wall time, first-token latency, and decode-time totals -- as the `sessionStats` projection key. The fold state holds eight totals plus in-flight boundaries; the wire view is a strict subset, so the persisted-cache state schema extends the view schema with boundary fields. The reference consumer is the web chat stats strip. Every field is 0 until its first contributing event; the composed registry always serves the key, so clients read the value rather than key presence. This is the same job Hermes' `display.turn_summary` performs (§5.3, "edited 2 files +18 -3 · read 4 files · ran 3 commands") and Claude Code's per-turn token accounting does, except DeepSeek Harness factors it into a separate, composable projection unit that any client (TUI, web, or headless) can consume from the projection registry's snapshot and change feed without depending on a specific UI layer.
+
+### 6.3 Runtime invariants: package-owned, registry-mediated self-diagnostic checks
+
+VERIFIED (`docs/subsystems/invariants.md`, fetched this session): `@deepseek-ai/dsh-invariants` is a configurable registry service (`ctx.invariants`) for **package-owned runtime invariant checks** -- a self-diagnostic mechanism with no direct analogue on this page. Every workspace package may publish a `./invariant` companion plugin that registers checks under its exact npm package name. The registry owns selection (a global `enabled` switch plus `package_allowlist`/`package_blocklist` regex patterns), name reservation, child-fiber lifecycle, and package-attributed failure; what a check may assert -- authoritative event streams or mutable data, never service or method presence -- is the runtime-invariants convention. A companion installs a check only when its package owns an observable event or mutable-data relationship; otherwise it exports an empty installer whose leading comment starts `No runtime invariant:` and explains, package-specifically, why nothing is checkable. A mechanical verification script (`pnpm run verify-package-invariants`) rejects generated markers, unexplained empty installers, non-empty installers that omit or ignore the reporter, incorrect registration names, and incomplete export, publication, dependency, or bundle wiring.
+
+The key design point, compared to the doctor-style checkups this page documents for Claude Code (§1.2) and Hermes (§5.1), is that runtime invariants are *package-attributed assertions about the harness's own internal consistency*, not *installation-health checks about the user's configuration environment*. An enabled installer runs in a dedicated child Cordis fiber; `fail(message)` throws `InvariantError` (extends `Error` with stable `code: 'INVARIANT'`, the owning `packageName`, and a message prefixed `invariant violated by "<package>": …`), so a violation is attributable without the registry importing any product package. This is the static-analysis analogue of Hermes' plugin-populated `doctor_checks()` registry (§5.1), except that Hermes' checks are interactive and user-facing (a human runs `hermes doctor` and sees a pass/fail list), while DeepSeek Harness' invariants are load-time assertions that throw if violated -- a developer/safety check at the structural seam boundary, not a user-facing diagnostic surface. A from-scratch harness that needs both should consider providing both: load-time, package-attributed invariants for catching structural seam violations early (before the first request), and interactive doctor-check equivalents for users who need to understand *why* something configured one way is not loading.
+
+### 6.4 No vendor telemetry: an explicit, default-off stance with acknowledged trade-offs
+
+VERIFIED (this session, checked against every doc page and README fetched for this section, plus the Agent Note `2026-08-10-telemetry-default-off.md` cross-referenced in the feedback-gated-telemetry note): DeepSeek Harness has no Layer-4 vendor-telemetry surface at all -- no default-on crash reports, no anonymized reliability metrics, no install/update version ping comparable to pi's `PI_TELEMETRY` (§4.2). The default mode for session telemetry is `DISABLED`, which constructs no reporting pipeline and hands no capture to a backend, and the only OTel export path is the explicitly loaded `dsh-session-telemetry-otel` plugin with its own `mode: FULL` opt-in. The anonymous `user.id` written to `$DSH_HOME/.anonymous-user-id` is used only as a resource attribute on the OTel exporter (when a deployment opts in to exporting), not as a phone-home identifier. This is a deliberate design stance: as an open-source, self-hosted product, DeepSeek Harness has no vendor recipient for crash data even if it wanted to send one, and the explicit `DISABLED` default ensures that a deployment running the default composition never sends session data anywhere. The trade-off this makes -- versus Claude Code's default-on (for qualifying sessions) error reporting giving Anthropic first-party visibility into field failures (§1.4) -- is that DeepSeek Harness's own maintainers have strictly *less* first-party signal about how their software behaves in the field than a closed-source, hosted harness would. The Agent Note `2026-08-10-telemetry-default-off.md` (named but not independently fetched this session) is the documented rationale for making `DISABLED` the default; the revival Agent Note (VERIFIED, fetched this session) records that an earlier version of the telemetry seam on a feature branch exported raw session events verbatim, which "legal review declined," directly motivating both the `session-telemetry/record` redaction waterfall and the default-off posture.
+
+## 7. Synthesis: instrumenting a from-scratch harness for observability
+
+Read across all six harnesses, a from-scratch harness builder should treat
 observability not as one feature but as (at least) four separable layers, each with a
 different question it answers, a different default posture, and a different consumer --
 conflating them, as an early design might, produces exactly the kind of ambiguity this
@@ -1073,7 +1139,12 @@ parent/child structure and durations), while a cost event's purpose is to answer
 much did this cost, broken down by what" (which requires accurate categorical
 attribution, not causal structure) -- a harness that only ever emits one flat stream
 tagged with both kinds of attribute makes both jobs harder for the consumer trying to
-build a dashboard for either question alone.
+build a dashboard for either question alone. DeepSeek Harness's OTel backend maps
+session records onto OTel *logs*, not spans, and explicitly records that it rejected
+a span model for this revival because "the span model is lossy for forkable,
+interruptible sessions" (§6.1) -- a design choice that reinforces the same distinction
+from the opposite direction: a session log is a replayable event stream, not a
+causal trace, and the right OTel signal for it is a log record, not a span.
 
 **Layer 3 (interactive debug surface)** is the layer every harness examined here treats
 as table stakes, but with real depth differences worth building toward deliberately
@@ -1116,7 +1187,8 @@ independently (`DISABLE_ERROR_REPORTING` vs. `DISABLE_TELEMETRY` as two separate
 without requiring the customer to also give up their own tracing. A harness with no
 such layer at all -- the state this session found for OpenCode's core, where the entire
 observability surface beyond flat debug logs is either absent or delegated to
-third-party plugins (§3.2) -- trades that separation for simplicity, at the cost of the
+third-party plugins (§3.2), and for DeepSeek Harness, where no vendor-telemetry
+surface exists at all (§6.4) -- trades that separation for simplicity, at the cost of the
 maintainers themselves having no first-party signal of how their own software behaves
 in the field short of what users choose to report manually. pi (§4) lands in a third,
 distinct position worth naming as its own design point rather than folding into either
@@ -1130,7 +1202,13 @@ an embedding *application* strictly more structural detail than either Claude Co
 Copilot CLI expose by default, via §4.2's adapter-optional Layer 2 schema -- richness of
 the schema and richness of the vendor's own default visibility are not the same
 variable, and pi is the clearest evidence in this page that a harness can maximize one
-while minimizing the other.
+while minimizing the other. DeepSeek Harness (§6.4) lands at the same extreme as
+OpenCode on this axis -- no vendor telemetry at all -- while simultaneously shipping a
+richer Layer 2 surface than either OpenCode or pi: a fully wired OTel log pipeline
+with feedback-gated delivery modes, deployment-authored redaction rules, and per-record
+channel separation, all default-off but structurally complete once opted in. The lesson
+is that the four-layer taxonomy does not predict richness within any single layer --
+a harness can have a minimalist Layer 4 and a maximalist Layer 2 at the same time.
 
 pi's Layer 2 story (§4.2) is itself the sharpest illustration in this page of a fourth
 lesson beyond the three drawn above: a from-scratch harness does not have to choose
@@ -1148,6 +1226,25 @@ pi's split lets a harness ship a fully-specified, versioned span vocabulary
 documented cost that the CLI binary run standalone has, as far as this session could
 verify, no path to seeing any of those spans exported anywhere without an embedder
 supplying the missing adapter.
+
+DeepSeek Harness (§6.1) occupies a sixth, distinct point in this same Layer 2 design space
+-- not the pipeline-exporter split Claude Code and Copilot CLI ship, not the schema-only
+contract pi ships, not the absent-core-and-community-plugins state OpenCode occupies
+(§3.2), not Hermes' bundled-single-backend Langfuse plugin (§5.5), but a **capability
+seam with a shipped-but-default-off concrete OTel backend**: the seam contract and
+capture coordinator are always loadable; the OTel backend is a separate plugin that a
+deployment explicitly adds to its composition; the default mode (`DISABLED`) constructs
+nothing; and the two uploading modes (`FULL`, `FEEDBACK_ONLY`) ship the full OTel JS SDK
+pipeline behind their respective opt-in gates. The redaction-design choice is similarly
+distinct: the seam's `session-telemetry/record` waterfall provides the mechanism but
+ships no rules, so a deployment that loads the backend with `mode: FULL` but mounts no
+redaction listeners exports records exactly as captured -- including file contents and
+command output. This is a strictly more composable but also more deployment-burdensome
+position than Hermes' blanket `security.redact_secrets: true` (§5.2): the deployment
+that wants redaction must author and mount its own rules rather than relying on a
+shipped default, but the deployment that wants a different redaction policy (or none at
+all) is never fighting against a built-in list that over-scrubs or under-scrubs for its
+particular environment.
 
 Hermes (§5.5) supplies a fifth data point on this same axis, distinct from
 all three positions named above: rather than a built-in vendor-neutral OTLP
@@ -1172,7 +1269,7 @@ demonstrating that the four-layer taxonomy above is a way to *reason about*
 an observability surface's separable concerns, not a prescription that one
 harness must pick one strategy per layer and apply it uniformly.
 
-## 7. Sources
+## 8. Sources
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `code.claude.com/docs/en/cli-reference`, fetched this session -- `--debug`,
@@ -1347,3 +1444,80 @@ fetched this session via `hermes-agent.nousresearch.com/docs`'s own combined
   book's own prior pages), cross-referenced for Hermes' own architectural
   introduction (the shared `AIAgent` class, the three hook systems, the
   eight-layer defense-in-depth security model) -- not re-derived here.
+
+**DeepSeek Harness (authoritative for DeepSeek Harness's own repository content only,
+`github.com/deepseek-ai/deepseek-harness`, `master` branch -- fetched via `gh api
+repos/deepseek-ai/deepseek-harness/contents/...` this session unless noted):**
+- `README.md`, fetched this session -- the developer-preview notice, the
+  everything-is-a-plugin architecture description, and the Cordis framework
+  reference.
+- `docs/subsystems/session-telemetry.md`, fetched in full this session -- the
+  capability-seam split, the `SessionTelemetryRecord` type (channel, time,
+  severity, attributes, body), the `SessionTelemetrySink` contract (`emit`/`flush?`/`shutdown`),
+  the `session-telemetry/record` waterfall declaration, the sharing-disclosure
+  vocabulary, and the two capture modes (live, on-demand).
+- `packages/session/session-telemetry/README.md`, fetched in full this session --
+  the backend contract, the capture coordinator design, the handoff cursor, the
+  redaction waterfall semantics ("ships NO rules of its own"), the best-effort
+  delivery stance, and the at-most-once crash-durability boundary.
+- `packages/session/session-telemetry-otel/README.md`, fetched in full this session
+  -- the three `mode` values (`FULL`/`FEEDBACK_ONLY`/`DISABLED`), the OTel JS SDK
+  pipeline composition (`LoggerProvider` → `BatchLogRecordProcessor` → OTLP/HTTP
+  exporter), the `cordis.yml` configuration example, the field mapping, the
+  deliberate omission of `flush()`, the `shutdownTimeoutMillis` deadline, the
+  two instrumentation scopes, resource identity, and all known limitations.
+- `packages/session/session-telemetry-otel/package.json`, fetched this session --
+  confirmed real `@opentelemetry/*` dependencies (`api`, `api-logs`,
+  `exporter-logs-otlp-http`, `otlp-exporter-base`, `resources`, `sdk-logs`).
+- `.agents/notes/implemented/feature/2026-07-23-session-telemetry-otel-revival.md`,
+  fetched in full this session -- the revival decision rationale, the rejected
+  alternatives (outbox, receiver-side redaction, built-in conservative rule set,
+  span model, full-log replay, `flush()` forwarding), the boundary axiom, and
+  the legal-review motivation for the redaction waterfall.
+- `.agents/notes/implemented/feature/2026-08-05-feedback-gated-session-telemetry.md`,
+  fetched in full this session -- the three delivery modes, the feedback-gated
+  consent model, the on-demand capture design, and the rejected alternatives
+  (permanent-open session, retained capture-time records, temporary public-emit
+  flag, unmounted-plugin-as-disabled).
+- `docs/subsystems/token-meter.md`, fetched this session -- the `TokenMeasurement`
+  and `TokenSurfaceNode` types, the baseline/estimated anchor model, route-priced
+  image tokens, the `ctx.tokenMeter.measure()` API.
+- `packages/session/session-stats/README.md`, fetched this session -- the
+  `sessionStats` projection unit, the eight fold fields (`turns`, `steps`, `llmMs`,
+  `toolMs`, `ttftMs`, `ttftSteps`, `decodeMs`, `decodeTokens`), and the web chat
+  stats strip as reference consumer.
+- `docs/subsystems/invariants.md`, fetched this session -- the `ctx.invariants`
+  registry, `InvariantInstaller` and `InvariantFailure` types, package-allowlist/
+  blocklist selection, child-fiber lifecycle, and the `./invariant` companion
+  contract with mechanical verification.
+- `docs/event-producer-consumer.md`, fetched this session -- the full
+  event-dispatch/listener matrix confirming `session-telemetry` as a listener on
+  `agent/error`, `session/created`, `session/disposed`, `session/event`, and
+  `session/flush`, and `session-telemetry-otel` as a listener on `session/event`
+  only.
+- `docs/subsystems/feedback.md`, fetched this session -- the `MessageFeedbackItem`
+  model (deliberately separate from the immutable session-level `feedback/record`
+  event), confirming that message feedback is a local storage sidecar, not telemetry.
+- `docs/subsystems/core.md`, fetched this session -- the spine architecture
+  (session → system-prompt → tools → agent → agent-loop → scope), confirming the
+  session-event log as the single source of truth that all observability surfaces
+  feed from.
+- `docs/subsystems/session.md`, fetched this session -- the `SessionEventMap`
+  discriminated union (every event type from `turn/start` through `session/end-seed`)
+  and the `EpochHeader` request-reconstruction model, underlying the telemetry
+  seam's log-mirror capture design.
+- `docs/subsystems/commands.md`, fetched this session -- the human-command
+  registry and the `feedback/record` event model that the `FEEDBACK_ONLY` telemetry
+  mode uses as consent gate.
+- `docs/defensive-patterns.md`, fetched this session -- the "Never hand untrusted
+  output the ambient environment or predictable paths" rule (scrubbed `*KEY*`/
+  `*SECRET*`/`*TOKEN*`/`*PASSWORD*` env vars in spawned commands), complementary
+  to the telemetry seam's redaction boundary.
+- `docs/development.md`, fetched this session -- the TypeScript project layout,
+  build commands, and environment-variable surface (`DEEPSEEK_API_KEY`,
+  `DEEPSEEK_BASE_URL`), confirming no dedicated debug/diagnostic CLI flags beyond
+  the project composition system.
+- `docs/config-catalog.md`, fetched in full this session -- the generated
+  configuration catalog for every loadable plugin, including the
+  `dsh-session-telemetry-otel` config block (`mode`, `exporter`, `processor`,
+  `shutdownTimeoutMillis`).

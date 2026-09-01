@@ -1145,34 +1145,406 @@ count, a token percentage, and an iteration count).
 
 ---
 
-## 6. Synthesis
+## 6. DeepSeek Harness (DeepSeek AI)
 
-| Concern | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
-|---|---|---|---|---|
-| Tier-1 file(s) | `CLAUDE.md` hierarchy (managed → user → project → local), plus `.claude/rules/*.md` **without** `paths:` | `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md`, `~/.copilot/instructions/**` | `AGENTS.md` (project + global), `CLAUDE.md`/deprecated `CONTEXT.md` as Claude-compat fallbacks, plus config `instructions[]` (local globs + remote URLs) | `AGENTS.md`/`AGENTS.override.md`/`CLAUDE.md` ancestor walk (global `~/.pi/agent/AGENTS.md` + every directory from project root down to cwd), plus a full-replace `SYSTEM.md`/append-only `APPEND_SYSTEM.md` pair (project variant trust-gated) | Context Files (`AGENTS.md`/`CLAUDE.md`/`.cursorrules`/`.hermes.md`) discovered under cwd, occupying the `context` cache tier; `SOUL.md` (identity) occupies the separate `stable` tier instead (§5.1) |
-| Tier-1 freshness | Session-start read; no documented hot-reload | Undocumented either way | **Re-read from disk every turn** -- source-verified, no caching in `Instruction.system()` | Session-start read (via `resource-loader.ts`'s `reload()` at bootstrap); re-read only on explicit `/reload` -- source-verified, same posture as Claude Code, the opposite of OpenCode | Session-start build only; the whole `stable`/`context`/`volatile` prompt is rebuilt **only** when a context-compression pass fires, not per-turn and not on any `/reload`-equivalent found this session -- source-verified (§5.1) |
-| Stated size guidance | "target under 200 lines per CLAUDE.md file"; loaded in full regardless of length | None found on the pages fetched | None found on the pages fetched | None found on the pages fetched | **Enforced, not merely advised**: a dynamically-scaled character cap (20,000-char floor, 500,000-char ceiling, 6% of the model's context window), source-verified (§5.2) -- the only harness on this page whose size guidance is a hard, code-enforced ceiling with automatic truncation rather than a documentation recommendation |
-| Do `@` imports save context? | **No** -- stated twice in the docs | UNCONFIRMED; imports exist (v1.0.66), token effect not documented | Not applicable -- no `@`-import-expansion mechanism found in `AGENTS.md`/`instructions[]` loading (the docs instead show a manual, agent-authored "read this file on demand" convention, not a harness-parsed import syntax) | Not applicable -- no `@`-import-expansion mechanism for context files found in the source read this session | Not applicable -- no `@`-import-expansion mechanism for Context Files found in the source read this session; a distinct `@`-syntax exists for Context References (inline message injection), per [memory-management.md](memory-management.md) §5.5 |
-| Path-scoped tier | `.claude/rules/` + `paths:` glob list; triggers on reading a matching file, "not on every tool use" | `.github/instructions/*.instructions.md` + `applyTo:`; body no longer in system prompt every session (v1.0.35), consolidated to a table row (v1.0.26) | **None found** -- UNCONFIRMED-as-absent | **None found** -- source-verified absent this session | **None found** -- source-verified absent in the source read this session |
-| Lazy-by-location tier | Nested `CLAUDE.md` and nested `.claude/skills/` below cwd load on first read/edit in that subdirectory | Discovery walks working dir → git root (v1.0.11); no documented "load on read of subdirectory file" behavior found | Source-verified nearby-file auto-attach: walking up from a `read`-tool target's directory for the nearest un-surfaced `AGENTS.md`/`CLAUDE.md`/`CONTEXT.md`, deduplicated per assistant message | **None** -- source-verified negative: `read` tool's own `COMPACT_RESOURCE_FILE_NAMES` handling is a TUI display label only, not a context-attach mechanism | **None found** -- Context Files are discovered once under the working directory at prompt-build time; nothing found in the source read this session that re-surfaces a subdirectory's own file on a later touch |
-| Tool-schema deferral | Not documented as a distinct mechanism from the skills tier | Experimental embedding-based per-turn retrieval (below) doubles as this | Not documented for OpenCode's own built-in tool set | **Native deferred loading** for Anthropic Sonnet/Opus/Fable 4.5+ (`defer_loading`/`tool_reference`) and OpenAI gpt-5.4+ (`tool_search_call`/`tool_search_output`) via `pi.registerTool()`+`pi.setActiveTools()`; additive-only, falls back to resending the full active tool list (cache-prefix risk) on other models or on non-additive changes | Not found in the sources read this session; tool-definition JSON schema cost is measured and reported as its own `/context` category (§5.4) but nothing found gates it behind a deferred-loading mechanism the way pi's does |
-| Invoke-only tier | Skills: body loads on use; description always in context (1,536-char cap) unless `disable-model-invocation: true`; supports its own `paths:` | Skills: `SKILL.md` "injected in the agent's context" when used; always-on listing cost UNKNOWN | Skills: `name`+`description` (≤1,024 chars) always listed in `<available_skills>`; body loads via `skill({name})` call; a `deny`d skill is omitted from the listing entirely (zero index-entry cost) | Skills: `<available_skills>` XML index (name/description/location) always listed once any skills exist; body is **not** auto-injected on invocation -- the model must issue its own `read` tool call against the listed path; a `disable-model-invocation: true` skill is omitted from the index entirely | Skills: `<available_skills>` index always resident (per [built-in-skills.md](built-in-skills.md) §5's `agentskills.io`-conformant coverage, not re-derived here); index cost and per-skill `SKILL.md` body cost are itemized as separate figures in `/context all` (§5.4) |
-| Exclusion | `claudeMdExcludes` globs, any settings layer, arrays merge | `/instructions` toggle picker | Per-skill/per-agent-pattern `allow`/`ask`/`deny` permissions; no equivalent exclusion lever found for `AGENTS.md`/`instructions[]` itself | `--no-context-files`/`-nc` disables the whole tier-1 context-file mechanism at once; no partial-exclusion glob found | No per-file exclusion glob found; `context_file_max_chars` (§5.2) is a size-budget override, not an exclusion lever, and nothing found disables Context File discovery outright |
-| Free maintainer notes | Block-level HTML comments stripped before injection | Not documented on pages fetched | Not documented on pages fetched | Not documented on pages fetched | Not found in the sources read this session |
-| Automated trim advice | `/doctor` trim proposal (v2.1.206+) | Not documented on pages fetched | Not documented on pages fetched | Not documented on pages fetched | Not found in the sources read this session -- truncation is automatic and unconditional (§5.2) rather than advisory |
-| Retrieval-based loading | Not documented | Experimental embedding-based per-turn retrieval of skill/MCP instructions; `dynamicRetrieval` setting | Not documented; remote `instructions[]` URLs are always fully fetched (5s timeout), not retrieved by relevance | Not documented for context files; the closest analog is the provider-capability-gated tool-schema deferral above, which is retrieval-*shaped* but triggered by an extension's own `setActiveTools()` call, not a background relevance search | Not found in the sources read this session; Context File truncation (§5.2) discards a contiguous middle span rather than selecting by relevance |
-| Verify what loaded | `/context` → **Memory files**; `InstructionsLoaded` hook | `/context` (Custom Instructions itemized separately), `/env`, `/instructions` | No dedicated command found in the docs fetched this session | No dedicated command found in the sources fetched this session; `/session` ("session info and stats") is the closest analog, per-file provenance UNCONFIRMED; TUI footer shows live token/cache/cost/context usage | **`/context`**: an explicitly "Claude Code-style" glyph grid (source's own docstring) across **8** named categories (system prompt, tool definitions, rules, skills, MCP, subagent definitions, memory, conversation), plus a `/context all` per-skill/per-toolset drill-down -- source-verified, the most granular category breakdown of any harness on this page (§5.4) |
-| Survives compaction? | Tier 1 re-injected; path-scoped and nested lost until retriggered; skills capped 5K/25K | Skills survive; instruction-file re-injection **undocumented** | Not directly investigated here (see [context-compression.md](context-compression.md) §3 for OpenCode's own compaction mechanics); moot in one sense, since tier 1 is rebuilt fresh every turn regardless of compaction state | Not directly investigated here (see [context-compression.md](context-compression.md) §4 for pi's own compaction mechanics); tier 1 is loaded once at session start (§4.2), so it is not literally "re-read" by compaction the way OpenCode's per-turn rebuild makes the question moot, but nothing fetched this session states whether pi's summarization step re-includes or drops the standing context-file content specifically | Not really the applicable question on Hermes: Context Files are not part of the compressible message history at all -- they live in the cached `context` system-prompt tier, rebuilt only when a compression pass fires, from the same on-disk source each time (§5.1). So compaction changes *when the tier is next rebuilt*, not *whether the file survives* -- a third framing distinct from Claude Code's re-injected/lost split and OpenCode's/pi's own moot-by-construction findings |
+Sources for this section: VERIFIED, fetched 1 September 2026 directly
+from `github.com/deepseek-ai/deepseek-harness`, `master` branch, via `gh
+api`/`raw.githubusercontent.com` -- `packages/context/agent-instructions/README.md`
+(the workspace-instruction context package), `packages/context/agent-instructions/src/render.ts`
+(the budget-truncation renderer), `packages/core/system-prompt/README.md` and
+`packages/core/system-prompt/src/index.ts` (prompt assembly, sections, contexts,
+tool-schema providers, variables), `packages/skill/tool-skill/src/index.ts` (the
+model-facing `skill` tool and catalog), `packages/skill/skill/src/index.ts` and
+`packages/skill/skill-filesystem/src/index.ts` (the skill provider registry and
+local discovery), `packages/compaction/compaction-basic/README.md` (the compaction
+backend's thresholds and retention policy), `docs/subsystems/system-prompt.md`,
+`docs/subsystems/scope.md`, `docs/subsystems/skills.md`,
+`docs/subsystems/compaction.md`, `docs/subsystems/session.md`,
+`docs/subsystems/tools.md`, `docs/subsystems/token-meter.md`,
+`docs/AGENTS.md` (the doc-budgeting standard -- not the runtime instruction
+format), and `docs/architecture.md`. This section is source-verified in the
+same sense this page's own §3 (OpenCode), §4 (pi), and §5 (Hermes Agent) sections
+are: every claim below is read directly off DeepSeek Harness' own implementation
+and documentation, not inferred from marketing prose. The harness is in developer
+preview; per its own README, "THERE WILL BE COMPATIBILITY-BREAKING CHANGES."
 
-**The design lesson.** All four harnesses independently converged on
-some version of the same multi-tier answer, and all four make the
+One framing note worth stating explicitly because DeepSeek Harness' vocabulary
+does not map one-to-one onto the other harnesses' own terminology: what this
+page's other sections call "tier 1" (an always-loaded instruction file) and
+"section" (a unit of system-prompt text) are *different things* on DSH. An
+`AGENTS.md` file is not a prompt section -- it is a `PromptContext`, a dynamic
+runtime-context contribution materialized as a durable `user/message` in model
+history. What DSH calls a `PromptSection` is the system-prompt tier proper, and
+`AGENTS.md` content never enters that tier at all. The analysis below preserves
+this page's own tier-1/2/3 vocabulary for cross-harness comparison while naming
+DSH's own terms precisely enough to avoid the conflation.
+
+### 6.1 The two kinds of model-facing text -- `PromptSection` vs. `PromptContext` -- and why the distinction matters for budget
+
+VERIFIED from `packages/core/system-prompt/src/index.ts` and its own README:
+DeepSeek Harness assembles two independent channels of instruction text before
+each model step, not one. They are exposed as separate `PromptSection` and
+`PromptContext` registries on `ctx.systemPrompt`, and they reach the model through
+different wire channels:
+
+- **`PromptSection`** -- ordered, named, text-contributed sections concatenated
+  into the system prompt. Sections carry an `order` (ascending numeric, with
+  code-unit name as a tiebreaker), resolve their `text` field on each `assemble()`
+  call (static strings or `(context: AssembleContext) => string` providers), and
+  may reference `{{variable}}`s that are interpolated at render time. A section
+  marked `complete: true` becomes the sole system-prompt section after assembly
+  (more than one active complete section makes assembly fail). This is the
+  system-prompt tier proper.
+
+- **`PromptContext`** -- ordered, named, dynamic context contributions that the
+  agent loop logs as durable `user/message` snapshots in model history, *not* as
+  system-prompt content. The `renderContextSnapshot()` function joins their
+  rendered text under a header: "Current runtime context. This snapshot
+  supersedes earlier runtime-context snapshots." Contexts are re-logged after
+  retained model history only when their content changed or compaction removed
+  the prior snapshot, making them cache-friendly in the same way Hermes Agent's
+  own volatile tier is (§5.1, cross-referenced for the cache axis, not repeated).
+
+This is a structural separation not found on any other harness this page
+documents. On Claude Code, Copilot CLI, and OpenCode, all instruction text
+enters the same prompt channel (system prompt or user message, not both). On
+Hermes Agent, Context Files occupy the `context` tier of a three-tier
+cache-stability axis (§5.1) but are still concatenated into the system prompt.
+On DSH, workspace instructions (`AGENTS.md` files) are `PromptContext` entries,
+while tool guidance, deployment persona, and harness identity are `PromptSection`
+entries -- and they reach the model through different message roles. The budget
+levers for each channel are different (§6.2–6.3 below).
+
+### 6.2 Workspace instructions (`AGENTS.md`/`CLAUDE.md`): a hard byte budget with content-priority truncation, touch-driven discovery of nested files, and no path-scoped tier
+
+VERIFIED from `packages/context/agent-instructions/README.md` and
+`packages/context/agent-instructions/src/render.ts`:
+
+**Discovery and loading.** The `dsh-agent-instructions` plugin discovers
+workspace instruction files under the session's working directory. The user-global
+`$DSH_HOME/AGENTS.md` loads first, followed by every existing candidate file from
+the project root down to the session working directory, in broad-to-specific
+order. The project root is found by walking upward from cwd looking for a
+`.git` directory (configurable via `projectRootMarkers`). Default candidate file
+names are `AGENTS.md` and `CLAUDE.md` (configurable via
+`instructionFileCandidates`), with additive `AGENTS.local.md` and
+`CLAUDE.local.md` local overlays (configurable via
+`localInstructionFileCandidates`). Sibling files whose content matches after
+trimming render once -- a `CLAUDE.md` that duplicates its `AGENTS.md` is not
+repeated. This is the same dedup-by-content shape Copilot CLI implements by
+changelog entry (§2.1), but on DSH it operates at the per-directory level
+rather than globally, and it is silent (no "identical file" notice) rather than
+announced in a changelog entry.
+
+The entire baseline is rendered once as a `user/message` event at the first
+eligible `agent/pre-step` of a session. Files are not re-read on every turn:
+there is no file watcher, and external edits become visible only on the next
+successful first-party `read`, `write`, or `edit` call (a "touch-driven" refresh
+model), or when a resumed session reconciles its baseline.
+
+**The hard byte budget.** This is DSH's central context-budget mechanism for
+workspace instructions, and it is genuinely distinct from both Claude Code's
+"target under 200 lines" recommendation (§1.1) and Hermes Agent's
+dynamically-scaled character cap with head/tail truncation (§5.2). The
+configuration surface is a single required field, `maxBytes` (default in the
+shipped `dsh-base` composition: 65,536 bytes). A second field, `maxSourceBytes`
+(default 1,048,576), caps individual source files before rendering -- a source
+file exceeding this per-file cap is omitted rather than read and truncated.
+
+When the complete rendered baseline exceeds `maxBytes`, rendering keeps the
+**most specific** files first: it drops whole broader files before truncating
+the most-specific file. VERIFIED from `src/render.ts`: the `truncateUtf8()`
+helper truncates at a UTF-8 code-point boundary (backing up past continuation
+bytes to avoid splitting a multi-byte character). When truncation or omission
+occurs, the rendered text includes a visible `Workspace instruction budget ...`
+notice naming the omitted and truncated paths. This notice is model-facing
+text inside the `<system-reminder>` block, not a host-only log entry -- the
+same design philosophy as Hermes Agent's own in-band truncation marker (§5.2),
+but with a different priority order: DSH truncates from the broad end (keeping
+the most specific file intact as long as possible) while Hermes truncates the
+middle (keeping head and tail). An over-budget broad file is omitted entirely;
+during refresh it is treated as temporarily unavailable rather than removed.
+
+```mermaid
+flowchart TD
+    Discover["Discover instruction files<br/>(user-global + project root → cwd)"]
+    Read["Read each candidate file<br/>(skip if over maxSourceBytes)"]
+    Dedup["Dedup identically-content siblings<br/>per directory"]
+    Budget{"Total rendered bytes<br/><= maxBytes (65,536 default)?"}
+    Keep["Render full baseline<br/>as user/message PromptContext"]
+    Trunc["Drop broader files first;<br/>truncate most-specific file last;<br/>insert budget notice"]
+    Discover --> Read --> Dedup --> Budget
+    Budget -->|"yes"| Keep
+    Budget -->|"no"| Trunc
+```
+
+**Nested discovery is touch-driven, not glob-triggered.** After a successful
+first-party `read`, `write`, or `edit` call reaches a deeper directory, the next
+request includes the newly applicable instruction file as an additional
+`user/message`. This is structurally the same lazy-by-location pattern Claude
+Code uses for nested `CLAUDE.md` (§1.3) and OpenCode uses for
+`Instruction.resolve()` (§3.3), but on DSH the trigger is a filesystem *tool
+call* rather than a file *read* specifically -- `write` and `edit` touches also
+qualify, and `bash` directory changes do not (shell syntax and per-call shell
+state are "not a reliable filesystem seam," per the README explicitly). Changed
+files produce `Updated instructions from: <path>` plus replacement content;
+files that disappear or become per-directory duplicates produce a removal notice.
+
+**No path-scoped (tier-2) instruction tier.** Neither the agent-instructions
+README nor a review of its source turned up anything resembling Claude Code's
+`paths:`-scoped rules (§1.2) or Copilot CLI's `applyTo:`-scoped instruction
+files (§2.2). The triggering mechanism for additional context is filesystem
+touch-based proximity (a `read`/`write`/`edit` reaching a deeper directory),
+not a glob pattern. This is UNCONFIRMED-as-absent (not found in the sources
+fetched this session), not proven impossible, but it means DSH's own documented
+answer to "how do I scope instructions to a subset of files without paying for
+them everywhere" is currently the touch-driven nested-discovery mechanism above
+and the skills tier (§6.5), not a middle tier with explicit path patterns.
+
+**No `@`-import expansion.** VERIFIED from the README's "Candidate semantics
+stay intentionally small" limitation: "lowercase names, `.claude/rules/`, and
+`@path` imports are not interpreted." This is explicitly out of scope by design,
+not an oversight. Splitting an instruction into multiple files and
+cross-referencing them is an author convention the model can follow, not a
+harness-parsed import syntax.
+
+### 6.3 Prompt sections: per-step assembly, scoped shadowing, and the `complete` override
+
+VERIFIED from `packages/core/system-prompt/src/index.ts` and its README:
+
+**Assembly is per-step.** The agent loop calls `assemble()` once per model step,
+resolving all registered section providers, context providers, tool-schema
+providers, and variables for that step's `AssembleContext` (which carries the
+scope key and an optional abort signal). Sections are concatenated in ascending
+order by their `order` field, with code-unit name as a deterministic tiebreaker
+for equal orders. The first-party section-order allocation is a sparse named
+map (`SECTION_ORDERS` in the source): `HARNESS_IDENTITY` at −1000, the
+`DEPLOYMENT_PERSONA` at 0, tool-specific sections (`TOOL_BASH` at 1000,
+`TOOL_READ` at 1100, etc.) through `TOOL_SUBAGENT` at 2800 and
+`STRUCTURED_OUTPUT` at 9900. This is the same "sparse named order allocation"
+design pattern this book's own [built-in-skills.md](built-in-skills.md) finds
+in other harnesses' tool-guidance ordering; DSH makes the allocation
+programmatically addressable via `ctx.systemPrompt.getSectionOrder(name)`.
+
+**Scoped shadowing, not just global sections.** DSH uses the `dsh-scope`
+package's `ScopedLayers` registry (§6.6) to layer prompt contributions: a
+section registered through an agent's own `agent.ctx` shadows a same-named
+global section for that agent alone. The merge semantics are "nearest scope
+wins": the assembly resolves the global layer plus the viewing scope's chain,
+and scoped entries shadow globals of the same name. Variables and tool-schema
+providers follow the same scoping -- a tool registered in an agent's own scope
+contributes alongside global tools (not replacing them), while a section or
+variable of the same name replaces its global counterpart. This is a richer
+scoping model than any other harness on this page documents for its own prompt
+assembly: Claude Code has per-file `paths:` scoping but no per-agent prompt
+shadowing; Copilot CLI has `applyTo:` scoping but no per-agent override;
+OpenCode has no path-scoped tier at all (§3.2); pi and Hermes Agent have no
+path-scoped tier either (§§4.7, 5.2).
+
+**The `complete` override.** A `PromptSection` marked `complete: true` becomes
+the sole system-prompt section after the cooperative `system-prompt/assemble`
+waterfall completes, while tool schemas, contexts, and variables resolved by
+the waterfall are retained. More than one effective complete section makes
+assembly fail. This is an escape hatch rather than a budget lever: a composition
+that owns the whole system prompt registers one `complete` section and skips the
+default harness identity, persona, and per-tool guidance.
+
+**`suppressRuntimeContext()`.** A scoped disposer that removes every dynamic
+runtime-context contribution for the calling scope without disabling the
+services that own the underlying facts. Multiple suppressors compose, and the
+effect restores context when none remains. This is the DSH analog of pi's own
+`--no-context-files`/`-nc` (§4.2), but with finer granularity: suppression is
+per-scope, not process-wide.
+
+### 6.4 The compaction budget: a ratio-based trigger against a route-priced token meter, with per-model overrides
+
+VERIFIED from `packages/compaction/compaction-basic/README.md` and
+`docs/subsystems/token-meter.md`:
+
+DSH's compaction is a capability seam (`dsh-compaction`), and the shipped
+backend (`dsh-compaction-basic`) owns the actual threshold and retention
+policy:
+
+- **Default trigger: 80% of the routed model's context window**
+  (`thresholdRatio: 0.8`). This is less conservative than Hermes Agent's own
+  50% default (§5.3) but more conservative than Copilot CLI's own 95% (§2.4,
+  sourced from [memory-management.md](memory-management.md) §2.4). A confirmed
+  context-window overflow (`CONTEXT_WINDOW_EXCEEDED`) triggers an immediate
+  maximal balanced head reduction regardless of the percentage threshold.
+- **Default retention: 16% of the routed context window** as the recent
+  verbatim tail (`retainRatio: 0.16`), mutually exclusive with an absolute
+  `retainTokens` budget. The retention tail is priced through `ctx.tokenMeter`,
+  the same measurement service that measures pressure.
+- **Per-model overrides** (`modelPolicies`): exact `{ provider, model,
+  ...partialPolicy }` entries with their own `thresholdRatio` and
+  `retainTokens`/`retainRatio`. Misconfiguration fails fast -- duplicate
+  overrides or conflicting retention forms reject the plugin at load; an
+  absolute retention budget that is not below its threshold fails when that
+  model is first used.
+- **Optional tool-result pruning** (`dsh-compaction-tool-result-pruner`) runs
+  before summarization: deterministic head/middle/tail pruning of oversized
+  tool-result payloads (measured in Unicode code points, not tokens) that can
+  avoid the summarization model call entirely when trimming brings the
+  conversation under threshold.
+- **Summarization reuses the provider's warm prefix.** The auxiliary
+  summarization call replays the conversation's own system prompt, tool
+  schemas, and shadowed-region messages byte-for-byte, so the provider's
+  warm prefix cache is reused. The call uses `ctx.llm.stream()` directly
+  without going through the loop's `agent/request` extension point. A
+  `maxTokens` cap (default 8,192) bounds the summary output.
+- **Meter accuracy follows the fixed heuristic.** `ctx.tokenMeter` prices
+  messages with a four-characters-per-token heuristic when provider-confirmed
+  usage is not available; image occurrences carry provider-exact visual tokens
+  only on routes whose adapter declares request-image pricing.
+
+Unlike Hermes Agent (§5.3), DSH does not document a micro-compaction mode, a
+checkpoint-required gate, or a native provider-side compaction path. These are
+not UNCONFIRMED-as-absent findings -- DSH's compaction seam is explicitly
+extensible (a template- or remote-summarizer subclass can override `summarize()`
+while pressure, retention, and validation stay on the token meter), so any of
+these could be added as a separate backend without changing the seam's
+interface.
+
+### 6.5 Skills: the catalog is a model-facing `<available_skills>` block with a configurable description cap; the body loads via the `skill` tool
+
+VERIFIED from `packages/skill/tool-skill/src/index.ts` and
+`docs/subsystems/skills.md`:
+
+DSH's invoke-only tier follows the same "index entry always resident, body loads
+on demand" shape every other harness on this page uses (Claude Code §1.4,
+Copilot CLI §2.3, OpenCode §3.4, pi §4.6, Hermes Agent §5.4), with these
+particulars:
+
+- **The catalog is a `<available_skills>` block**, rendered as a
+  `<system-reminder>`-wrapped `user/message` listing each model-invocable skill's
+  name and a truncated description. The default `catalogDescriptionMaxLength` is
+  500 characters (configurable, minimum 3). A replacement catalog (after a
+  skill-set change) explicitly supersedes the earlier one: "This complete
+  catalog replaces every earlier available-skills list in this session." A
+  `disable-model-invocation: true` skill is omitted from the catalog entirely,
+  the same zero-index-entry-cost property OpenCode's own `deny` permission and
+  pi's own `disable-model-invocation` flag provide (§§3.4, 4.6).
+- **The `skill` tool loads the body.** The model calls `skill({ name: "..." })`,
+  which resolves the winning candidate through `ctx.skills.get()` and returns the
+  full Markdown body. Full definitions are not cached by the registry; each
+  `get()` calls the winning provider with the selected candidate, so the local
+  provider re-reads the current body on each invocation.
+- **Local discovery is rank-ordered across six roots.** The shipped local
+  provider scans in rank order: `.dsh/skills` (rank 100), `.agents/skills`
+  (200), custom dirs (300), user `~/.dsh/skills` (400), user
+  `~/.agents/skills` (500), bundled (600). Duplicate names within one layer
+  resolve by rank, then provider order, then local order; across layers, the
+  nearest scope's entry wins outright. A `.dsh/skills` entry therefore shadows
+  a same-named `.agents/skills` entry at the same scope, the same way OpenCode
+  recognizes `.opencode/skills/`, `.claude/skills/`, and `.agents/skills/`
+  (§3.4).
+- **User-invocable skills enter via `agent/pre-step`.** A claimed user message
+  whose first line starts with `/<name>` naming a user-invocable skill is a
+  deterministic load gesture. The rendered body is appended as injected
+  instructions after every other injection -- background first, the material
+  the model must act on last. Only `source.kind === 'user'` messages are
+  scanned; external text cannot forge the gesture. This is the only entry path
+  for `disable-model-invocation` skills.
+
+### 6.6 The scoping and registry layer model -- a shared primitive that governs both prompt assembly and skill tooling
+
+VERIFIED from `docs/subsystems/scope.md` and `packages/core/scope/src/index.ts`
+and `packages/core/system-prompt/src/index.ts`:
+
+The `dsh-scope` package supplies the identity, carrier, and scoped-layer
+vocabulary that makes one registration context mean both per-agent visibility
+and shared lifetime ownership. It is a library primitive rather than a Cordis
+service. `ScopeKey` is an opaque object identity; the shipped loop uses the
+live `Agent` object as its own key. `ScopedLayers<L>` owns the eager global
+layer and lazily created exact-scope layers. Reads do not create layers:
+`peek(undefined)` means no overlay, while `merge()` materializes
+insertion-ordered global named entries followed by scoped shadows. A scoped
+layer is reclaimed only when its complete `ScopeLayer` is empty.
+
+This shared primitive governs prompt sections, prompt contexts, tool-schema
+providers, prompt variables, skill providers, and tool registrations -- all
+through the same `ScopedLayers` merge semantics. The consequence for
+context-budget management is that every one of these registries has the same
+opportunity for per-agent shadowing and restriction: a tool restriction on one
+agent (`ToolRestriction`'s `allow`/`deny` lists) removes its entire schema cost
+for that agent but not a separately registered prompt section. This is a
+notably different posture from Claude Code's own `paths:` scoping (§1.2), which
+operates at the *file-path* level rather than the *agent* level, and from
+Copilot CLI's own `applyTo:` scoping (§2.2), which operates at the *glob*
+level. DSH has no path-scoped instruction tier (§6.2 above), but it has
+per-agent *registration* scoping that affects every model-facing surface
+uniformly.
+
+### 6.7 The doc-budgeting standard -- a wordcount ceiling on the harness's own documentation, not on runtime instruction content
+
+VERIFIED from `docs/AGENTS.md`: DSH ships an internal `verify-doc-budgets` gate
+that enforces standing-doc wordcount ceilings (e.g. root `AGENTS.md` ≤ 1,950;
+`architecture.md` ≤ 2,400; subtree `AGENTS.md` ≤ 600). This is the *internal
+documentation standard*, not a runtime instruction-file budget -- it governs the
+Markdown files the project's own contributors maintain, not the `AGENTS.md`
+files DSH discovers in a user's workspace. It is mentioned here solely to
+disambiguate: a reader who encounters "AGENTS.md" in DSH's own repo and "word
+budget" in the same document might conflate the two. The runtime byte budget
+for workspace instructions is `maxBytes` in the `dsh-agent-instructions` config
+(§6.2); the doc-budget wordcount ceiling applies to DSH's own developer
+documentation.
+
+### 6.8 Measuring what actually loaded
+
+No dedicated context-inspection command comparable to Claude Code's `/context`
+or Copilot CLI's `/context` was found in the tree or docs fetched this session.
+The closest analogs are:
+
+- **The token meter** (`ctx.tokenMeter`), a per-session replay fold that
+  measures current request pressure and surface token counts, using a
+  four-characters-per-token heuristic when provider-confirmed usage is
+  unavailable. This is an internal service, not a user-facing slash command.
+- **`/compact`**, which reports how many history items were condensed and the
+  estimated tokens freed, but does not itemize which instruction files are
+  currently loaded the way Claude Code's `/context` **Memory files** list does.
+- **`dsh --profile <name> --dump-config`**, which prints the full composed
+  plugin tree at boot -- useful for verifying that `dsh-agent-instructions` is
+  included and configured, but not for inspecting what instruction files a
+  running session actually loaded.
+
+The `dsh-agent-instructions` plugin does record which files it loaded, omitted,
+and truncated in its model-facing `<system-reminder>` text (including a
+`Workspace instruction budget ...` notice when truncation occurred), so a
+careful reader of the conversation transcript can reconstruct what reached the
+model. But there is no dedicated inspector that surfaces this outside the
+conversation itself. This is UNCONFIRMED-as-absent for a dedicated
+slash-command equivalent, not proven impossible.
+
+---
+
+## 7. Synthesis
+
+| Concern | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent | DeepSeek Harness |
+|---|---|---|---|---|---|---|
+| Tier-1 file(s) | `CLAUDE.md` hierarchy (managed → user → project → local), plus `.claude/rules/*.md` **without** `paths:` | `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md`, `~/.copilot/instructions/**` | `AGENTS.md` (project + global), `CLAUDE.md`/deprecated `CONTEXT.md` as Claude-compat fallbacks, plus config `instructions[]` (local globs + remote URLs) | `AGENTS.md`/`AGENTS.override.md`/`CLAUDE.md` ancestor walk (global `~/.pi/agent/AGENTS.md` + every directory from project root down to cwd), plus a full-replace `SYSTEM.md`/append-only `APPEND_SYSTEM.md` pair (project variant trust-gated) | Context Files (`AGENTS.md`/`CLAUDE.md`/`.cursorrules`/`.hermes.md`) discovered under cwd, occupying the `context` cache tier; `SOUL.md` (identity) occupies the separate `stable` tier instead (§5.1) | `AGENTS.md`/`CLAUDE.md` (configurable candidates) plus local overlays `AGENTS.local.md`/`CLAUDE.local.md`, discovered from user-global `$DSH_HOME/AGENTS.md` then project root → cwd broad-to-specific; delivered as `PromptContext` user-role messages, **not** system-prompt sections (§6.2) |
+| Tier-1 freshness | Session-start read; no documented hot-reload | Undocumented either way | **Re-read from disk every turn** -- source-verified, no caching in `Instruction.system()` | Session-start read (via `resource-loader.ts`'s `reload()` at bootstrap); re-read only on explicit `/reload` -- source-verified, same posture as Claude Code, the opposite of OpenCode | Session-start build only; the whole `stable`/`context`/`volatile` prompt is rebuilt **only** when a context-compression pass fires, not per-turn and not on any `/reload`-equivalent found this session -- source-verified (§5.1) | Baseline rendered once at first `agent/pre-step`; refreshed only on next successful `read`/`write`/`edit` touch reaching a deeper directory, or on resume reconciliation -- no file watcher, no per-turn re-read (§6.2) |
+| Stated size guidance | "target under 200 lines per CLAUDE.md file"; loaded in full regardless of length | None found on the pages fetched | None found on the pages fetched | None found on the pages fetched | **Enforced, not merely advised**: a dynamically-scaled character cap (20,000-char floor, 500,000-char ceiling, 6% of the model's context window), source-verified (§5.2) | **Enforced byte budget**: `maxBytes` (default 65,536) caps the complete rendered baseline; broader files are dropped before truncating the most-specific file; per-file `maxSourceBytes` (default 1 MiB) omits oversized source files entirely -- source-verified (§6.2) |
+| Do `@` imports save context? | **No** -- stated twice in the docs | UNCONFIRMED; imports exist (v1.0.66), token effect not documented | Not applicable -- no `@`-import-expansion mechanism found | Not applicable -- no `@`-import-expansion mechanism for context files found | Not applicable -- no `@`-import-expansion mechanism for Context Files found | **Explicitly out of scope**: "lowercase names, `.claude/rules/`, and `@path` imports are not interpreted" -- source-verified design decision, not an oversight (§6.2) |
+| Path-scoped tier | `.claude/rules/` + `paths:` glob list; triggers on reading a matching file, "not on every tool use" | `.github/instructions/*.instructions.md` + `applyTo:`; body no longer in system prompt every session (v1.0.35), consolidated to a table row (v1.0.26) | **None found** -- UNCONFIRMED-as-absent | **None found** -- source-verified absent this session | **None found** -- source-verified absent in the source read this session | **None found** -- UNCONFIRMED-as-absent; nested discovery is touch-driven, not glob-triggered (§6.2) |
+| Lazy-by-location tier | Nested `CLAUDE.md` and nested `.claude/skills/` below cwd load on first read/edit in that subdirectory | Discovery walks working dir → git root (v1.0.11); no documented "load on read of subdirectory file" behavior found | Source-verified nearby-file auto-attach: walking up from a `read`-tool target's directory for the nearest un-surfaced `AGENTS.md`/`CLAUDE.md`/`CONTEXT.md`, deduplicated per assistant message | **None** -- source-verified negative | **None found** | Touch-driven nested discovery: a successful `read`/`write`/`edit` reaching a deeper directory brings that directory's instruction file into the next request; `bash` cd does not qualify (§6.2) |
+| Tool-schema deferral | Not documented as a distinct mechanism from the skills tier | Experimental embedding-based per-turn retrieval (below) doubles as this | Not documented for OpenCode's own built-in tool set | **Native deferred loading** for Anthropic Sonnet/Opus/Fable 4.5+ and OpenAI gpt-5.4+ via `pi.registerTool()`+`pi.setActiveTools()` | Not found in the sources read this session | Not found in the sources read this session; tool schemas are part of prompt assembly (`ToolProviderResult`) with per-agent scoping but no documented deferred-loading mechanism |
+| Invoke-only tier | Skills: body loads on use; description always in context (1,536-char cap) unless `disable-model-invocation: true` | Skills: `SKILL.md` "injected in the agent's context" when used; always-on listing cost UNKNOWN | Skills: `name`+`description` (≤1,024 chars) always listed; `deny`d skill costs zero | Skills: XML `<available_skills>` index; body requires separate `read` tool call; `disable-model-invocation` omits from index | Skills: `<available_skills>` index always resident; per-skill/item cost itemized in `/context all` | Skills: `<available_skills>` catalog as `user/message` with configurable `catalogDescriptionMaxLength` (default 500); body loads via `skill` tool; `disable-model-invocation` skills omitted from catalog; `/name` gesture for user-invocable skills (§6.5) |
+| Exclusion | `claudeMdExcludes` globs, any settings layer, arrays merge | `/instructions` toggle picker | Per-skill/per-agent-pattern `allow`/`ask`/`deny` permissions | `--no-context-files`/`-nc` disables the whole tier-1 mechanism at once | No per-file exclusion glob found; `context_file_max_chars` is a size-budget override | `suppressRuntimeContext()` per-scope removes all dynamic runtime context; over-budget broad files are silently omitted by the byte-budget renderer (§6.2, §6.3) |
+| Free maintainer notes | Block-level HTML comments stripped before injection | Not documented on pages fetched | Not documented on pages fetched | Not documented on pages fetched | Not found in the sources read this session | Not found in the sources read this session |
+| Automated trim advice | `/doctor` trim proposal (v2.1.206+) | Not documented on pages fetched | Not documented on pages fetched | Not documented on pages fetched | Not found; truncation is automatic and unconditional (§5.2) | Not found; byte-budget truncation is automatic on the baseline render (§6.2) rather than advisory |
+| Retrieval-based loading | Not documented | Experimental embedding-based per-turn retrieval of skill/MCP instructions; `dynamicRetrieval` setting | Not documented | Not documented for context files | Not found; Context File truncation discards a contiguous middle span | Not found; byte-budget truncation omits broader files entirely rather than selecting by relevance |
+| Verify what loaded | `/context` → **Memory files**; `InstructionsLoaded` hook | `/context`, `/env`, `/instructions` | No dedicated command found | No dedicated command found; `/session` closest analog | **`/context`**: "Claude Code-style" glyph grid across 8 categories + `/context all` drill-down | No dedicated slash command found; model-facing `<system-reminder>` text includes budget-omission/truncation notices; `ctx.tokenMeter` is an internal service, not user-facing (§6.8) |
+| Survives compaction? | Tier 1 re-injected; path-scoped and nested lost until retriggered; skills capped 5K/25K | Skills survive; instruction-file re-injection **undocumented** | Moot: tier 1 is rebuilt fresh every turn regardless of compaction | Not directly investigated here | Not the applicable question: Context Files live in the cached `context` system-prompt tier, rebuilt on compression from the same on-disk source | Workspace instructions are durable `user/message` events in the session log, so they survive compaction like any other conversation history; compaction's summarization replaces the oldest history range but does not touch the instruction contribution itself (§6.2, §6.4) |
+
+**The design lesson.** All six harnesses documented on this page independently
+converged on some version of the same multi-tier answer, and all six make the
 *same* thing tier 1 that authors intuitively expect to be cheap: the
 imported/split-out file (on the harnesses that have an import
 mechanism at all). The distinction that matters is not "one file vs.
 many files," it is **"does this text have a trigger?"** A file with no
 trigger (`@` import, unscoped rule, plain `copilot-instructions.md`,
 OpenCode's own `AGENTS.md`/`instructions[]`, pi's own
-`AGENTS.md`/`CLAUDE.md` ancestor walk) costs you tokens on every turn
+`AGENTS.md`/`CLAUDE.md` ancestor walk, DSH's own broadest `AGENTS.md`) costs you tokens on every turn
 no matter how many files you split it across. A file with a trigger
 (`paths:`, `applyTo:`, a skill name) costs you only its index entry
 until the trigger fires -- and on OpenCode specifically, "every turn"
@@ -1180,17 +1552,17 @@ is not a figure of speech: §3.1's re-read finding means the tier-1 cost
 is paid, and the tier-1 *content* can change, on every single model
 call, not just once at launch. pi sits closer to Claude Code on this
 particular axis (§4.2's session-start-or-explicit-`/reload` read) than
-to OpenCode, but pi contributes a genuinely new lever the other three
+to OpenCode, but pi contributes a genuinely new lever the other
 harnesses do not document at all: a *tool-schema* trigger (§4.5) that
 is independent of the instruction-file trigger vocabulary above --
 provider-native deferred loading keyed off `pi.setActiveTools()` rather
 than a glob match or a skill name, which is a lazy-loading axis this
 page had not previously found evidence of on any harness for the tool
 layer specifically, as opposed to the instruction-file or skill-body
-layers all four harnesses share. Hermes Agent, not one of this
+layers all five harnesses share. Hermes Agent, not one of this
 project's own three deploy targets but documented here on the same
-footing as pi (§5), contributes a third genuinely new axis: none of
-the other four harnesses' own tier-1 files are shown, on any page this
+footing as pi (§5), contributes a second genuinely new axis: none of
+the other five harnesses' own tier-1 files are shown, on any page this
 book has fetched, to carry a hard, code-enforced size ceiling with
 automatic truncation -- Claude Code's "200 lines" is a documentation
 recommendation with no stated cap (§1.1), and Copilot CLI states no
@@ -1198,7 +1570,16 @@ cap at all on the pages fetched (§2.1). Hermes both enforces one and
 tells the model, inline, exactly how to recover what was cut (§5.2) --
 a "does this text have a trigger" question answered not by making the
 file lazy, but by making the file's own size self-limiting and
-self-describing when it is not.
+self-describing when it is not. DeepSeek Harness (§6) contributes a
+third genuinely new axis: its workspace instructions are not system-prompt
+text at all -- they are `PromptContext` entries delivered as durable
+`user/message` events, a structural separation none of the other five
+harnesses make (§6.1). DSH also deploys a hard byte budget (`maxBytes`,
+default 65,536) with a distinct priority order from Hermes: DSH truncates
+from the broad end (keeping the most-specific file intact as long as
+possible) while Hermes truncates the middle (keeping head and tail).
+Both DSH and Hermes enforce size caps in code; the other four harnesses
+do not.
 
 **A cross-harness recipe** (relevant to this project's requirement that
 everything work across targets):
@@ -1258,10 +1639,19 @@ everything work across targets):
    instruction (§5.2) is a stricter and more self-describing answer to
    "stop a single instruction file from growing without bound" than any
    of the four harnesses this project actually targets currently
-   documents for itself: none of Claude Code, Copilot CLI, OpenCode, or
-   pi is shown on the pages/sources this book has fetched to truncate an
-   oversized tier-1 file automatically and tell the model, in the same
-   breath, how to read the rest back in.
+   documents for itself.
+7. **DeepSeek Harness is also not a deploy target of this project.**
+   It contributes two design ideas worth citing alongside Hermes': the
+   structural separation of `PromptSection` (system prompt) from
+   `PromptContext` (user-role durable snapshots) as independent budget
+   surfaces (§6.1), and the byte-budget renderer that drops broader
+   files before truncating the most-specific one (§6.2) -- a priority
+   order optimized for monorepo per-package instructions where the
+   outermost file is the least specific. DSH also demonstrates that
+   "everything is a plugin" makes the instruction-loading subsystem
+   itself a replaceable composition row rather than a hardcoded path,
+   which is an architectural axis none of the other five harnesses
+   expose at this granularity.
 
 ---
 
