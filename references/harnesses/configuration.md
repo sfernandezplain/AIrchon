@@ -1,4 +1,4 @@
-# Configuration -- Claude Code, GitHub Copilot CLI, OpenCode, and pi
+# Configuration -- Claude Code, GitHub Copilot CLI, OpenCode, pi, and Hermes Agent
 
 **Scope note.** This page is about the **general settings/config-file
 system** each harness reads on startup and during a session: where the
@@ -21,10 +21,11 @@ permission-rule *configuration mechanism* itself -- the file format,
 scope, and merge behavior that those per-tool rules are written into.
 
 Every claim is tagged VERIFIED (fetched this session) or BEST CURRENT
-UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, and pi
-(Earendil Works) are four separate products from four separate
-organizations/authors; a configuration behavior confirmed for one is never
-assumed to hold for another without its own citation.
+UNDERSTANDING, UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, pi
+(Earendil Works), and Hermes Agent (Nous Research) are five separate
+products from five separate organizations/authors; a configuration
+behavior confirmed for one is never assumed to hold for another without
+its own citation.
 
 ---
 
@@ -1072,52 +1073,346 @@ completely uniform across every key on the settings schema.
 
 ---
 
-## 5. Synthesis
+## 5. Hermes Agent (Nous Research)
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | pi |
-|---|---|---|---|---|
-| Config file format | JSON, optional `$schema` | JSON with comments | JSON or JSONC | JSON |
-| Number of named scopes | 4: Managed, User, Project, Local | Built-in defaults, MDM, user, repo, repo-local, env, CLI flags (7-link documented chain) | 8-source documented chain (remote, global, custom-env-path, project, `.opencode/`, inline-env-content, managed, macOS MDM) | 2: global, project -- no managed/MDM tier documented at all (§4.1) |
-| File-location analog across harnesses | `~/.claude/settings.json` (user), `.claude/settings.json` (project), `.claude/settings.local.json` (local) | `~/.copilot/settings.json` (user), `.github/copilot/settings.json` (repo), `.github/copilot/settings.local.json` (repo-local) | `~/.config/opencode/opencode.json` (global), `opencode.json` in project root | `~/.pi/agent/settings.json` (global), `.pi/settings.json` (project) |
-| Default merge policy | Later scope overrides earlier, **except permission rules, which merge/union across every scope** | Later scope overrides earlier; repo-settings merge policy is stated to vary **per key** (some allow override, some block removal of restrictions) | Explicit, source-named `mergeConfigConcatArrays()`: scalars override, **array-valued keys (e.g. `instructions`) concatenate rather than replace** | Project overrides global via **key-by-key nested-object merge** (§4.6's worked example), with one named exception: `defaultTools` replaces wholesale rather than merging (§4.3) |
-| Documented ordering of CLI flags/env vars relative to file-based scopes | CLI flags positioned as a session override above Local/Project/User; Managed is separately described as never-overridable -- the docs' own two passages order CLI-flags-vs-Managed inconsistently (§1.1, flagged) | Documented explicitly: env vars and CLI flags both rank **above** repo/local file config in the six/seven-link chain | `OPENCODE_CONFIG`/`OPENCODE_CONFIG_CONTENT` are named, ordered links in the same eight-source chain as the file-based scopes, not a separate top/bottom layer | Stated explicitly for exactly one key (`sessionDir`): `--session-dir` > `PI_CODING_AGENT_SESSION_DIR` > settings file (§4.4) -- no equivalent blanket statement found for keys generally |
-| Cross-harness config interop found | None found (no evidence Claude Code reads a Copilot- or OpenCode-authored file) | Reads `.claude/settings.json`/`.claude/settings.local.json` as additional repo sources, and reads `extraKnownMarketplaces` from the same file, "for Claude compatibility" (v1.0.12/0.0.421) | None found | `usage.md` documents pi loading `AGENTS.md` **or** `CLAUDE.md` (whichever is present) as its own context-file convention, but this session found no equivalent reading of a Claude Code/Copilot CLI/OpenCode *settings*-schema file the way Copilot CLI reads Claude Code's |
-| Permission-config shape | Rule strings in `permissions.allow`/`permissions.deny` arrays (e.g. `"Bash(npm run lint)"`) | Named boolean/URL-list keys (`allowedUrls`, `permissions.disableBypassPermissionsMode`) plus a saved-decision store (`permissions-config.json`) keyed by project location | A dedicated `permission` object per tool-category, `"allow"`/`"ask"`/`"deny"`, with glob-pattern sub-keys, last-match-wins, and per-agent override merge -- the most granular, most fully documented-and-source-verified permission-config schema of the three | No permission-config schema at all -- see [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5.1's own source-verified negative finding; pi's only comparable gate is the Project Trust ask/always/never tri-state (§4.2), a config-*loading* gate, not a per-tool permission engine |
-| Env-var substitution inside config values | Not found as a general config-value mechanism (settings-file `env` block sets variables *for subprocesses*, it does not interpolate `${VAR}` into other keys generally, though managed MCP allowlist entries do support `${VAR}` resolution per a dated changelog fix) | Not found as a general config-value mechanism in the sources this session fetched | `{env:VAR}` and `{file:path}` placeholder syntax, source-confirmed via `ConfigVariable.substitute()` | Not found as a general config-value mechanism in the sources this session fetched |
-| Malformed-config resilience | Multiple dated fixes (v2.1.97/98, and others) hardening one-bad-key-should-not-invalidate-the-whole-file; managed settings explicitly strip-and-warn rather than fail closed | Dated hardening arc (1.0.40-1.0.44): invalid values/URLs now warn and skip rather than crash startup | Not directly evidenced in the sources this session fetched (BEST CURRENT UNDERSTANDING, UNCONFIRMED: no equivalent claim found either way) | Not directly evidenced in the sources this session fetched (BEST CURRENT UNDERSTANDING, UNCONFIRMED: no equivalent claim found either way -- pi ships no changelog this session cross-referenced for this page, unlike the two closed-source harnesses' own dated hardening histories) |
-| Structural migration history found | `.claude.json` -> `settings.json` (v1.0.7-v2.0.8); Windows managed-settings path change (deprecated ~v2.1.34, removed v2.1.75); `managed-settings.d/` drop-in directory added (v2.1.83) | `.github/copilot/config.json` -> `settings.json` (0.0.421 -> 0.0.422, ~48 hours); user `~/.copilot/settings.json` split from `~/.copilot/config.json` internal state (v1.0.35); `/settings` unified dialog absorbing scattered slash commands (1.0.57-1.0.72) | Legacy TOML `config` file auto-migrated to JSON on load, per source; no further multi-file-format migration history found in the sources fetched this session | Not evidenced in the docs pages fetched this session (no changelog cross-referenced for this specific page) -- BEST CURRENT UNDERSTANDING, UNCONFIRMED either way |
-| Config-loading precondition beyond mere scope/precedence | None found -- Local/Project settings are read unconditionally once present | None found -- repo settings are read unconditionally once present | None found -- project config is read unconditionally once present | **Project Trust** (§4.2): the project scope's own settings file is conditionally read at all, gated by an `ask`/`always`/`never` policy and a per-folder `trust.json` decision store -- a structural feature none of the other three harnesses' fetched docs name an equivalent of |
+Sources for this section: VERIFIED, fetched fresh this session (2026-09-01)
+from `hermes-agent.nousresearch.com/docs/user-guide/configuration`,
+`.../docs/user-guide/managed-scope`, `.../docs/reference/environment-variables`,
+`.../docs/reference/cli-commands`, `.../docs/user-guide/configuring-models`,
+and `.../docs/integrations/providers` (all WebFetch). Hermes Agent is a
+fifth, independent, self-hosted product -- see
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md) §6
+for this book's fuller architectural introduction to the harness itself
+(three entry points funnelled into one `AIAgent` class, seven sandboxed
+terminal execution backends, the eight-layer defence-in-depth security
+model), not repeated here; see
+[Model routing / selection](model-routing-and-selection.md) §5 for the
+auxiliary-model-slot/fallback-chain/credential-pool mechanism this section
+only touches from the config-file-location and API-key-resolution side.
 
-**The design lesson.** All four harnesses converge on the same basic
-shape -- a small number of named scopes (user/global and project/repo at
-minimum), later scopes generally overriding earlier ones, with at least
-one deliberate, explicitly-named exception where the harness prefers an
+### 5.1 `~/.hermes/` directory layout and the `hermes config` command surface
+
+```mermaid
+flowchart TD
+    Home["~/.hermes/ (HERMES_HOME)"]
+    Home --> ConfigYaml["config.yaml\nnon-secret settings (model, terminal,\nTTS, compression, database, ...)"]
+    Home --> Env[".env\nAPI keys, tokens, passwords"]
+    Home --> Auth["auth.json\nOAuth provider credentials"]
+    Home --> Soul["SOUL.md\nagent identity, system-prompt slot #1"]
+    Home --> Mem["memories/ (MEMORY.md, USER.md)"]
+    Home --> Skills["skills/ (agent-created, via skill_manage)"]
+    Home --> Cron["cron/ (scheduled jobs)"]
+    Home --> Sessions["sessions/ (gateway sessions)"]
+    Home --> Logs["logs/ (errors.log, gateway.log --\nsecrets auto-redacted)"]
+
+    CLI["hermes config\n(set/unset/get/edit/check/migrate)"] -->|"routes secrets to .env,\neverything else to config.yaml"| ConfigYaml
+    CLI --> Env
+```
+
+Hermes stores every non-secret setting in a single YAML file,
+`~/.hermes/config.yaml` (model, terminal backend, TTS, compression, database
+pragmas, and every other named cluster this section and
+[model-routing-and-selection.md](model-routing-and-selection.md) §5
+document), and every credential in a separate `.env` file at the same
+directory level -- API keys, bot tokens, OAuth-adjacent passwords. Both
+files sit inside a single configurable root, `~/.hermes/` by default,
+overridable wholesale via the `HERMES_HOME` environment variable (which
+also re-scopes the gateway PID file and systemd service name, letting
+multiple Hermes installations run concurrently on one host). The directory
+additionally holds `auth.json` (OAuth provider credentials such as Nous
+Portal), `SOUL.md` (the agent's primary identity document, documented as
+system-prompt slot #1), `memories/`, `skills/`, `cron/`, `sessions/`, and
+`logs/` (with secrets auto-redacted from `errors.log`/`gateway.log`).
+
+Rather than exposing only hand-editing, Hermes ships a first-class `hermes
+config` command family: `hermes config` (view current configuration),
+`hermes config edit` (open `config.yaml` in `$EDITOR`), `hermes config get
+KEY` (print one resolved value), `hermes config set KEY VAL` / `hermes
+config unset KEY`, `hermes config check` (detect options missing after an
+upgrade), and `hermes config migrate` (interactively add missing options --
+this same subcommand also scans enabled skills for their own
+`skills.config.<name>.*` settings and offers to prompt for any that are
+unset, a config-schema-migration and per-skill-settings-discovery mechanism
+folded into one entry point). Critically, `hermes config set` is
+**routing-aware, not merely a KEY/VAL writer**: the docs state the command
+"automatically routes values to the right file -- API keys are saved to
+`.env`, everything else to `config.yaml`" -- so `hermes config set model
+anthropic/claude-opus-4` lands in `config.yaml` while `hermes config set
+OPENROUTER_API_KEY sk-or-...` lands in `.env`, without the operator naming
+the destination file explicitly. This is a materially different authoring
+model from every other harness on this page, all of which expose a single
+settings file (or a small explicit set of named-scope files) that the user
+edits directly or through a narrower `/settings`-style dialog; Hermes
+instead interposes a command whose entire job is deciding *which* of two
+files a given key belongs in.
+
+### 5.2 Configuration precedence, and a documented inversion at the managed-scope boundary
+
+The docs state Hermes' own precedence order explicitly, framed as a rule of
+thumb rather than a bare list: "Secrets (API keys, bot tokens, passwords) go
+in `.env`. Everything else (model, terminal backend, compression settings,
+memory limits, toolsets) goes in `config.yaml`. When both are set,
+`config.yaml` wins for non-secret settings." The full chain, highest
+priority first: **CLI arguments** (e.g. `hermes chat --model
+anthropic/claude-sonnet-4`, a per-invocation override) > **`config.yaml`**
+(the primary file for all non-secret settings) > **`.env`** (fallback for
+env vars, required for secrets) > **built-in defaults** (hardcoded safe
+defaults when nothing else is set). This is a three-tier file/CLI chain
+notably *without* a named "pre-existing shell environment variable" layer
+of its own -- distinct in shape from Copilot CLI's own seven-link chain in
+§2.2, which names environment variables as a rank explicitly above
+repository/local file config.
+
+That said, a real documented tension surfaces once managed scope (§5.3)
+enters the picture, worth flagging rather than smoothing over in the same
+spirit §1.1 above flags Claude Code's own two-passage CLI-flag-vs-Managed
+inconsistency: the Managed Scope docs page states plainly that, for the
+specific keys a managed layer pins, "managed scope deliberately wins over
+the shell environment too -- otherwise it would not be 'managed.' This is
+the one place that inverts the **usual** 'an environment variable overrides
+config.yaml' rule." That phrase -- "the usual... rule" -- asserts, as
+background fact rather than as something this section infers, that a
+pre-existing shell-exported environment variable normally *does* override
+`config.yaml` in ordinary (non-managed) operation. The top-of-page
+four-link precedence chain quoted above does not itself name "shell
+environment variable" as a distinct tier the way it names `.env` -- so the
+two passages, read together, leave an unresolved question this session's
+fetched sources do not settle: whether "environment variable" in the
+managed-scope passage means the `.env` file specifically (in which case the
+two passages agree, since `.env` already sits below `config.yaml` in the
+four-link chain) or a genuine pre-existing shell export (in which case the
+top-of-page chain is silent on a tier that, per the managed-scope page,
+demonstrably exists and normally outranks `config.yaml`). **BEST CURRENT
+UNDERSTANDING, UNCONFIRMED:** the more likely reading is the former --
+Hermes loads `.env` contents into the process environment at startup, so
+"environment variable" and "`.env` value" may be the same referent from the
+managed-scope page's point of view -- but this is inferred, not fetched
+verbatim as a single reconciling statement, the same caveat weight §1.1
+above attaches to its own Claude Code reconciliation.
+
+### 5.3 Managed scope: filesystem-permission-enforced, leaf-key policy pinning
+
+```mermaid
+flowchart TD
+    Admin["Administrator writes\n/etc/hermes/config.yaml + .env\n(root:root, dir 0755, files 0644)"]
+    Admin -->|"pins e.g. model.default,\nsecurity.redact_secrets: true"| Managed["Managed scope\n(leaf-key merge, not whole-file lock)"]
+    Managed -->|"wins over, for pinned keys only"| UserCfg["~/.hermes/config.yaml (user)"]
+    Managed -->|"wins over, for pinned keys only"| UserEnv["~/.hermes/.env (user)"]
+    Managed -->|"wins over, for pinned keys only"| ShellEnv["pre-existing shell environment"]
+    UserCfg --> Effective["Effective value\n(unpinned keys stay fully\nuser-controlled)"]
+    UserEnv --> Effective
+    ShellEnv --> Effective
+    Managed --> Effective
+```
+
+Managed scope is Hermes' fleet/org configuration-pinning mechanism, read
+from a system-level directory, default `/etc/hermes/` (relocatable via the
+`HERMES_MANAGED_DIR` environment variable, itself documented as a
+"deployment/bootstrap path knob... set by the same administrator who owns
+the managed files," never persisted to any `.env` by Hermes, and explicitly
+flagged as defeatable if left user-settable rather than baked into a
+service unit or container image). The directory holds the same two files
+as the user scope -- `/etc/hermes/config.yaml` and `/etc/hermes/.env` --
+each independently optional; a missing managed file simply means "no
+managed scope" for that file's keys. Enforcement is stated to be
+**filesystem permissions alone**: the directory and files are owned by
+`root` at mode `0755`/`0644` respectively -- world-readable, root-only
+writable -- so "a standard user can read the managed files but cannot edit
+them." The docs are explicit that this is advisory, not a hard security
+boundary: "If a user has write access to the managed directory (or runs
+Hermes as root), managed scope is advisory," the managed `.env` is
+world-readable so "any local user can read secrets pushed through it," and
+even a value that *is* successfully pinned is "not hard-blocked from a
+managed env value" at the tool layer -- "nothing stops the agent from
+setting a different value inside its own subprocess shell." The docs' own
+named v1 limitations list is comparably direct about what is deliberately
+out of scope: no hard boundary the agent itself cannot escape, no native
+macOS/Windows managed locations (Linux/POSIX-first only), no `managed.d/`
+drop-in fragment directories, no signed/integrity-checked managed files,
+and no MDM delivery -- a materially thinner managed-config surface than
+either Claude Code's `managed-settings.json` (§1.1, unconditionally
+authoritative, no filesystem-permission caveat named in its own docs) or
+Copilot CLI's MDM-plist/registry mechanism (§2.4, OS-native policy delivery
+plus an hourly re-fetch guarantee).
+
+Two mechanics distinguish managed scope from a whole-file lock. First, the
+merge is stated to be **leaf-level**: pinning `model.default` in the
+managed `config.yaml` "does not freeze the rest of `model.*`" -- a managed
+snippet setting only `model: {default: org/standard-model}` forces that one
+key for every user while leaving `model.fallback` and every sibling key
+under full user control, a materially finer grain than Claude Code's own
+managed-only key list (§1.2), which pins entire named keys
+(`allowManagedPermissionRulesOnly`, `claudeMd`, etc.) rather than
+individual leaves inside an otherwise-user-editable object. Second, the
+docs draw an explicit line between managed scope and "a
+package-manager-locked install (declarative-distro / formula)," which
+"blocks *all* config mutation and tells you to use your package manager" --
+two independent mechanisms, one locking the whole config file, the other
+injecting specific immutable values on a per-key basis, that "can coexist."
+Attempting to override a pinned key fails loudly and names the source
+rather than silently discarding the write: `hermes config set model.default
+my/model` returns "Cannot set 'model.default': it is managed by your
+administrator (/etc/hermes/config.yaml) and cannot be changed" -- and
+`hermes config`/`hermes doctor` both surface which keys are currently
+pinned and from where, so an operator is never left guessing why a
+`config.yaml` edit had no effect.
+
+### 5.4 Environment-variable substitution inside `config.yaml`, and Cursor/Claude-config interop
+
+`config.yaml` values support `${VAR_NAME}` interpolation against the
+process environment, including multiple references in one string
+(`url: "${HOST}:${PORT}"`); an unset referenced variable is left verbatim
+(`${UNDEFINED_VAR}` stays as-is) with a logged warning rather than resolving
+to an empty string, and a bare `$VAR` (no braces) is never expanded. A
+second, Cursor-compatible syntax is also accepted: `${env:VAR_NAME}`
+resolves identically to `${VAR_NAME}` (the `env:` prefix is stripped), a
+deliberate interop choice the docs state exists specifically so "MCP or
+provider snippets copied from Cursor / Claude configs work unchanged in
+both `config.yaml` and the `mcp_servers` block" -- this session's second
+distinct data point (after Copilot CLI's own documented reading of
+`.claude/settings.json`, §2.3) of a harness explicitly authoring its own
+config-value syntax to absorb snippets copied from a *different* product's
+configuration surface, here at the level of a single placeholder-string
+convention rather than an entire file. Other SecretRef-style prefixes seen
+in the wild -- `${file:...}`, `${vault:...}`, `${bitwarden:...}` -- are
+named explicitly as **not** resolved inline by this substitution mechanism;
+the docs direct an operator toward Hermes' own `secrets:` config block
+instead, which injects an external secret backend's values into the
+process environment at startup so they can then be referenced with the
+already-supported `${env:NAME}` form -- an unrecognized prefix "warns once
+and stays verbatim" rather than failing the config load outright, the same
+warn-and-continue posture §5.3 documents for managed-scope's malformed-file
+handling and §1.4 documents (independently) for Claude Code's own
+one-bad-key-should-not-invalidate-the-file design line.
+
+### 5.5 CLI flags, environment-variable overrides, and API-key/model-provider resolution
+
+Global CLI flags relevant to configuration: `--profile <name>`/`-p` (select
+a Hermes profile for one invocation, overriding the sticky default set by
+`hermes profile use`), `--ignore-user-config` (skip `~/.hermes/config.yaml`
+entirely and fall back to built-in defaults -- `.env` credentials still
+load), `--ignore-rules` (skip auto-injection of `AGENTS.md`, `SOUL.md`,
+`.cursorrules`, memory, and preloaded skills), `--safe-mode` (a superset
+that additionally disables plugin discovery, MCP server loading, and
+shell-hook registration), `--yolo` (bypass dangerous-command approval,
+cross-referenced to [permissions-and-sandboxing.md](permissions-and-sandboxing.md)
+§6.1's Smart/Manual/Off modes and hardline blocklist), `--tui`/`--cli`
+(force the modern TUI or the classic `prompt_toolkit` REPL for one
+invocation, overriding `display.interface` either way), and, on `hermes
+chat` specifically, `-m`/`--model <model>` and `--provider <provider>` (the
+latter accepting a name from a documented list exceeding sixty provider
+identifiers and aliases -- OpenRouter, Nous Portal, Anthropic, GitHub
+Copilot and Copilot ACP, OpenAI Codex, Gemini, HuggingFace, DeepSeek,
+Alibaba/DashScope under four distinct billing-plan variants, xAI/Grok with
+a separate OAuth variant, Bedrock, Azure Foundry, LM Studio, Ollama Cloud,
+and a keyless `opencode-free` entry among them). Each of these flags has a
+named environment-variable equivalent documented on a par with the
+CLI-flags-vs-environment-variables framing this page already applies to
+the other three harnesses: `HERMES_IGNORE_USER_CONFIG`, `HERMES_IGNORE_RULES`,
+`HERMES_SAFE_MODE` (which the docs state sets the two preceding variables
+automatically), `HERMES_YOLO_MODE`, `HERMES_TUI`, and `HERMES_INFERENCE_MODEL`/
+`HERMES_MODEL` (process-level model override, documented as the mechanism
+the cron scheduler uses to pin a model for a scheduled job, with the docs
+noting `config.yaml` is still preferred "for normal use"). `HERMES_HOME`
+(§5.1) and `HERMES_MANAGED_DIR` (§5.3) round out the deployment-level
+knobs -- both explicitly framed in the docs as administrator/bootstrap
+settings rather than everyday user configuration.
+
+API-key handling follows the `.env`-for-secrets convention named
+throughout this section, with one config-file-level escape hatch: a
+provider entry (main model or any auxiliary slot, per
+[model-routing-and-selection.md](model-routing-and-selection.md) §5.1's
+three-knob `provider`/`model`/`base_url` shape) may also carry its own
+`api_key` field directly in `config.yaml`, and when a slot instead sets
+`base_url` (pointing at a self-hosted or custom OpenAI-compatible
+endpoint), the docs state Hermes "ignores the provider and calls that
+endpoint directly (using `api_key` or `OPENAI_API_KEY` for auth)" -- i.e.
+`base_url` is documented as a distinct, provider-bypassing auth path with
+its own two-tier key resolution (config-embedded `api_key`, else the
+`OPENAI_API_KEY` environment variable), separate from the
+per-named-provider `.env` keys (`OPENROUTER_API_KEY`, `FIREWORKS_API_KEY`,
+`XAI_API_KEY`, `DASHSCOPE_API_KEY`, and so on across the sixty-plus
+provider list) that the standard, provider-set path uses instead. One
+specific credential chain is worth naming directly because it structurally
+mirrors a chain this page already documents for a different harness: for
+the `copilot`/`copilot-acp` provider, Hermes resolves a GitHub token in the
+order `COPILOT_GITHUB_TOKEN` (OAuth `gho_*` or fine-grained PAT
+`github_pat_*`; classic `ghp_*` PATs are explicitly **not** supported) >
+`GH_TOKEN` (also used by the `gh` CLI) > `GITHUB_TOKEN` -- the identical
+three-tier variable-name sequence, in the identical order, that §2.5 above
+documents from Copilot CLI's own `cli-programmatic-reference` docs for its
+native authentication. This is not evidence of one harness's mechanism
+extending to the other (AUTHORITY OVERREACH would be assuming that); it is
+two independently fetched, independently authored docs pages naming the
+same three environment-variable identifiers in the same priority order for
+functionally the same purpose (authenticating against the GitHub Copilot
+API), which this session treats as an ecosystem convention both vendors
+converged on around `gh`'s own token-precedence behavior, not as one
+harness's design flowing into the other.
+
+---
+
+## 6. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
+|---|---|---|---|---|---|
+| Config file format | JSON, optional `$schema` | JSON with comments | JSON or JSONC | JSON | YAML (`config.yaml`) + a separate `.env` key=value file for secrets |
+| Number of named scopes | 4: Managed, User, Project, Local | Built-in defaults, MDM, user, repo, repo-local, env, CLI flags (7-link documented chain) | 8-source documented chain (remote, global, custom-env-path, project, `.opencode/`, inline-env-content, managed, macOS MDM) | 2: global, project -- no managed/MDM tier documented at all (§4.1) | 3: Managed (`/etc/hermes`), User (`~/.hermes`), CLI arguments -- no separate project/repo scope documented at all (§5.2) |
+| File-location analog across harnesses | `~/.claude/settings.json` (user), `.claude/settings.json` (project), `.claude/settings.local.json` (local) | `~/.copilot/settings.json` (user), `.github/copilot/settings.json` (repo), `.github/copilot/settings.local.json` (repo-local) | `~/.config/opencode/opencode.json` (global), `opencode.json` in project root | `~/.pi/agent/settings.json` (global), `.pi/settings.json` (project) | `~/.hermes/config.yaml` + `~/.hermes/.env` (user, relocatable via `HERMES_HOME`); `/etc/hermes/config.yaml` + `/etc/hermes/.env` (managed, relocatable via `HERMES_MANAGED_DIR`) |
+| Default merge policy | Later scope overrides earlier, **except permission rules, which merge/union across every scope** | Later scope overrides earlier; repo-settings merge policy is stated to vary **per key** (some allow override, some block removal of restrictions) | Explicit, source-named `mergeConfigConcatArrays()`: scalars override, **array-valued keys (e.g. `instructions`) concatenate rather than replace** | Project overrides global via **key-by-key nested-object merge** (§4.6's worked example), with one named exception: `defaultTools` replaces wholesale rather than merging (§4.3) | CLI args > `config.yaml` > `.env` > built-in defaults; managed scope merges at **leaf-key granularity** (pinning `model.default` leaves every sibling `model.*` key user-controlled), a finer grain than any of the other four harnesses' managed/MDM tier (§5.3) |
+| Documented ordering of CLI flags/env vars relative to file-based scopes | CLI flags positioned as a session override above Local/Project/User; Managed is separately described as never-overridable -- the docs' own two passages order CLI-flags-vs-Managed inconsistently (§1.1, flagged) | Documented explicitly: env vars and CLI flags both rank **above** repo/local file config in the six/seven-link chain | `OPENCODE_CONFIG`/`OPENCODE_CONFIG_CONTENT` are named, ordered links in the same eight-source chain as the file-based scopes, not a separate top/bottom layer | Stated explicitly for exactly one key (`sessionDir`): `--session-dir` > `PI_CODING_AGENT_SESSION_DIR` > settings file (§4.4) -- no equivalent blanket statement found for keys generally | CLI args rank highest, unconditionally; a second, narrower documented statement (managed scope "wins over the shell environment too") implies a pre-existing shell export normally outranks `config.yaml`, a tier the top-of-page four-link chain does not itself name -- flagged as an unresolved documented tension, not smoothed over (§5.2) |
+| Cross-harness config interop found | None found (no evidence Claude Code reads a Copilot- or OpenCode-authored file) | Reads `.claude/settings.json`/`.claude/settings.local.json` as additional repo sources, and reads `extraKnownMarketplaces` from the same file, "for Claude compatibility" (v1.0.12/0.0.421) | None found | `usage.md` documents pi loading `AGENTS.md` **or** `CLAUDE.md` (whichever is present) as its own context-file convention, but this session found no equivalent reading of a Claude Code/Copilot CLI/OpenCode *settings*-schema file the way Copilot CLI reads Claude Code's | `${env:VAR_NAME}` placeholder syntax accepted as an alias for `${VAR_NAME}` specifically "so MCP or provider snippets copied from Cursor / Claude configs work unchanged" (§5.4) -- interop at the placeholder-syntax level rather than reading a sibling harness's whole file |
+| Permission-config shape | Rule strings in `permissions.allow`/`permissions.deny` arrays (e.g. `"Bash(npm run lint)"`) | Named boolean/URL-list keys (`allowedUrls`, `permissions.disableBypassPermissionsMode`) plus a saved-decision store (`permissions-config.json`) keyed by project location | A dedicated `permission` object per tool-category, `"allow"`/`"ask"`/`"deny"`, with glob-pattern sub-keys, last-match-wins, and per-agent override merge -- the most granular, most fully documented-and-source-verified permission-config schema of the three | No permission-config schema at all -- see [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5.1's own source-verified negative finding; pi's only comparable gate is the Project Trust ask/always/never tri-state (§4.2), a config-*loading* gate, not a per-tool permission engine | Not a rule-string schema on this page's axis -- a three-mode `security.approval_mode` switch (Smart/Manual/Off) plus a hardline blocklist surviving even Off, documented in full in [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §6.1, not repeated here |
+| Env-var substitution inside config values | Not found as a general config-value mechanism (settings-file `env` block sets variables *for subprocesses*, it does not interpolate `${VAR}` into other keys generally, though managed MCP allowlist entries do support `${VAR}` resolution per a dated changelog fix) | Not found as a general config-value mechanism in the sources this session fetched | `{env:VAR}` and `{file:path}` placeholder syntax, source-confirmed via `ConfigVariable.substitute()` | Not found as a general config-value mechanism in the sources this session fetched | `${VAR_NAME}` and Cursor-style `${env:VAR_NAME}` both resolve against the process environment (multi-reference-per-value supported); unset references stay verbatim with a logged warning; `${file:...}`/`${vault:...}`/`${bitwarden:...}` prefixes are named but explicitly **not** resolved inline -- routed instead through a `secrets:` config block (§5.4) |
+| Malformed-config resilience | Multiple dated fixes (v2.1.97/98, and others) hardening one-bad-key-should-not-invalidate-the-whole-file; managed settings explicitly strip-and-warn rather than fail closed | Dated hardening arc (1.0.40-1.0.44): invalid values/URLs now warn and skip rather than crash startup | Not directly evidenced in the sources this session fetched (BEST CURRENT UNDERSTANDING, UNCONFIRMED: no equivalent claim found either way) | Not directly evidenced in the sources this session fetched (BEST CURRENT UNDERSTANDING, UNCONFIRMED: no equivalent claim found either way -- pi ships no changelog this session cross-referenced for this page, unlike the two closed-source harnesses' own dated hardening histories) | A malformed managed file is "logged loudly and ignored -- it never blocks startup" (§5.3); an unrecognized `${prefix:...}` substitution "warns once and stays verbatim" rather than failing config load (§5.4) -- the same warn-and-continue posture as Claude Code's own hardening arc, independently documented |
+| Structural migration history found | `.claude.json` -> `settings.json` (v1.0.7-v2.0.8); Windows managed-settings path change (deprecated ~v2.1.34, removed v2.1.75); `managed-settings.d/` drop-in directory added (v2.1.83) | `.github/copilot/config.json` -> `settings.json` (0.0.421 -> 0.0.422, ~48 hours); user `~/.copilot/settings.json` split from `~/.copilot/config.json` internal state (v1.0.35); `/settings` unified dialog absorbing scattered slash commands (1.0.57-1.0.72) | Legacy TOML `config` file auto-migrated to JSON on load, per source; no further multi-file-format migration history found in the sources fetched this session | Not evidenced in the docs pages fetched this session (no changelog cross-referenced for this specific page) -- BEST CURRENT UNDERSTANDING, UNCONFIRMED either way | A numbered internal config-schema floor is named at least once (a legacy env var is documented as "unsupported since the config-v12 support floor"), but no changelog was fetched this session to trace its fuller history the way §1.5/§2.6 trace Claude Code's and Copilot CLI's own migrations -- BEST CURRENT UNDERSTANDING, UNCONFIRMED on how many such floors have shipped |
+| Config-loading precondition beyond mere scope/precedence | None found -- Local/Project settings are read unconditionally once present | None found -- repo settings are read unconditionally once present | None found -- project config is read unconditionally once present | **Project Trust** (§4.2): the project scope's own settings file is conditionally read at all, gated by an `ask`/`always`/`never` policy and a per-folder `trust.json` decision store -- a structural feature none of the other three harnesses' fetched docs name an equivalent of | None found -- `config.yaml`/`.env` are read unconditionally once present; the closest analog is `hermes config set`'s routing logic (§5.1) and managed scope's own write-rejection (§5.3), neither of which gates *reading* an existing file the way pi's Project Trust does |
+
+**The design lesson.** All five harnesses converge on the same basic
+shape -- a small number of named scopes (user/global and, for four of the
+five, project/repo, plus a managed/policy tier for three of the five),
+later scopes generally overriding earlier ones, with at least one
+deliberate, explicitly-named exception where the harness prefers an
 additive merge over an outright replacement (Claude Code's permission-rule
 union across scopes, Copilot CLI's per-key repo-merge nuance, OpenCode's
 array-concatenating `mergeConfigConcatArrays()`, pi's key-by-key
-nested-object merge). Where they diverge most is in *transparency of that
-merge to the person configuring it*: OpenCode is the only one of the four
-whose merge function is a named, source-readable routine this session
-could inspect directly rather than infer from prose; Claude Code's own
-docs contain an internal inconsistency about where CLI flags sit relative
-to managed policy that this page flags rather than resolves; Copilot CLI
-is the only harness found to actively read a sibling harness's own config
-file (`.claude/settings.json`) as a documented interop measure, a
-cross-harness config-compatibility decision this research found no
-reciprocal or three-way equivalent of; and pi is the outlier on scope
-*count* rather than merge mechanics -- the smallest scope surface of the
-four (no managed/enterprise tier at all), but the only one of the four to
-gate its one non-global scope behind an explicit, independently
-config-loading-time trust decision rather than reading it unconditionally.
-That last property is worth holding apart from the other three harnesses'
-permission engines specifically because it operates one step *earlier* in
-the pipeline than any of them: Claude Code, Copilot CLI, and OpenCode all
-ask "is this specific tool call allowed" once a project's settings and
-resources are already loaded and in effect, while pi asks "should this
-project's own settings and resources be allowed to load in the first
-place" as a logically prior question -- a genuinely different point in the
-startup sequence to place a trust boundary, not merely a differently-named
-version of the same permission-prompt idea the other three implement.
+nested-object merge, Hermes' leaf-key managed-scope pinning). Where they
+diverge most is in *transparency of that merge to the person configuring
+it*: OpenCode is the only one of the five whose merge function is a named,
+source-readable routine this session could inspect directly rather than
+infer from prose; Claude Code's own docs contain an internal inconsistency
+about where CLI flags sit relative to managed policy that this page flags
+rather than resolves, and Hermes' own docs carry a comparable, independently
+sourced tension between its four-link top-of-page precedence chain and a
+separate passage implying a pre-existing shell environment variable
+normally outranks `config.yaml` (§5.2) -- two harnesses, two structurally
+similar unresolved-by-their-own-docs precedence questions, neither invented
+by this page but both surfaced by reading two passages of the same product's
+documentation against each other; Copilot CLI is the only harness found to
+actively read a sibling harness's own config file (`.claude/settings.json`)
+as a documented interop measure, while Hermes' own interop reach is narrower
+but still real -- a placeholder-syntax alias (`${env:VAR_NAME}`) adopted
+specifically so config snippets copied from Cursor or Claude Code configs
+resolve unchanged, rather than reading a sibling harness's file wholesale;
+pi is the outlier on scope *count* among the first four (no managed/enterprise
+tier at all) but the only one of the five to gate its one non-global scope
+behind an explicit, independently config-loading-time trust decision rather
+than reading it unconditionally -- a property worth holding apart from the
+other four harnesses' permission engines specifically because it operates
+one step *earlier* in the pipeline than any of them, asking "should this
+project's own settings and resources be allowed to load in the first place"
+rather than "is this specific tool call allowed" once loading has already
+happened. Hermes, finally, is this page's one example of a harness that
+enforces its managed/policy tier through **filesystem permissions alone**
+rather than a dedicated read-only channel -- its own docs name this
+directly as advisory against a user with write access to `/etc/hermes` or
+running as root, a materially weaker stated guarantee than Claude Code's
+managed-settings tier or Copilot CLI's MDM-plist/registry delivery, neither
+of which this page's fetched sources describe with an equivalent
+self-reported escape hatch -- and the only one of the five whose everyday
+config-authoring surface is a command (`hermes config set`) that decides
+*which of two files* a key belongs in, rather than a single settings file
+or a small fixed set of named-scope files the operator addresses directly.
 
 ---
 
@@ -1235,3 +1530,49 @@ from `github.com/earendil-works/pi`, `main` branch):**
   [Session & transcript persistence](session-persistence.md), and
   [Built-in skills](built-in-skills.md) for the mechanisms this page's own
   pi section cross-links to rather than repeats.
+
+**Hermes Agent (authoritative for its own documented behavior; fetched
+fresh this session, 2026-09-01, from `hermes-agent.nousresearch.com/docs/`):**
+- `hermes-agent.nousresearch.com/docs/user-guide/configuration` (WebFetch)
+  -- the primary source for §5.1's `~/.hermes/` directory table and the
+  `hermes config` command family, §5.2's precedence chain and rule-of-thumb
+  quote, and §5.4's `${VAR_NAME}`/`${env:VAR_NAME}` substitution rules
+  (unset-reference and unrecognized-prefix behavior, the `secrets:` block
+  redirect, and the Cursor/Claude-config-interop statement quoted verbatim).
+- `hermes-agent.nousresearch.com/docs/user-guide/managed-scope` (WebFetch)
+  -- the primary source for §5.3 in full: the `/etc/hermes` directory
+  layout and `0755`/`0644` permission model, the `HERMES_MANAGED_DIR`
+  relocation knob and its defeatability caveat, the leaf-key merge
+  behavior and worked `model.default` example, the write-rejection error
+  text, the package-manager-lock distinction, the "wins over the shell
+  environment too" precedence note quoted verbatim and flagged in §5.2
+  against the configuration page's own four-link chain, and the named v1
+  security-model limitations list.
+- `hermes-agent.nousresearch.com/docs/reference/environment-variables`
+  (WebFetch) -- the primary source for §5.1's `HERMES_HOME` description,
+  §5.5's `HERMES_IGNORE_USER_CONFIG`/`HERMES_IGNORE_RULES`/`HERMES_SAFE_MODE`/
+  `HERMES_YOLO_MODE`/`HERMES_TUI`/`HERMES_INFERENCE_MODEL`/`HERMES_MODEL`
+  entries and the `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`
+  precedence chain for the `copilot`/`copilot-acp` provider, and the
+  single "config-v12 support floor" data point cited in §6's synthesis
+  table.
+- `hermes-agent.nousresearch.com/docs/reference/cli-commands` (WebFetch) --
+  the primary source for §5.5's global-flag list (`--profile`,
+  `--ignore-user-config`, `--ignore-rules`, `--safe-mode`, `--yolo`,
+  `--tui`/`--cli`) and `hermes chat`'s `-m`/`--model` and `--provider`
+  flags, including the full enumerated `--provider` value list.
+- `hermes-agent.nousresearch.com/docs/user-guide/configuring-models`
+  (WebFetch) -- corroborating source for §5.5's main-model `config.yaml`
+  schema (`provider`/`default`/`base_url`/`api_mode`) and the
+  empty-string-sentinel-to-mapping upgrade behavior on first `hermes
+  setup`/`hermes model` run.
+- `hermes-agent.nousresearch.com/docs/integrations/providers` (WebFetch) --
+  the primary source for §5.5's `api_key`/`base_url`/`OPENAI_API_KEY`
+  resolution statement and the sixty-plus-provider `.env`-key enumeration
+  (`OPENROUTER_API_KEY`, `FIREWORKS_API_KEY`, `XAI_API_KEY`,
+  `DASHSCOPE_API_KEY`, and others named inline).
+- Cross-referenced against, not re-fetched from,
+  [Permissions & sandboxing architecture](permissions-and-sandboxing.md) §6
+  and [Model routing / selection](model-routing-and-selection.md) §5 for
+  the harness's own architectural introduction and the auxiliary-model-slot
+  mechanism this section only touches from the config-file/API-key side.

@@ -851,24 +851,409 @@ OpenCode's own retry documentation states this page found equivalently.
 
 ---
 
-## 5. Synthesis
+## 5. Hermes Agent (Nous Research)
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | pi |
-|---|---|---|---|---|
-| Verifiability | Docs + changelog; no public implementation | Changelog only; docs page found is generic platform guidance, not CLI-specific | Source-verified (`packages/llm`, `packages/opencode`), `dev` branch (caveat applies) | Source-verified across all three sibling packages (`pi-ai`, `pi-coding-agent`, `pi-agent-core`), `main` branch, plus its own settings docs and a regression-test file |
-| Architecture | One documented, named policy ("Automatic Retries") | Not documented as one named mechanism; changelog implies per-subsystem fixes (MCP, streaming, HTTP/2) rather than one shared module (BEST CURRENT UNDERSTANDING, UNCONFIRMED) | Two explicit, source-verified layers: bounded transport retry (`RequestExecutor`) wrapped by a separately-classified, effectively unbounded session-turn retry (`SessionRetry`) | Two explicit, source-verified layers with deliberately different classifiers (status-code-based inner `retryProviderRequest`, string-pattern-based outer `retryAssistantCall`), plus a third, durable crash-recovery state machine in `pi-agent-core` tracking retry state across process restarts |
-| Default attempt cap | 10 (`CLAUDE_CODE_MAX_RETRIES`), capped at 15 unless `CLAUDE_CODE_RETRY_WATCHDOG` is set (then ~300 or unlimited for capacity errors) | Not documented | Inner layer: 2 retries (3 attempts). Outer layer: **no cap** in the `Schedule` itself | Outer layer: 3 (`retry.maxRetries`, configurable). Inner layer: 0 -- **off by default** (`retry.provider.maxRetries`), and `pi-agent-core`'s own framework-level default is also `{enabled: false}` |
-| Backoff formula | Exponential, with the client-computed value enforced as a *minimum* even against a small server `Retry-After` (v2.1.98 fix) | Not documented for the CLI's own requests (cookbook page shows only example client code) | Inner: exponential with ±20% jitter, capped at 10s. Outer: `retry-after(-ms)` header if present (capped only by ~24.8-day 32-bit ceiling), else 2s×2^(attempt-1) capped at 30s if no headers at all | Outer: `baseDelayMs * 2^(attempt-1)` (default 2s, 4s, 8s), **no jitter**. Inner: `retry-after(-ms)` header if present (capped at `maxRetryDelayMs`, default 60s, or throws if exceeded rather than waiting), else `min(0.5*2^i, 8s)` with **negative-only** (-0 to -25%) jitter |
-| Non-retryable carve-outs | TLS cert validation, Bedrock content-type mismatch, mid-response partial failures (kept, not retried) | Not documented at this granularity | Auth (401/403), quota-exceeded, content-policy, invalid-request/context-overflow, transport errors -- all `retryable: false` at the inner layer; context-overflow additionally hard-excluded at the outer layer | Quota/billing/Go-usage-limit text (checked first, wins ties) at the outer layer; aborts are terminal at both layers; overflow is checked before retryable-error classification and routed to compaction instead, confirmed independently from both `custom-provider.md` and `pi-agent-core`'s own state-machine doc |
-| User-visible retry UX | Spinner countdown `Retrying in Ns · attempt x/y`; reason label revealed at attempt 3 (v2.1.198); stall banner at 20s (90s during advisor calls) | Not documented in mechanism-level detail; changelog confirms "user-friendly" rate-limit timing messages exist (0.0.389) | Session-status object (`{type:"retry", attempt, message, action, next}`) rendered by the TUI's/app's own `SessionRetry` component | `onRetryScheduled`/`onRetryAttemptStart`/`onRetryFinished` callbacks drive UI countdown; the identical mechanism is reused for compaction under a `summarization_retry_*` event name instead |
-| Alternative-to-retry mitigation | `fallbackModel`: up to 3 ordered fallback models, retried once on an unexpected non-retryable error (auth/rate-limit/request-size/transport excluded) | `continueOnAutoMode`: auto-switches to auto model-selection on rate limit instead of pausing | Free-tier/Go-usage-limit responses surface a subscribe/upgrade action link rather than only backing off | None found; quota/billing text is classified non-retryable and fails fast instead |
-| User-facing config lever | `CLAUDE_CODE_MAX_RETRIES`, `CLAUDE_CODE_RETRY_WATCHDOG`, `API_TIMEOUT_MS` | None found | None found on the docs config page; two open feature requests ask for exactly this (§3.4) | `retry.enabled`, `retry.maxRetries`, `retry.baseDelayMs`, `retry.provider.timeoutMs`, `retry.provider.maxRetries`, `retry.provider.maxRetryDelayMs` -- the most granular documented lever of the four harnesses examined |
-| Known failure mode, self-reported | Historical: v2.1.110's retry cap had to be reverted one version later for trading hangs for outright failures; voice-mode retry loop was unbounded until fixed (v2.1.204) | A remote-session heartbeat loop retried a rejected request "every few seconds forever" until fixed in 1.0.66 | Live, open issue (#17648, fetched this session): 173 consecutive retries over 2.5 hours, backoff growing past 7 minutes with no circuit breaker, corroborated by several further open issues/feature requests found (not independently fetched) | Historical: compaction's summarization call previously ran an unretried single call at all (`#6647`, fixed by wiring it into the shared `retry.*` policy); no equivalent open unbounded-retry issue found this session |
+Primary sources, all VERIFIED and fetched or cross-checked fresh this
+session (1 September 2026): `hermes-agent.nousresearch.com/docs/user-guide/
+configuration` and `.../user-guide/features/fallback-providers` (WebFetch,
+plus the site's own concatenated `llms-full-*.txt` doc dump, fetched via
+`curl` and grepped for `retry`/`backoff`/`429`/`api_max_retries`), and --
+unlike Claude Code and Copilot CLI above, and like OpenCode and pi -- this
+harness's own public implementation, `github.com/NousResearch/hermes-agent`
+(`main` branch): `agent/retry_utils.py`, `agent/error_classifier.py`,
+`agent/conversation_loop.py`, `agent/turn_retry_state.py`,
+`agent/nous_rate_guard.py`, `run_agent.py`, and five regression test files,
+all fetched in full via `raw.githubusercontent.com` and `gh api`. Hermes
+Agent is a sixth, independent, self-hosted product with no dependency on
+any harness covered elsewhere on this page -- see [Permissions &
+sandboxing architecture](permissions-and-sandboxing.md) §6 for this book's
+fuller architectural introduction, not repeated here.
 
-**The design lesson.** All four harnesses draw the same basic
+### 5.1 The loop: `while retry_count < max_retries` in `conversation_loop.py`
+
+```mermaid
+flowchart TD
+    Call["API call attempt\n(agent/conversation_loop.py, run_conversation)"] --> Err{"Exception raised?"}
+    Err -->|"no"| Done["finish_reason='stop', continue turn"]
+    Err -->|"yes"| Classify["classify_api_error()\nagent/error_classifier.py\n-> ClassifiedError{reason, retryable,\nshould_compress, should_rotate_credential,\nshould_fallback}"]
+    Classify --> NousGuard{"provider == nous AND\ncross-session rate-limit\nfile says still limited?"}
+    NousGuard -->|"yes"| Fallback1["skip call entirely,\ntry fallback_providers"]
+    NousGuard -->|"no"| AuthCk{"401/403?"}
+    AuthCk -->|"yes"| AuthRefresh["one-shot per-provider OAuth\nrefresh (codex/anthropic/nous/\ncopilot/vertex) via TurnRetryState guard"]
+    AuthRefresh -->|"refreshed"| Call
+    AuthRefresh -->|"failed"| AuthFail["auth_failover_attempted ->\nfallback_providers chain"]
+    AuthCk -->|"no"| PoolCk["_recover_with_credential_pool()\n(rotate to next key in pool)"]
+    PoolCk -->|"rotated"| Call
+    PoolCk -->|"no pool / exhausted"| FormatCk["format-recovery one-shots:\nimage shrink, thinking-sig strip,\nlength-continuation, grammar fallback, ..."]
+    FormatCk -->|"handled"| Call
+    FormatCk -->|"classified.retryable == False\n(is_client_error)"| Terminal["abort retry loop,\ntry fallback_providers once"]
+    FormatCk -->|"retryable == True,\nretry_count < max_retries"| Backoff["jittered_backoff() or\nadaptive_rate_limit_backoff()\nor Retry-After header (capped 600s)"]
+    Backoff --> Call
+    FormatCk -->|"retry_count >= max_retries"| Recover["_try_recover_primary_transport()\n(one-shot; resets retry_count=0)"]
+    Recover -->|"recovered"| Call
+    Recover -->|"failed"| Fallback2["_try_activate_fallback()\n(resets retry_count=0, one shot/turn)"]
+    Fallback1 --> Fallback2
+    Terminal --> Fallback2
+    Fallback2 -->|"activated"| Call
+    Fallback2 -->|"no chain / exhausted"| Give["return failed=True,\nfailure_reason, failure_retryable"]
+```
+
+Hermes' primary-model retry mechanism lives entirely inside one function,
+`run_conversation` in `agent/conversation_loop.py` (502KB of source, fetched
+in full this session): `max_retries = agent._api_max_retries` set once per
+API-call block, `while retry_count < max_retries:` as the loop condition,
+and a fresh `TurnRetryState()` instance per iteration bookkeeping which
+one-shot recovery branch has already fired. `agent._api_max_retries` is
+wired from `agent.api_max_retries` in `config.yaml`
+(`agent/agent_init.py`: `_raw_api_retries = _agent_section.get
+("api_max_retries", 3)`), documented directly: "`agent.api_max_retries`
+controls how many times Hermes retries a provider API call on transient
+errors (rate limits, connection drops, 5xx) **before** fallback-provider
+switching engages. The default is `3` -- four attempts total." A
+regression test (`tests/run_agent/test_api_max_retries_config.py`, closing
+issue `#11616`, "make the hardcoded `max_retries = 3` in the agent's API
+retry loop user-configurable so fallback-provider setups can fail over
+faster on flaky primaries instead of burning ~3x180s on the same stall")
+confirms both the `3`-attempt legacy default and that setting
+`agent.api_max_retries: 1` or `: 5` in config propagates directly to
+`agent._api_max_retries`. This four-attempts-by-default cap is considerably
+tighter than Claude Code's 10 (§1.1) and structurally different from
+OpenCode's effectively uncapped outer `SessionRetry` (§3.3) or pi's
+separately-configurable 3-attempt outer layer (§4.4) -- Hermes ties its
+one and only primary-call retry budget directly to when fallback-provider
+switching takes over, rather than layering an inner transport retry
+beneath an outer turn retry the way OpenCode and pi both do.
+
+### 5.2 Error classification: `FailoverReason`, a nine-axis taxonomy with per-branch recovery hints
+
+VERIFIED, `agent/error_classifier.py` (99,558 bytes, read in full this
+session). The module's own docstring states its role precisely: "Provides
+a structured taxonomy of API errors and a priority-ordered classification
+pipeline that determines the correct recovery action (retry, rotate
+credential, fallback to another provider, compress context, or abort)...
+the main retry loop in run_agent.py consults for every API failure" (the
+comment is stale on the caller's filename -- the consultation call site
+this session found is `agent/conversation_loop.py`, not `run_agent.py`
+directly, but the classifier module itself is unchanged by that). Every
+call to `classify_api_error()` returns a `ClassifiedError` dataclass
+carrying a `FailoverReason` enum value (`auth`, `auth_permanent`,
+`billing`, `rate_limit`, `upstream_rate_limit`, `overloaded`,
+`server_error`, `timeout`, `ssl_cert_verification`, `context_overflow`,
+`payload_too_large`, `image_too_large`, `image_corrupt`, `model_not_found`,
+`provider_policy_blocked`, `content_policy_blocked`, `format_error`,
+`invalid_encrypted_content`, `multimodal_tool_content_unsupported`,
+`thinking_signature`, `long_context_tier`,
+`oauth_long_context_beta_forbidden`, `llama_cpp_grammar_pattern`, and a
+catch-all `unknown`) plus four independent boolean recovery hints --
+`retryable`, `should_compress`, `should_rotate_credential`,
+`should_fallback` -- that "the retry loop checks... instead of
+re-classifying the error itself." This is a richer, more explicitly
+multi-dimensional taxonomy than any of Claude Code's documented category
+list (§1.1), OpenCode's `retryable: boolean` field on its structured error
+schema (§3.2), or pi's two independent regex/status-code classifiers
+(§4.1-4.2): a single Hermes classification carries retryability, a
+compress-instead-of-retry signal, a credential-rotation signal, and a
+fallback-worthiness signal as four separately-settable flags on one
+result, letting a single error (e.g. a 429 classified `rate_limit`) drive
+three different recovery actions in sequence (rotate credential, then
+retry with backoff, then escalate to fallback) rather than one.
+
+The status-code dispatch in `_classify_by_status()` (lines 1243-1535,
+read in full) is worth reproducing at the level of concrete carve-outs
+this page's other sections document for their own harnesses: 401 is
+`retryable=False` but `should_rotate_credential=True` --
+"credential pool rotation and provider-specific refresh (Codex, Anthropic,
+Nous) run *before* the retryability check... if those succeed, the loop
+`continue`s. If they fail, `retryable=False` ensures we hit the
+client-error abort path." 402 and billing-pattern 403/404/429 bodies
+(a `_BILLING_PATTERNS` list of 18 phrases including `"insufficient
+credits"`, `"out of extra usage"`, `"account is deactivated"`) are
+`retryable=False` -- a real fix, `#31273`, had to *remove*
+`FailoverReason.billing` from an exclusion set that previously let a 402
+fall through to the generic retry-backoff path regardless of
+`retryable`, with the regression test's own real-world citation: "~$40
+burned in 48h on a 24/7 gateway routing Telegram + Discord traffic" from a
+single pay-per-token 402 retried `api_max_retries` times per turn, every
+turn. 413 is `retryable=True, should_compress=True`. 429 runs a
+multi-signal disambiguation the classifier's own comments call out by
+issue number: an `_OVERLOADED_PATTERNS` match (Z.AI/Zhipu server-wide
+overload sharing HTTP 429 with genuine per-credential throttling) routes
+to `overloaded` and retries the *same* credential rather than rotating it
+("`#14038`... the correct recovery is 'back off and retry the same key',
+NOT 'rotate the credential' (which exhausts the pool while the endpoint is
+still busy)"); an OpenRouter-aggregator-wrapped upstream 429 routes to
+`upstream_rate_limit` with `should_rotate_credential=False,
+should_fallback=True` ("the user's key is healthy, so marking it
+exhausted / rotating is wrong and burns the key for ~24min"); an explicit
+usage-limit or billing phrase without an explicit rate-limit phrase routes
+to non-retryable `billing` (`#39441`); everything else routes to
+retryable `rate_limit`. 500/502 and 503/529 both carry a request-
+validation-signal carve-out ("some OpenAI-compatible gateways return
+request-validation errors with a 5xx status... these are deterministic --
+every retry gets the identical rejection -- so the generic '5xx ->
+retryable server_error' rule turns one bad request into a retry flood")
+and a context-overflow-as-5xx carve-out for local inference servers
+(llama.cpp/Ollama/vLLM) that report overflow via HTTP 500 instead of the
+standard 400/413, routed to `context_overflow` (compress, don't retry
+blindly) rather than blind `server_error` retries. 408 routes to
+retryable `timeout` per RFC 9110 §15.5.9 rather than falling into the
+generic non-retryable 4xx bucket. Content-policy/safety-filter refusals
+are a further, source-and-test-confirmed carve-out
+(`tests/run_agent/test_18028_content_policy_blocked.py`, `#18028`): the
+provider often raises *without a status code at all* ("This content was
+flagged for possible cybersecurity risk..."), which previously fell
+through to the retryable `unknown` catch-all and burned all
+`api_max_retries` attempts on a deterministic refusal before surfacing
+"API failed after 3 retries" with no explanation; the fix pattern-matches
+the message text directly to non-retryable `content_policy_blocked` with
+`should_fallback=True`, narrow enough (per its own defensive test) not to
+collide with a generic 400 format error or OpenRouter's distinct
+account-level `provider_policy_blocked` classification.
+
+### 5.3 Backoff: `jittered_backoff()`, a positive-only-jitter exponential with a provider-specific long-tail carve-out
+
+VERIFIED, `agent/retry_utils.py` (209 lines, read in full this session).
+The module's own docstring states its purpose as a deliberate departure
+from a fixed schedule: "Replaces fixed exponential backoff with jittered
+delays to prevent thundering-herd retry spikes when multiple sessions hit
+the same rate-limited provider concurrently." `jittered_backoff(attempt,
+*, base_delay=5.0, max_delay=120.0, jitter_ratio=0.5)` computes `delay =
+min(base_delay * 2**(attempt-1), max_delay)` then adds `jitter =
+uniform(0, jitter_ratio * delay)` -- **positive-only** jitter (the
+computed delay is always lengthened, by 0-50% at the default ratio),
+the mirror-image of pi's own negative-only (-0 to -25%) jitter shape
+(§4.2) and a different shape again from OpenCode's symmetric ±20% band
+(§3.2). The jitter's random seed is deliberately decorrelated across
+concurrent callers within one process: a module-level `_jitter_counter`
+protected by a `threading.Lock` is combined with `time.time_ns()` via XOR
+so "multiple sessions retrying simultaneously" don't compute the same
+delay from a coarse clock tick, a concern this page has not seen stated
+explicitly for any of Claude Code's, Copilot CLI's, or OpenCode's own
+jitter implementations. The function is called with two different
+`(base_delay, max_delay)` pairs at two distinct call sites in
+`conversation_loop.py`: the main API-error retry path uses `base_delay=2.0,
+max_delay=60.0` (line 6892: "for rate limits, respect the Retry-After
+header if present" first, falling back to `jittered_backoff` only when no
+header is present), while a structurally separate sub-loop handling
+**invalid/malformed API responses** (empty or garbled completions, not
+exceptions) reuses the same `retry_count`/`max_retries` loop variables but
+calls `jittered_backoff(retry_count, base_delay=5.0, max_delay=120.0)`
+(line 3709) -- two different backoff schedules sharing one attempt
+counter and one cap, a design wrinkle distinct from any other harness's
+retry architecture this page documents.
+
+When a `Retry-After` header is present on a rate-limited response, Hermes
+honors it verbatim but **caps it at 600 seconds (10 minutes)**, and the
+source comment states precisely why the earlier, tighter cap was wrong:
+"Cap at 10 minutes. Anthropic Tier 1 input-token buckets reset in ~171s,
+so a 120s cap caused us to retry before the actual reset window and
+re-trip the limit. 600s covers all realistic provider reset windows while
+still rejecting pathological values. (`#26293`)" -- i.e. an earlier,
+smaller ceiling was itself a self-inflicted retry-amplification bug, fixed
+by widening the cap rather than tightening it, the opposite correction
+direction from Claude Code's own v2.1.98 fix (§1.4), which *enforces* a
+computed minimum against a small server-supplied `Retry-After` rather than
+capping a large one. A dedicated `parse_retry_after_seconds()` helper
+(also in `retry_utils.py`, exercised by its own test class) accepts either
+a raw header value or a headers-mapping object, parses a numeric string,
+a bare number, or an RFC 7231 HTTP-date form, and clamps negative deltas
+to `0.0`.
+
+A third, narrowly-scoped backoff policy sits beside the generic one:
+`adaptive_rate_limit_backoff()` recognizes a specific Z.AI Coding Plan
+GLM-5.2 overload signature (HTTP 429, body error code `"1305"`, message
+"The service may be temporarily overloaded...", matched only when the
+request's own `base_url` and `model` confirm the narrow provider/model
+pair, "so ordinary quota/billing 429s still fail fast through the
+existing classifier") and, for that signature only, keeps the first three
+retries ("`short_attempts`") on the normal short exponential schedule,
+then switches to a fixed table of **progressively longer waits -- 30s,
+60s, 90s, 120s -- each with a smaller, 0.2 jitter ratio** ("keeps long
+waits readable while still avoiding synchronized retry storms"). A
+companion function, `zai_coding_overload_retry_ceiling()`, exists purely
+to solve a self-discovered dead-code bug the module's own docstring names
+directly: "With the default `api_max_retries` (3) equal to
+`short_attempts` (3), the loop always gave up before reaching the long
+tier, leaving the whole long-backoff schedule as dead code" -- so the
+retry loop extends its own ceiling specifically for this error signature
+(`conversation_loop.py` line 5684: `max_retries = max(max_retries,
+zai_coding_overload_retry_ceiling())`), a provider-specific,
+self-correcting exception to the otherwise-uniform `api_max_retries`
+budget that this page finds no equivalent of in Claude Code's, Copilot
+CLI's, OpenCode's, or pi's own retry documentation or source.
+
+### 5.4 Disabling the SDK's own retry loop -- and the one path where it stays on
+
+VERIFIED, `run_agent.py` (line 5748, read in context this session). For
+per-request OpenAI-wire clients, Hermes sets `request_kwargs["max_retries"]
+= 0` explicitly, and the source comment states the reasoning in the same
+terms this page's own pi section (§4.2/§4.4) documents independently for a
+wholly different codebase: "should not run the SDK's built-in retry loop:
+the agent's outer loop owns retries with credential rotation, provider
+fallback, and backoff that the SDK can't see. Leaving SDK retries on
+(default 2) compounds with our outer retries and lets a single hung
+provider request stretch to ~3x the per-call timeout before our stale
+detector reports it." This is the third harness this page finds
+explicitly disabling an underlying SDK's or provider's own retry policy to
+prevent double-counted compounding -- alongside pi's `retry.provider.
+maxRetries: 0` default (§4.4) and, in effect, OpenCode's own inner/outer
+split (§3.1) -- independently arrived at in a third, unrelated codebase.
+The comment also notes the scope of the fix precisely: "Shared/primary
+clients and Anthropic / Bedrock paths are unaffected (they don't go
+through here)" -- the `max_retries=0` override is scoped to the
+OpenAI-wire request path specifically, not universal.
+
+Nous Portal is the one path this session found where the underlying SDK's
+own retries are **not** disabled, and Hermes' own source documents the
+resulting amplification directly as the reason a wholly separate
+cross-session file exists. `agent/nous_rate_guard.py`'s module docstring:
+"Each 429 from Nous triggers up to 9 API calls per conversation turn (3
+SDK retries x 3 Hermes retries), and every one of those calls counts
+against RPH. By recording the rate limit state on first 429 and checking
+it before subsequent attempts, we eliminate the amplification effect." The
+guard persists rate-limit state to a shared file
+(`~/.hermes/rate_limits/nous.json`, written via the same `atomic_replace()`
+helper §5.3's Windows-retry logic uses) so that CLI, gateway, cron, and
+auxiliary-task sessions all check one on-disk state before issuing a new
+Nous request, extracting the best available reset estimate in priority
+order from `x-ratelimit-reset-requests-1h`, `x-ratelimit-reset-requests`,
+then a generic `retry-after` header. `conversation_loop.py`'s own retry
+loop consults this guard as its very first action on every iteration when
+`agent.provider == "nous"` (before even attempting the API call): if
+another process already recorded an active rate limit, the loop skips the
+call entirely and goes straight to `_try_activate_fallback()` rather than
+spending one of its own `api_max_retries` attempts (and, transitively, up
+to three SDK-level sub-attempts) confirming what a sibling session already
+knows. This is a cross-process retry-budget-sharing mechanism this page
+finds no equivalent of, confirmed or claimed, in any of Claude Code's,
+Copilot CLI's, OpenCode's, or pi's own retry architecture -- all four are
+documented and sourced as strictly single-process/single-session retry
+state.
+
+### 5.5 One-shot recovery guards and the two retry-budget resets
+
+VERIFIED, `agent/turn_retry_state.py` (94 lines, read in full this
+session). Its own docstring names the design problem directly: the inner
+retry loop "makes several distinct recovery attempts on a single model API
+call: a credential-pool 429 retry, a per-provider OAuth refresh (codex,
+anthropic, nous, copilot), a long-context compression restart, a length-
+continuation restart, and a handful of format-recovery branches...
+[which] used to be ~16 bare `*_attempted` / `has_retried_*` /
+`restart_with_*` locals declared inline before the loop and threaded
+through its 2,400-line body." `TurnRetryState` is a single dataclass, one
+fresh instance per API-call block, collapsing those into named one-shot
+boolean guards (`codex_auth_retry_attempted`,
+`nous_paid_entitlement_refresh_attempted`,
+`copilot_stale_cred_retry_attempted`, `thinking_sig_retry_attempted`,
+`image_shrink_retry_attempted`, `llama_cpp_grammar_retry_attempted`,
+`auth_failover_attempted`, and more) plus a small set of `restart_with_*`
+signals the loop reads after an attempt to decide whether to rebuild the
+request and retry. Two of these guards double as **retry-budget resets**,
+distinct from the four-attempt `api_max_retries` cap itself: when
+`_try_recover_primary_transport()` (a one-shot rebuild of the primary HTTP
+client for a stale connection pool or TCP reset) succeeds, or when
+`_try_activate_fallback()` successfully swaps to a `fallback_providers`
+entry, `conversation_loop.py` sets `retry_count = 0` and restarts the
+`while` loop with a fresh attempt budget against the recovered or new
+target -- so `api_max_retries` bounds each *target* (the current primary
+client, then the recovered primary, then each fallback in turn) rather
+than the whole turn. A live regression, `#32646` ("fallback_providers not
+activated when HTTP 429 follows a successful primary-transport
+recovery"), documents exactly this reset interacting badly with a race:
+"an eager-fallback attempt that lost its race with a concurrent session
+mutating the on-disk credential pool could leave `_fallback_index`
+advanced past the chain length without setting `_fallback_activated` to
+True. The subsequent 429s then short-circuited the eager-fallback gate...
+so the retry budget burned on the primary model with no fallback ever
+attempted" -- fixed by resetting `_fallback_index`, `_fallback_activated`,
+and `TurnRetryState.has_retried_429` together whenever transport recovery
+fires, so a post-recovery 429 always gets a fresh fallback-chain attempt
+rather than inheriting stale bookkeeping from before the reset.
+
+### 5.6 `fallback_providers`: the alternative-to-retry mitigation, reset-aware and turn-scoped
+
+VERIFIED, `hermes-agent.nousresearch.com/docs/user-guide/features/
+fallback-providers`, fetched fresh this session. A top-level
+`fallback_providers:` list (the legacy singular `fallback_model:` key is
+still honored for back-compat) names an ordered chain of backup
+`provider`/`model` pairs Hermes swaps to "mid-session without losing your
+conversation" once the primary exhausts its `api_max_retries` budget on
+rate limits or server errors, or immediately (no retry spent at all) on
+auth failures or a 404. This is the same general alternative-to-retry
+concept this page's own §1.5 (Claude Code `fallbackModel`), §2.4
+(Copilot CLI `continueOnAutoMode`), and §4 intro (pi has none) already
+document, but Hermes' own docs state two behaviors this page has not
+sourced for any of the other three: the switch is **turn-scoped, not
+session-scoped** ("each new user message starts with the primary model
+restored... within a single turn, fallback activates at most once -- if
+the fallback also fails, normal error handling takes over (retries, then
+error message). This prevents cascading failover loops within a turn
+while giving the primary model a fresh chance every turn"), and the
+per-turn retry decision is **reset-aware**: "when the primary's
+credentials report a rate-limit reset time that hasn't elapsed yet
+(subscription windows like Claude Pro/Max's 5-hour blocks or Codex weekly
+limits report these as hours or days), Hermes skips the doomed retry and
+stays on the fallback until the reset passes -- avoiding two pointless
+provider switches (and two prompt-cache invalidations) per turn." The docs
+also name an unavoidable cost documented nowhere else on this page: prompt
+caches are keyed to the serving model/account, so "when fallback fires,
+the new provider:model has no cached prefix for your conversation, so the
+next request re-reads the entire history at full input-token price... the
+same applies when the turn ends and the primary is restored." This ties
+the fallback mechanism this page documents (§5.4-§5.5) directly to a
+real, quantified cost this book's own [caching.md](caching.md) does not
+otherwise attach to a retry/fallback event for any of the other three
+harnesses.
+
+### 5.7 Self-reported failure modes
+
+Five distinct, source-and-issue-number-confirmed bugs this session found
+in Hermes' own repository, each fixed by a dedicated regression test named
+after the closed issue: `#11616` (a hardcoded `max_retries = 3` had no
+config surface at all, closed by adding `agent.api_max_retries`); `#31273`
+(`FailoverReason.billing` was wrongly excluded from the non-retryable
+abort path, letting a single HTTP 402 burn `api_max_retries` paid attempts
+against an exhausted balance every turn, "~$40 burned in 48h on a 24/7
+gateway"); `#18028` (a status-code-less content-policy refusal fell into
+the retryable `unknown` catch-all and burned all retries on a
+deterministic safety-filter block before surfacing an unhelpful "API
+failed after 3 retries"); `#14038` (Z.AI/Zhipu's server-wide-overload 429
+was indistinguishable from a genuine per-credential rate limit, so the
+classifier rotated a perfectly healthy credential out of the pool instead
+of backing off and retrying it); and `#32646` (a race in fallback-index
+bookkeeping after a successful primary-transport recovery silently
+disabled the fallback chain for the rest of the turn). None of these
+required a coordinated rewrite of the retry mechanism itself -- each is a
+narrow classification or bookkeeping fix layered onto the same
+`while retry_count < max_retries` loop and `FailoverReason` taxonomy --
+which this page notes as a different failure-mode shape from Claude
+Code's historical over-tightening/under-bounding swings (§1.7) or
+OpenCode's still-open unbounded-`SessionRetry` issue (§3.4): Hermes' own
+self-reported bugs are consistently about *misclassification* (an error
+routed to the wrong `FailoverReason`, burning a bounded budget on a case
+that should have failed fast or bypassed the budget entirely) rather than
+the retry budget itself being absent or unbounded.
+
+---
+
+## 6. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
+|---|---|---|---|---|---|
+| Verifiability | Docs + changelog; no public implementation | Changelog only; docs page found is generic platform guidance, not CLI-specific | Source-verified (`packages/llm`, `packages/opencode`), `dev` branch (caveat applies) | Source-verified across all three sibling packages (`pi-ai`, `pi-coding-agent`, `pi-agent-core`), `main` branch, plus its own settings docs and a regression-test file | Source-verified (`agent/retry_utils.py`, `agent/error_classifier.py`, `agent/conversation_loop.py`, `agent/turn_retry_state.py`, `agent/nous_rate_guard.py`, `run_agent.py`), `main` branch, plus its own docs and five issue-numbered regression tests |
+| Architecture | One documented, named policy ("Automatic Retries") | Not documented as one named mechanism; changelog implies per-subsystem fixes (MCP, streaming, HTTP/2) rather than one shared module (BEST CURRENT UNDERSTANDING, UNCONFIRMED) | Two explicit, source-verified layers: bounded transport retry (`RequestExecutor`) wrapped by a separately-classified, effectively unbounded session-turn retry (`SessionRetry`) | Two explicit, source-verified layers with deliberately different classifiers (status-code-based inner `retryProviderRequest`, string-pattern-based outer `retryAssistantCall`), plus a third, durable crash-recovery state machine in `pi-agent-core` tracking retry state across process restarts | One loop (`while retry_count < max_retries` in `conversation_loop.py`) wrapping a nine-`FailoverReason` taxonomy with four independent per-branch recovery flags (`retryable`/`should_compress`/`should_rotate_credential`/`should_fallback`), plus one-shot `TurnRetryState` guards for credential rotation, per-provider OAuth refresh, and format recovery, and a resettable budget that restarts at each new target (recovered primary, then each fallback) |
+| Default attempt cap | 10 (`CLAUDE_CODE_MAX_RETRIES`), capped at 15 unless `CLAUDE_CODE_RETRY_WATCHDOG` is set (then ~300 or unlimited for capacity errors) | Not documented | Inner layer: 2 retries (3 attempts). Outer layer: **no cap** in the `Schedule` itself | Outer layer: 3 (`retry.maxRetries`, configurable). Inner layer: 0 -- **off by default** (`retry.provider.maxRetries`), and `pi-agent-core`'s own framework-level default is also `{enabled: false}` | 3 (`agent.api_max_retries`, configurable) -- **four attempts total** before fallback-provider switching engages; extended dynamically (to a computed ceiling) only for one narrow Z.AI Coding Plan overload signature |
+| Backoff formula | Exponential, with the client-computed value enforced as a *minimum* even against a small server `Retry-After` (v2.1.98 fix) | Not documented for the CLI's own requests (cookbook page shows only example client code) | Inner: exponential with ±20% jitter, capped at 10s. Outer: `retry-after(-ms)` header if present (capped only by ~24.8-day 32-bit ceiling), else 2s×2^(attempt-1) capped at 30s if no headers at all | Outer: `baseDelayMs * 2^(attempt-1)` (default 2s, 4s, 8s), **no jitter**. Inner: `retry-after(-ms)` header if present (capped at `maxRetryDelayMs`, default 60s, or throws if exceeded rather than waiting), else `min(0.5*2^i, 8s)` with **negative-only** (-0 to -25%) jitter | `jittered_backoff()`: `min(base_delay * 2^(attempt-1), max_delay) + uniform(0, jitter_ratio*delay)` -- **positive-only** jitter (0-50% at the default 0.5 ratio), decorrelated across concurrent callers via a locked counter XORed into the RNG seed; `Retry-After` honored and capped at 600s; a separate provider-specific carve-out (Z.AI GLM-5.2 overload) escalates to a fixed 30/60/90/120s long-wait table after 3 short retries |
+| Non-retryable carve-outs | TLS cert validation, Bedrock content-type mismatch, mid-response partial failures (kept, not retried) | Not documented at this granularity | Auth (401/403), quota-exceeded, content-policy, invalid-request/context-overflow, transport errors -- all `retryable: false` at the inner layer; context-overflow additionally hard-excluded at the outer layer | Quota/billing/Go-usage-limit text (checked first, wins ties) at the outer layer; aborts are terminal at both layers; overflow is checked before retryable-error classification and routed to compaction instead, confirmed independently from both `custom-provider.md` and `pi-agent-core`'s own state-machine doc | 401/402/403-billing/404-billing/content-policy-blocked/most-other-4xx are `retryable=False`; 413/429(non-billing)/408/500-502/503-529/context-overflow-as-5xx are `retryable=True`; a request-validation-signal carve-out on 500/502 fails fast instead of retrying a deterministic rejection |
+| User-visible retry UX | Spinner countdown `Retrying in Ns · attempt x/y`; reason label revealed at attempt 3 (v2.1.198); stall banner at 20s (90s during advisor calls) | Not documented in mechanism-level detail; changelog confirms "user-friendly" rate-limit timing messages exist (0.0.389) | Session-status object (`{type:"retry", attempt, message, action, next}`) rendered by the TUI's/app's own `SessionRetry` component | `onRetryScheduled`/`onRetryAttemptStart`/`onRetryFinished` callbacks drive UI countdown; the identical mechanism is reused for compaction under a `summarization_retry_*` event name instead | Buffered/emitted status lines (`⏳ Retrying in Ns (attempt x/y)...`, a distinct `⏱️ Provider overloaded` / `Rate limited` label plus an adaptive-policy note) with 200ms-granularity interrupt checks during the sleep and a periodic activity touch every ~30s so the gateway's inactivity monitor doesn't misreport a live backoff wait as a stall |
+| Alternative-to-retry mitigation | `fallbackModel`: up to 3 ordered fallback models, retried once on an unexpected non-retryable error (auth/rate-limit/request-size/transport excluded) | `continueOnAutoMode`: auto-switches to auto model-selection on rate limit instead of pausing | Free-tier/Go-usage-limit responses surface a subscribe/upgrade action link rather than only backing off | None found; quota/billing text is classified non-retryable and fails fast instead | `fallback_providers`: an ordered chain, turn-scoped (resets to primary every new message) and reset-aware (skips a doomed retry and stays on the fallback when a known subscription reset time hasn't elapsed yet); documented cost is a forced prompt-cache invalidation on every switch in and back out |
+| User-facing config lever | `CLAUDE_CODE_MAX_RETRIES`, `CLAUDE_CODE_RETRY_WATCHDOG`, `API_TIMEOUT_MS` | None found | None found on the docs config page; two open feature requests ask for exactly this (§3.4) | `retry.enabled`, `retry.maxRetries`, `retry.baseDelayMs`, `retry.provider.timeoutMs`, `retry.provider.maxRetries`, `retry.provider.maxRetryDelayMs` -- the most granular documented lever of the four harnesses examined | `agent.api_max_retries` (single lever for the whole primary-call budget); `fallback_providers` / `hermes fallback` for the chain itself; no separate backoff-shape config found |
+| Known failure mode, self-reported | Historical: v2.1.110's retry cap had to be reverted one version later for trading hangs for outright failures; voice-mode retry loop was unbounded until fixed (v2.1.204) | A remote-session heartbeat loop retried a rejected request "every few seconds forever" until fixed in 1.0.66 | Live, open issue (#17648, fetched this session): 173 consecutive retries over 2.5 hours, backoff growing past 7 minutes with no circuit breaker, corroborated by several further open issues/feature requests found (not independently fetched) | Historical: compaction's summarization call previously ran an unretried single call at all (`#6647`, fixed by wiring it into the shared `retry.*` policy); no equivalent open unbounded-retry issue found this session | Historical, all fixed with a named regression test: `#31273` (a 402 billing wall was wrongly retried, "~$40 burned in 48h"); `#18028` (a status-code-less content-policy refusal burned all retries as `unknown`); `#14038` (a Z.AI server-overload 429 wrongly rotated a healthy credential); `#32646` (a fallback-index race silently disabled the fallback chain post-recovery); plus a documented, still-relevant amplification on the Nous Portal path specifically (SDK retries not disabled there): up to 9 calls per turn (3 SDK x 3 Hermes) against one rate limit, mitigated by a cross-session on-disk guard rather than a code fix to the multiplication itself |
+
+**The design lesson.** All five harnesses draw the same basic
 distinction -- a status-code/error-type taxonomy that separates
 "try again, this is transient" from "stop, this needs a human or a
-different request" -- and all four exclude authentication failures,
+different request" -- and all five exclude authentication failures,
 malformed requests, and (where the concept applies) context-overflow from
 retry outright. Where they diverge sharply is in how tightly the *retry
 budget itself* is bounded once a failure is classified as transient.
@@ -880,7 +1265,7 @@ Copilot CLI's changelog reads as a series of independent, per-subsystem
 retry hardenings rather than evidence of one shared, named policy, with
 at least one instance (the 1.0.66 heartbeat loop) of a genuinely unbounded
 retry shipping and later being fixed. OpenCode is the one harness of the
-four whose *current*, still-open state is a documented-by-its-own-users
+five whose *current*, still-open state is a documented-by-its-own-users
 unbounded retry: its inner transport layer is tightly bounded (2 retries,
 10-second cap, jittered), but that bound is not the retry budget a user
 actually experiences, because the outer, whole-turn-wrapping
@@ -889,7 +1274,7 @@ common case of a provider that returns rate-limit or overload headers on
 every attempt, is bounded only by a 32-bit integer overflow point roughly
 24.8 days away -- a gap this page's own source-reading and its
 cross-referenced, live-fetched GitHub Issue agree on independently. pi is
-the one harness of the four that inverts the usual bounding direction: its
+the one harness of the five that inverts the usual bounding direction: its
 inner, SDK-mirroring layer is the one left effectively unbounded-by-default
 in the sense of being *off* (`maxRetries: 0`), specifically because its own
 docs identify a correctness risk in turning it on (an SDK-level retry could
@@ -900,7 +1285,30 @@ default), and a third, independent concern -- surviving a process crash
 mid-backoff -- is handled by a wholly separate, source-verified durable
 state machine in `pi-agent-core` that snapshots the retry policy inline into
 crash-recoverable operation state, a property this page found no equivalent
-of, confirmed or claimed, in any of the other three harnesses.
+of, confirmed or claimed, in any of the other three harnesses examined
+before it. Hermes Agent is the harness on this page with the richest,
+most explicitly multi-dimensional error taxonomy (a `FailoverReason` enum
+with four independent recovery-hint booleans on every classification) and
+the tightest default primary-call budget of any of the five (three
+retries, four attempts, before fallback engages) -- but it is also the one
+harness whose own self-reported bug history is consistently about
+*misclassification* rather than an absent or unbounded budget: `#31273`
+and `#18028` are both cases where a genuinely terminal error was routed
+into a retryable bucket and burned real money or real time before being
+fixed, and `#14038` is the mirror case, a genuinely transient error
+initially routed into the wrong *recovery action* (credential rotation
+instead of same-key backoff) rather than the wrong retry/no-retry
+verdict. Hermes is also the only harness of the five this page finds
+disabling an underlying SDK's own retry loop *inconsistently rather than
+uniformly* -- `max_retries=0` on the OpenAI-wire request path for the
+same double-counting reason pi's own docs state explicitly (§4.4;
+§5.4 above), but left enabled on the Nous Portal path, where the
+resulting compounding (3 SDK retries x 3 Hermes retries per rate-limited
+turn) is significant enough that Hermes ships a dedicated, persisted,
+cross-session file (`agent/nous_rate_guard.py`) purely to blunt it rather
+than closing the gap at its source -- a real, if narrow, architectural
+inconsistency this page's reading of the other four harnesses' retry
+mechanisms did not surface an equivalent of.
 
 ---
 
@@ -1013,3 +1421,62 @@ from `github.com/earendil-works/pi`, `main` branch):**
   `{enabled: false}` default distinct from the coding-agent CLI's own
   enabled-by-default settings, and the `Number.MAX_SAFE_INTEGER` backoff-math
   saturation guard.
+
+**Hermes Agent (authoritative for its own documented behavior AND its own
+real implementation; fetched 1 September 2026 from
+`hermes-agent.nousresearch.com/docs/` and `github.com/NousResearch/
+hermes-agent`, `main` branch):**
+- `https://hermes-agent.nousresearch.com/docs/user-guide/configuration`
+  (WebFetch) and the site's own concatenated `llms-full-*.txt` documentation
+  dump (fetched via `curl`, grepped for `retry`/`backoff`/`429`/
+  `api_max_retries`) -- the primary source for §5.1's `agent.api_max_retries`
+  config key, its default of `3` (four attempts total), and its documented
+  purpose ("before fallback-provider switching engages").
+- `https://hermes-agent.nousresearch.com/docs/user-guide/features/
+  fallback-providers` (WebFetch) -- the primary source for §5.6: the
+  `fallback_providers`/legacy `fallback_model` config surface, the
+  turn-scoped/reset-aware per-turn retry-vs-fallback decision, the
+  documented rate-limit/server-error/auth-failure/not-found trigger
+  conditions, and the stated prompt-cache-invalidation cost of switching.
+- `agent/retry_utils.py` (via `raw.githubusercontent.com`, full 209-line
+  file) -- §5.3's `jittered_backoff()` formula (exponential with
+  positive-only jitter, locked-counter/XOR seed decorrelation),
+  `parse_retry_after_seconds()`, and the Z.AI Coding Plan GLM-5.2
+  `adaptive_rate_limit_backoff()`/`zai_coding_overload_retry_ceiling()`
+  provider-specific long-tail carve-out and its own documented dead-code
+  bug (`api_max_retries` originally equal to `short_attempts`).
+- `agent/error_classifier.py` (via `raw.githubusercontent.com`, full
+  99,558-byte file) -- §5.2's `FailoverReason` taxonomy, `ClassifiedError`
+  dataclass, and the `_classify_by_status()`/`_classify_400()` dispatch
+  logic and its issue-numbered carve-out comments (`#14038` overload-vs-
+  rate-limit, `#39441` billing-vs-rate-limit-text, `#26293` server-injected-
+  param exception, RFC 9110 §15.5.9 for 408).
+- `agent/conversation_loop.py` (via `raw.githubusercontent.com`, full
+  502,391-byte file, grepped for the retry-loop symbols) -- §5.1 and §5.3-5.5's
+  `while retry_count < max_retries` loop itself, the two distinct
+  `jittered_backoff()` call sites (main API-error path vs. the invalid-
+  response sub-loop), the `Retry-After`-header-capped-at-600s logic and its
+  `#26293` rationale, the Nous-Portal cross-session rate-limit guard
+  integration, the credential-pool/auth-refresh/primary-transport-recovery/
+  fallback-activation sequence, and the interrupt-aware incremental sleep.
+- `agent/turn_retry_state.py` (via `raw.githubusercontent.com`, full
+  94-line file) -- §5.5's `TurnRetryState` dataclass, its own docstring
+  describing the ~16-bare-local refactor it replaced, and the
+  `restart_with_*`/one-shot-guard design it documents.
+- `agent/nous_rate_guard.py` (via `raw.githubusercontent.com`, full
+  11,108-byte file) -- §5.4's cross-session, persisted Nous Portal
+  rate-limit guard and its own "3 SDK retries x 3 Hermes retries" (up to
+  9 calls per turn) amplification-effect documentation.
+- `run_agent.py` (via `raw.githubusercontent.com`, full 464,854-byte file,
+  grepped for the retry/client-construction symbols) -- §5.4's
+  `request_kwargs["max_retries"] = 0` OpenAI-wire-client override and its
+  own source comment on SDK/outer-loop retry compounding.
+- `tests/run_agent/test_api_max_retries_config.py`, `tests/run_agent/
+  test_31273_402_not_retried.py`, `tests/run_agent/
+  test_18028_content_policy_blocked.py`, `tests/run_agent/
+  test_32646_fallback_429_after_timeout.py`, and `tests/test_retry_utils.py`
+  (all via `raw.githubusercontent.com`, fetched in full) -- the five
+  issue-numbered regression tests (`#11616`, `#31273`, `#18028`, `#32646`)
+  cited in §5.1-5.2 and §5.7's self-reported-failure-mode summary, and the
+  `jittered_backoff()`/Z.AI-overload-ceiling unit tests corroborating §5.3's
+  formula and dead-code-bug narrative.

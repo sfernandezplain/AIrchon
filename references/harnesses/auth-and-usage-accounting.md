@@ -852,9 +852,274 @@ than OpenCode's: pi's `pi-ai` layer does compute and report cost per request
 accounting machinery clearly exists end to end, but nothing found this session wires
 that number to an enforcement decision.
 
+## 5. Hermes Agent (Nous Research)
+
+Sources for this section: VERIFIED, fetched this session (1 September 2026) from
+`hermes-agent.nousresearch.com/docs/assets/files/llms-full-24b1af8f853f53bfc3223973214a1d73.txt`
+-- the docs site's own consolidated LLM-context export, which concatenates every page
+under `website/docs/` behind its own `<!-- source: website/docs/... -->` marker; the
+individual page paths cited below (`user-guide/features/credential-pools.md`,
+`integrations/nous-portal.md`, etc.) identify which marked section of that export each
+claim came from, the same standard of directness this page applies to a URL fetched one
+page at a time. Hermes Agent is a fifth, independent, self-hosted product built by Nous
+Research with no code shared with Claude Code, Copilot CLI, OpenCode, or pi -- see
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md) §6 and
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §6 for this book's
+fuller architectural introduction to the harness itself (three entry points funnelled
+into one `AIAgent` class, seven sandboxed terminal execution backends, three distinct
+hook systems), not repeated here. On the two axes this page tracks, Hermes turns out to
+be the most credential-rich harness examined in this book -- richer even than pi's own
+29-plus-provider roster (§4.1) -- while converging with OpenCode and pi on having no
+in-harness dollar-denominated spend ceiling at all.
+
+### 5.1 Credential storage: `auth.json`, a layered `.env`/secret-manager ladder, and 100-plus named provider variables
+
+VERIFIED (`user-guide/features/credential-pools.md`, "Storage" and "Auto-Discovery"
+sections): Hermes' own credential-and-usage state for LLM providers lives at
+`~/.hermes/auth.json`, under a top-level `credential_pool` key keyed by provider name (or
+a `custom:` prefix for a user-defined OpenAI-compatible endpoint). Two structurally
+different entry shapes coexist inside that same file, a distinction this page has not
+found named this precisely for any of Claude Code's, Copilot CLI's, OpenCode's, or pi's
+own credential stores: a **manual** entry (added via `hermes auth add`) persists its
+actual secret (`access_token`) because Hermes itself is the credential's owner; a
+**borrowed** entry (auto-discovered from an environment variable, a secret manager, or
+another tool's own config) is, quoted directly, "reference-only at the `auth.json`
+boundary. Hermes can use the resolved value in memory for the current run, but it
+persists only metadata such as the source ref, label, status, request counters, and a
+non-reversible fingerprint." A borrowed credential is therefore never written to disk in
+recoverable form at all -- only a `sha256:`-prefixed fingerprint of it is -- while a
+manually-added one is. VERIFIED, same page's "Auto-Discovery" table: five distinct
+sources are auto-seeded into the pool at startup, and one of them is a direct,
+literal cross-harness read -- **Claude Code's own `~/.claude/.credentials.json`** is
+listed as an auto-seeded Anthropic credential source, alongside environment variables
+(`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`), OAuth tokens already in Hermes' own
+`auth.json` (Codex or Nous device-code logins), Hermes' own PKCE-OAuth Anthropic login,
+and `model.api_key` in `config.yaml` for custom endpoints. This is a materially different
+kind of credential-sharing than any of Claude Code's, Copilot CLI's, OpenCode's, or pi's
+own auto-discovery mechanisms in this page's earlier sections describe: Hermes reads a
+sibling harness's own on-disk credential file directly, by design, as one of several
+seed sources for its own pool -- none of the other four harnesses is documented reading
+another named harness's credential file this session.
+
+VERIFIED (`user-guide/secrets/index.md`, fetched this session in full): above the
+`auth.json`/environment-variable layer sits an optional, composable secret-source ladder
+-- Bitwarden Secrets Manager, 1Password (`op://` references), or a user-supplied "command
+helper" script that prints `KEY=VALUE` lines -- resolved by a deterministic three-rule
+precedence: **(1)** the user's own `.env`/shell value wins by default unless a source
+explicitly sets `override_existing: true` (Bitwarden defaults to `true`, "so central
+rotation works"); **(2)** a source that maps specific env-var names to specific secret
+references outranks a source that injects a whole vault/project implicitly; **(3)**
+among same-shape sources, first-registered wins, with a startup warning (never a silent
+overwrite) when a later source's claim on an already-claimed variable is skipped. Two
+further orchestrator-level knobs -- `secrets.preserve_existing` (a per-variable pin back
+to the local `.env`/shell value regardless of any source's `override_existing`) and
+profile-aliased secret names (`FOO_<PROFILE>` hydrating the canonical `FOO` for
+credential-shaped suffixes) -- exist specifically to let one shared vault serve several
+[Hermes profiles](profiles) safely. Beneath all of this, VERIFIED
+(`developer-guide/secret-source-plugin.md` referenced from the same page; full guide not
+independently fetched this session): third-party secret backends are pluggable via a
+`SecretSource` base class and `ctx.register_secret_source()`, with the bundled set
+deliberately limited to Bitwarden and 1Password -- Infisical, Proton Pass, HashiCorp
+Vault, and OS keystores are named as plugin-repo territory, not core.
+
+VERIFIED (`reference/environment-variables.md`, "LLM Providers" and "Provider Auth
+(OAuth)" sections, fetched this session in full): the raw provider roster documented by
+named environment variable is the widest this page has sourced for any harness --
+comfortably exceeding pi's own 29-provider table (§4.1) -- spanning OpenRouter, Nous
+Portal, Vercel AI Gateway, GitHub Copilot (three-variable precedence,
+`COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN`, with classic PATs excluded, the
+same rule this page documents for Copilot CLI itself in §2.1), z.ai/GLM, Kimi/Moonshot
+(plus a separate China-region key), Arcee AI, GMI Cloud, Actual Computer, MiniMax (global
+and China-region keys, each explicitly *not* shared with the separate `minimax-oauth`
+browser-login path), Kilo Code, Xiaomi MiMo, Upstage, Tencent TokenHub/TokenPlan,
+Microsoft Foundry/Azure OpenAI (with a full Entra ID service-principal/workload-identity
+variable set for `auth_mode: entra_id`), Hugging Face, Google AI Studio/Vertex (service
+account JSON, falling back to `GOOGLE_APPLICATION_CREDENTIALS`, then to `gcloud`'s own
+ADC), Anthropic, DashScope/Qwen (plus a Coding-Plan and Token-Plan variant, each with a
+mainland-China URL override), DeepSeek, DeepInfra, NovitaAI, Ramp Router, Nebius Token
+Factory, NVIDIA NIM, StepFun, Ollama Cloud, xAI, Mistral, AWS Bedrock, OpenCode Zen and
+OpenCode Go (Hermes documents *OpenCode's own* billing products as upstream providers it
+can route to), and LM Studio for a fully local endpoint. A directly billing-relevant
+finding sits in the OAuth subsection specifically: quoted verbatim, **"OAuth against
+Anthropic requires a Claude Max plan with purchased extra usage credits -- Hermes routes
+as Claude Code, which only draws from the Max plan's extra/overage credits, not the base
+Max allowance, and does not work on Claude Pro. Without Max + extra credits, use an API
+key instead."** This is the same underlying billing subtlety pi's own
+`warnings.anthropicExtraUsage` setting warns about for its own Claude-Pro/Max routing
+(§4.3) -- a second harness, independently, naming the exact same Anthropic
+extra-usage-credit gotcha as something its own users need to be warned about before
+relying on subscription OAuth rather than an API key.
+
+```mermaid
+flowchart TD
+    SEC["Secret manager\n(Bitwarden / 1Password / command helper)"] -->|"override_existing\n(Bitwarden: true by default)"| ENVF[".env / process environment\n(chmod 600 recommended,\nnot enforced by Hermes itself)"]
+    ENVF -->|"auto-discovered as a\n1-key pool at startup"| BORROWED["Borrowed pool entry:\nauth.json stores only a\nsha256 fingerprint + metadata"]
+    OAUTHF["Browser/device-code OAuth\n(Anthropic Claude Max, Nous Portal,\nxAI SuperGrok, MiniMax, Qwen, Codex)"] -->|"hermes auth add <provider>\n--type oauth"| MANUAL["Manual pool entry:\nauth.json stores the real\naccess/refresh token"]
+    APIKEYF["hermes auth add <provider>\n--api-key ..."] --> MANUAL
+    CLAUDECODE["~/.claude/.credentials.json\n(Claude Code's own store)"] -->|"auto-seeded"| BORROWED
+    BORROWED --> ROT{"More than one healthy\ncredential for this provider?"}
+    MANUAL --> ROT
+    ROT -->|Yes| STRAT["Rotation strategy:\nfill_first / round_robin /\nleast_used / random"]
+    ROT -->|No| SINGLE["Single credential used directly"]
+    STRAT -->|"All keys exhausted"| FALLBACK["fallback_providers chain\n(cross-provider failover)"]
+```
+
+### 5.2 Credential pools and cross-provider fallback: two named, independent resilience layers
+
+VERIFIED (`user-guide/features/credential-pools.md`, fetched this session in full):
+Hermes treats "more than one credential for the same provider" as a first-class,
+named concept -- a **credential pool** -- rather than the single-slot precedence stacks
+this page documents for Claude Code (§1.2), Copilot CLI (§2.1), OpenCode (§3.1), or pi
+(§4.2). A pool rotates across keys under a configurable strategy (`fill_first` default,
+`round_robin`, `least_used`, `random`, set via `hermes auth` or the
+`credential_pool_strategies` config key) and reacts differently to three distinct error
+classes: a transient **429** retries the same key once before rotating on a second
+consecutive hit; a **402** (billing/quota) rotates to the next key immediately, with a
+one-hour default cooldown (provider-supplied `reset_at` timestamps override this
+default); and a **401** first attempts an OAuth token refresh before rotating only if
+that refresh itself fails, with a five-minute cooldown. This is explicitly the
+*first*-tried resilience layer; only once every pool key is exhausted does Hermes fall
+through to a **`fallback_model`** -- a different provider:model pair entirely, configured
+under the top-level `fallback_providers` list and managed via `hermes fallback` -- the
+same "credential pools handle same-provider rotation... this page covers cross-provider
+fallback" split the fallback-providers doc states in its own words. Both layers carry
+the same practical cost warning this page's other sections raise about mid-session
+provider changes: VERIFIED (`user-guide/configuring-models.md`, "Mid-session switches
+reset the prompt cache" callout): because provider-side prompt caches are scoped to the
+account/key that made the request, a pool rotation or a fallback switch means "the next
+message re-reads the entire conversation at full input-token price instead of the cached
+(~75-90% discounted) rate" -- a cost consequence of automatic credential/provider
+failover this page has not found named this explicitly for Claude Code's, Copilot CLI's,
+or OpenCode's own equivalent switching mechanisms. VERIFIED, same credential-pools page:
+when the agent spawns subagents via `delegate_task`, the parent's credential pool for a
+matching provider is shared automatically with children, giving subagents "the same
+rate-limit resilience as the parent, with no extra configuration needed."
+
+### 5.3 Nous Portal: a bundled OAuth-and-subscription-billing product, plus a re-exportable subscription proxy
+
+VERIFIED (`integrations/nous-portal.md`, fetched this session in full): Nous Research's
+own Nous Portal is, in this page's own vocabulary, an auth-and-billing bundle in the
+same structural sense Claude Code's cloud-provider integrations are (§1.6) -- but wider
+in scope, since it bundles non-LLM tool billing alongside model access rather than only
+the model call itself. One OAuth login (`hermes setup --portal` or `hermes auth add
+nous --type oauth`) both selects Nous as the inference provider and, quoted directly,
+"replaces the juggling act of separate accounts, API keys, and billing relationships
+across every model lab, search API, image generator, and browser provider you'd
+otherwise need to wire up by hand" -- 300-plus catalog models plus a five-backend **Tool
+Gateway** (Firecrawl web search/extract, FAL image generation, OpenAI TTS,
+Browser-Use cloud browser automation, and Modal cloud terminal sandboxes), all billed
+against the one subscription, opt-in per tool rather than all-or-nothing. VERIFIED, same
+source: the durable credential on disk is only the OAuth refresh token, stored at
+`~/.hermes/auth.json` (config and credentials kept in separate files "by design," the
+docs state); Hermes "mints a short-lived JWT from your stored Portal refresh token on
+each inference call rather than reusing a long-lived API key," a token-minting design
+this page has not found documented for any other harness's own OAuth-backed provider.
+If the Portal invalidates that refresh token, Hermes quarantines it locally so a stream
+of identical 401s is not replayed, surfacing a single "re-authentication required"
+message instead. Billing itself is managed entirely off-CLI, at
+`portal.nousresearch.com/manage-subscription`, reachable in one step via `hermes portal
+open`; the in-CLI surface for it is the **`/topup`** slash command, which VERIFIED
+(`reference/slash-commands.md`, fetched this session) explicitly "replaces the old
+`/credits` and `/billing` commands" -- the same pattern this page documents elsewhere of
+a harness eventually growing a dedicated pointer from its own CLI to an external,
+authoritative billing surface (Claude Code's Console Usage page, §1.3; Copilot CLI's
+"Manage budget" link, §2.3).
+
+A second, structurally distinct surface re-exports that same subscription outward:
+VERIFIED (`user-guide/features/subscription-proxy.md`, fetched this session in full):
+`hermes proxy start` runs a local, OpenAI-compatible HTTP server (default
+`127.0.0.1:8645/v1`) that "attaches the right credentials (refreshing them
+automatically)" to any external, non-Hermes app's request -- "the proxy ignores the
+`Authorization` header from your app and attaches your real Portal credential to the
+upstream request." This is explicitly a passthrough with "no transformation, no logging
+of request bodies, no agent loop," distinct from the [API server](api-server) (which
+runs the full Hermes agent as a backend, gated by a static `API_SERVER_KEY`). The proxy
+itself carries no cost-accounting or rate-limiting logic of its own: "Your Portal tier's
+RPM/TPM limits apply across the whole proxy. The proxy doesn't fan out or pool -- it's a
+single bearer with your full subscription quota," with usage monitoring pushed entirely
+to the Portal's own web dashboard rather than surfaced by the proxy process itself, and
+the docs' own security note is blunt about exposing it beyond localhost: "anyone on your
+network can now use your Portal subscription... the proxy has no auth of its own."
+
+### 5.4 Usage/cost accounting: `/usage`, `hermes insights`, a per-run JSON artifact, and no in-harness spend ceiling
+
+VERIFIED (`reference/slash-commands.md`, fetched this session): `/usage` shows "token
+usage, estimated cost breakdown (input/output), context window state, session duration,
+and -- when available from the active provider -- an **Account limits** section with
+remaining quota / credits pulled live from the provider's API." This single command
+fuses two things this page's other sections keep as separate surfaces: a
+locally-computed cost estimate (the same architecture Claude Code's §1.3 and OpenCode's
+§3.2 both use) and a live-fetched provider-side quota readout (the same kind of figure
+Copilot CLI's own `/usage` progress bars display in §2.3) -- Hermes' own `/usage` is, on
+this page's own comparative axis, the one command examined in this book that explicitly
+attempts both at once, from a single provider-permitting invocation. VERIFIED
+(`reference/model-catalog.md`, "Schema" section, fetched this session in full): the cost
+figure's own pricing data is deliberately kept out of Hermes' curated model-picker
+manifest -- "Pricing and context length are NOT in the manifest. Those come from live
+provider APIs (`/v1/models` endpoints, models.dev) at fetch time" -- the same
+Models.dev-catalog dependency this page's §3.2 documents OpenCode's own cost accumulator
+using, independently arrived at by a second harness with no shared codebase.
+
+VERIFIED (`reference/cli-commands.md`, fetched this session in full): a broader,
+time-windowed view lives behind **`hermes insights [--days N] [--source platform]`**
+(mirrored as the in-session `/insights [days]` slash command, default 30-day window,
+filterable to a `cli`/`telegram`/`discord` source), described as showing "token/cost/
+activity analytics" -- the same 24h/7-day-toggle instinct this page documents Claude
+Code's own `/usage` applying with its `d`/`w` keys (§1.3), here generalized to an
+arbitrary day count. The Models dashboard additionally surfaces a standing "Usage
+analytics" panel -- VERIFIED (`user-guide/configuring-models.md`, "The Models page"
+section) -- "ranked cards showing every model that ran a session in the selected period,
+with token counts, cost, and capability badges," each card carrying a "Use as" shortcut
+that reassigns that model to the main or an auxiliary slot in one click.
+
+A genuinely distinctive artifact, not documented this session for any of this page's
+other four harnesses, is a per-run machine-readable cost report scoped to a single
+non-interactive invocation: VERIFIED (`reference/cli-commands.md`, `--usage-file`
+subsection, fetched this session in full): `hermes -z "..." --usage-file /path/report.json`
+writes a JSON file after a one-shot run containing `estimated_cost_usd`,
+`input_tokens`/`output_tokens`/`cache_read_tokens`/`cache_write_tokens`/
+`reasoning_tokens`/`total_tokens`, `api_calls`, `model`, `provider`, `session_id`,
+`service_tier`, and `completed`/`failed` flags -- and, quoted directly, "the report is
+written **even when the run fails**, so batch pipelines can always account for spend."
+This is a lighter-weight cost-observability mechanism than Claude Code's full
+OpenTelemetry export pipeline (§1.4) -- a single JSON artifact per run rather than a
+continuous metrics/events stream -- and nothing found this session gives Hermes an
+OTel-equivalent export path of its own. Separately, VERIFIED (`reference/
+cli-commands.md`, `hermes sessions prune` subsection): `--min-cost`/`--max-cost` are
+numeric filters (alongside `--min/--max-tokens`, `--min/--max-tool-calls`) for bulk
+session deletion after the fact -- `hermes sessions prune --max-cost 0.01
+--max-tool-calls 0` deletes "cheap, tool-less runs" -- a retrospective, cost-based
+housekeeping filter over *already-ended* sessions, not a mechanism that halts a session
+in progress the way Claude Code's Agent SDK `max_budget_usd` or Workflow `budget` object
+do (§1.5).
+
+BEST CURRENT UNDERSTANDING, UNCONFIRMED, reasoned from a keyword search conducted this
+session across the entire fetched documentation corpus (the ~208-page, roughly 4 MB
+consolidated export cited at the top of this section) for `budget`, `spend_limit`,
+`cost_limit`, `max_cost` (as a live-session flag rather than the `sessions prune` filter
+above), `spending_limit`, and `cost_ceiling`: **no dollar-denominated spend ceiling that
+halts an in-progress Hermes session was found anywhere in this corpus.** Every "budget"
+match this search actually turned up governs a token, time, or context allowance instead
+of currency -- for example a documented "Tool-Result Spillover Budget" and a
+`context_timeout_seconds` "inactivity budget" for preflight context compression -- the
+same token/time-vs-dollar distinction this page's own intro draws between
+[caching.md](caching.md)'s token-observability layer and this page's own dollar-figure
+layer. The closest thing to an actual enforcement mechanism this session found is
+one layer up, at the provider/platform boundary rather than inside the harness: the
+Nous Portal's own RPM/TPM rate limits (§5.3) and the credential pool's reactive
+402-billing-error rotation (§5.2) -- both of which respond to a quota *already being
+hit* by an upstream provider, rather than the harness itself pre-emptively refusing a
+request because a locally-tracked dollar figure crossed a configured line. This lands
+Hermes in the same enforcement-free posture this page's Synthesis table already
+documents for OpenCode (§3.3) and pi (§4.3), reached here for a fifth harness by an
+independent, broad search of its own full documentation corpus rather than a source-code
+grep of the kind §3.3 ran against OpenCode's repository -- a narrower evidentiary basis
+than that section's own finding, which is why this paragraph is tagged BEST CURRENT
+UNDERSTANDING rather than VERIFIED.
+
 ---
 
-## 5. Synthesis
+## 6. Synthesis
 
 ```mermaid
 flowchart LR
@@ -886,18 +1151,25 @@ flowchart LR
         PI3["Cost: structured Usage on every message\n(input/output/cacheRead/cacheWrite + cost\nbreakdown), footer + /session live display"]
         PI4["Budget: none found -- accounting is\ncomputed and displayed end to end,\nnever wired to an enforcement decision"]
     end
+    subgraph HM["Hermes Agent"]
+        direction TB
+        HM1["Auth: credential POOLS (not single-slot) --\nauth.json manual (real token) vs. borrowed\n(fingerprint-only); auto-seeds Claude Code's\nown .credentials.json"]
+        HM2["Secret ladder: Bitwarden/1Password/command\nhelper -> .env/env var, 3-rule precedence;\n100+ named provider env vars"]
+        HM3["Cost: /usage fuses local $ estimate +\nlive provider quota; hermes insights\n(token/cost/activity, --days); --usage-file\nJSON report per oneshot run"]
+        HM4["Budget: none found in the harness itself --\nNous Portal RPM/TPM + pool's reactive\n402-rotation are the only quota reactions"]
+    end
 ```
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | pi |
-|---|---|---|---|---|
-| Primary login mechanism | Browser OAuth via `/login` (or API key auto-approval) | OAuth device/web flow via `/login` | `/connect` or `opencode auth login`, per-provider (API key, OAuth, or cloud env vars) | `/login` -- subscription OAuth (Codex/Claude Pro-Max/GitHub Copilot/xAI/OpenRouter/Radius) or an API-key provider, same command |
-| Credential storage | OS keychain (macOS) / `.credentials.json` 0600 (Linux/Windows) | OS keychain, with a documented plain-text fallback | `auth.json` 0600, or a full-store env-var override (`OPENCODE_AUTH_CONTENT`) | `~/.pi/agent/auth.json`, `0600`; `key` field supports shell-command execution, env interpolation, escapes, or a plain literal |
-| CI/headless auth | `CLAUDE_CODE_OAUTH_TOKEN` (via `claude setup-token`) or `apiKeyHelper` | `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` | `.env` file, cloud provider env vars, or `OPENCODE_AUTH_CONTENT` | Any of 29+ named provider env vars (e.g. `ANTHROPIC_API_KEY`), or `auth.json`; OpenRouter's OAuth flow has a documented paste-the-redirect-URL fallback for SSH |
-| Cost unit shown to the user | USD, locally computed at "standard list rates" | Premium requests (plus a token-based-billing variant for some plans) | USD, locally computed from the models.dev catalog | USD, computed and stored per-message by `pi-ai` (`Usage.cost`), including compaction/branch-summary generation cost |
-| Live usage command | `/usage` (absorbed `/cost`/`/stats` at v2.1.118) | `/usage` (introduced as such from v0.0.333) | TUI prompt-bar/subagent footer (no dedicated slash command found) | Interactive footer (continuous) + `/session` (message count, tokens, cost) |
-| Machine-readable export | OpenTelemetry metrics/events (export-only, no enforcement) | Not examined this session | None found | None found on the pages fetched this session |
-| In-harness spend cap | Agent SDK `max_budget_usd` (per query) + Workflow `budget` object (per script run) | None in the CLI itself | None found | None found -- `warnings.anthropicExtraUsage` warns about paid-extra-usage risk on one specific subscription but enforces nothing |
-| Org/platform-level spend cap | Console workspace limits, Team/Enterprise spend limits, cloud-provider budget tools | GitHub billing platform's four-tier budget hierarchy, $0-default hard stop | None documented; only Zen's own internal provider-budget router | None found -- pi has no org/platform product layer of its own to enforce one |
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
+|---|---|---|---|---|---|
+| Primary login mechanism | Browser OAuth via `/login` (or API key auto-approval) | OAuth device/web flow via `/login` | `/connect` or `opencode auth login`, per-provider (API key, OAuth, or cloud env vars) | `/login` -- subscription OAuth (Codex/Claude Pro-Max/GitHub Copilot/xAI/OpenRouter/Radius) or an API-key provider, same command | `hermes model` (full setup wizard, terminal-only) or `hermes auth add <provider>`; `/model` mid-session can only switch, never add a provider |
+| Credential storage | OS keychain (macOS) / `.credentials.json` 0600 (Linux/Windows) | OS keychain, with a documented plain-text fallback | `auth.json` 0600, or a full-store env-var override (`OPENCODE_AUTH_CONTENT`) | `~/.pi/agent/auth.json`, `0600`; `key` field supports shell-command execution, env interpolation, escapes, or a plain literal | `~/.hermes/auth.json` `credential_pool` key -- manual entries persist the real token, borrowed entries persist only a `sha256:` fingerprint; `.env` chmod-600 is a documented recommendation, not an enforced mode |
+| CI/headless auth | `CLAUDE_CODE_OAUTH_TOKEN` (via `claude setup-token`) or `apiKeyHelper` | `COPILOT_GITHUB_TOKEN` > `GH_TOKEN` > `GITHUB_TOKEN` | `.env` file, cloud provider env vars, or `OPENCODE_AUTH_CONTENT` | Any of 29+ named provider env vars (e.g. `ANTHROPIC_API_KEY`), or `auth.json`; OpenRouter's OAuth flow has a documented paste-the-redirect-URL fallback for SSH | 100+ named provider env vars (widest roster in this book), an optional Bitwarden/1Password/command-helper secret ladder above them, or `auth.json` |
+| Cost unit shown to the user | USD, locally computed at "standard list rates" | Premium requests (plus a token-based-billing variant for some plans) | USD, locally computed from the models.dev catalog | USD, computed and stored per-message by `pi-ai` (`Usage.cost`), including compaction/branch-summary generation cost | USD, priced live from provider APIs/models.dev at fetch time (pricing deliberately excluded from Hermes' own curated model manifest) |
+| Live usage command | `/usage` (absorbed `/cost`/`/stats` at v2.1.118) | `/usage` (introduced as such from v0.0.333) | TUI prompt-bar/subagent footer (no dedicated slash command found) | Interactive footer (continuous) + `/session` (message count, tokens, cost) | `/usage` (cost estimate + live provider "Account limits" in one command) and `/insights`/`hermes insights` (30-day token/cost/activity analytics) |
+| Machine-readable export | OpenTelemetry metrics/events (export-only, no enforcement) | Not examined this session | None found | None found on the pages fetched this session | `--usage-file` JSON report per one-shot run (`estimated_cost_usd`, full token breakdown; written even on failure); no OTel-equivalent stream found |
+| In-harness spend cap | Agent SDK `max_budget_usd` (per query) + Workflow `budget` object (per script run) | None in the CLI itself | None found | None found -- `warnings.anthropicExtraUsage` warns about paid-extra-usage risk on one specific subscription but enforces nothing | None found in a broad documentation-corpus search; `sessions prune --max-cost` only filters already-ended sessions retrospectively |
+| Org/platform-level spend cap | Console workspace limits, Team/Enterprise spend limits, cloud-provider budget tools | GitHub billing platform's four-tier budget hierarchy, $0-default hard stop | None documented; only Zen's own internal provider-budget router | None found -- pi has no org/platform product layer of its own to enforce one | Nous Portal's own RPM/TPM tier limits (external, reactive); billing itself managed entirely off-CLI at `portal.nousresearch.com` |
 
 The throughline: Claude Code is the only harness examined here that gives the *harness
 layer itself* a programmable, in-product notion of a spending ceiling -- twice over, at
@@ -928,6 +1200,37 @@ pi's overall posture on this page's two axes is: maximally rich and fail-closed 
 *authentication*, while offering nothing at all on *spend enforcement* -- a genuinely
 different combination of choices than any of the other three harnesses' own pairings of
 those two axes.
+
+Hermes Agent both extends and reframes this book's own auth-richness axis a second time.
+It edges out even pi's own 29-provider table on raw named-provider count (100-plus
+environment variables documented in a single reference page), but the more structurally
+distinctive move is architectural rather than numerical: Hermes is the only harness in
+this book to treat "more than one credential for a provider" as a first-class primitive
+-- a **pool**, with a named rotation strategy and per-error-class recovery behavior
+(429/402/401 handled three different ways) -- rather than the single-slot precedence
+stack every other harness on this page resolves down to one winning credential. It is
+also the only harness found reading a *named sibling harness's* own credential file by
+design (Claude Code's `~/.claude/.credentials.json`, auto-seeded into Hermes' own pool),
+and the only one whose credential store distinguishes a persisted secret it owns from a
+merely fingerprinted reference to a secret owned elsewhere. On the cost-accounting axis,
+Hermes converges with OpenCode on sourcing its dollar figure from live provider
+APIs/models.dev rather than a bundled price table, while also being the only harness
+whose single `/usage` command fuses a locally-computed estimate with a live
+provider-fetched quota in one invocation, and the only one offering a per-run,
+machine-readable JSON cost artifact (`--usage-file`) purpose-built for non-interactive
+batch pipelines rather than a continuous telemetry stream. On enforcement, though,
+Hermes lands in exactly the same place as OpenCode and pi: nothing found this session --
+across a full-corpus documentation search rather than OpenCode's own repository grep --
+stops an in-progress Hermes session because a locally-tracked dollar figure crossed a
+line; the nearest thing to enforcement is a reactive response to a provider already
+declining a request (a 402 rotating the credential pool, or the Nous Portal's own
+external RPM/TPM ceiling), never a harness-side pre-emptive refusal. Read across all five
+harnesses, the pattern this page's two axes reveal holds up under a fifth, independent
+data point: rich, structurally novel authentication engineering and a genuine
+in-harness spending ceiling appear to be orthogonal design investments that no team
+examined in this book has yet made simultaneously -- Claude Code alone builds the latter,
+and Hermes joins pi and OpenCode in building extensively toward the former while leaving
+the latter to the provider or platform layer above it.
 
 ## Sources
 
@@ -1056,3 +1359,52 @@ throughout this section, since it is not a stable release tag):**
   [The LLM API contract](llm-api-contract.md) §3.5's own Sources) -- the credential-store
   fail-closed/owns-its-provider finding and per-message `usage.cost.total` computation,
   not re-derived here.
+
+**Hermes Agent (authoritative for its own documented behavior; fetched this session, 1
+September 2026, from Nous Research's own docs site):**
+- `https://hermes-agent.nousresearch.com/docs/assets/files/llms-full-24b1af8f853f53bfc3223973214a1d73.txt` --
+  fetched this session in full (the docs site's own consolidated LLM-context export,
+  concatenating every page under `website/docs/` behind an individual `<!-- source:
+  website/docs/... -->` marker per page). Every specific-page citation in §5 identifies
+  the marked section of this export the claim was drawn from:
+  - `user-guide/features/credential-pools.md` -- §5.1/§5.2's full primary source: the
+    manual-vs-borrowed `auth.json` entry distinction and the fingerprint-only storage of
+    borrowed secrets, the five-source auto-discovery table (including Claude Code's own
+    `~/.claude/.credentials.json` as an auto-seeded Anthropic source), the rotation
+    strategies (`fill_first`/`round_robin`/`least_used`/`random`), the per-error-class
+    (429/402/401) recovery table and cooldowns, the `hermes auth` CLI subcommands, and
+    the subagent credential-pool-sharing behavior.
+  - `user-guide/secrets/index.md` -- §5.1's three-rule secret-source precedence ladder
+    (`.env`/shell-wins-by-default, mapped-beats-bulk, first-source-wins),
+    `override_existing`/`secrets.preserve_existing`/profile-aliasing, and the
+    Bitwarden/1Password/command-helper bundled-vs-plugin split.
+  - `reference/environment-variables.md` -- §5.1's "LLM Providers" and "Provider Auth
+    (OAuth)" sections in full: the 100-plus named provider environment-variable table
+    and the verbatim Claude-Max-plus-extra-usage-credits OAuth requirement quote.
+  - `integrations/nous-portal.md` -- §5.3's full primary source: the Portal's OAuth
+    login flow, the 300+-model catalog and five-backend Tool Gateway, the refresh-token
+    storage location and JWT-minting token-handling design, the refresh-token
+    quarantine behavior, and the `hermes portal`/`hermes portal open` CLI surface.
+  - `user-guide/features/subscription-proxy.md` -- §5.3's local OpenAI-compatible proxy
+    server, its credential-attaching passthrough design, its RPM/TPM rate-limit
+    inheritance from the Portal tier, and its no-auth-of-its-own LAN-exposure warning.
+  - `user-guide/features/fallback-providers.md` -- §5.2's three-layers-of-resilience
+    framing (credential pools, primary model fallback, auxiliary task fallback) and the
+    `fallback_providers`/`fallback_model` config-key relationship.
+  - `user-guide/configuring-models.md` -- §5.1/§5.4's Models-dashboard description,
+    the "Usage analytics" ranked-cards panel, and the mid-session-switch
+    prompt-cache-reset cost warning.
+  - `reference/slash-commands.md` -- §5.3/§5.4's `/usage`, `/topup` (replacing
+    `/credits`/`/billing`), and `/insights` command descriptions.
+  - `reference/cli-commands.md` -- §5.4's full primary source for `hermes insights`,
+    the `--usage-file` JSON usage-report flag and its exact field list, and the
+    `hermes sessions prune --min/--max-cost` filter.
+  - `reference/model-catalog.md` -- §5.4's finding that pricing/context-length data is
+    deliberately excluded from Hermes' own curated model manifest and instead sourced
+    live from provider `/v1/models` endpoints and models.dev at fetch time.
+  - `user-guide/security.md` -- §5.1's `chmod 600 ~/.hermes/.env` documented
+    recommendation (a manual best practice, not a mode enforced by Hermes' own code).
+- This session's own keyword search across the same full export (`budget`,
+  `spend_limit`, `cost_limit`, `max_cost`, `spending_limit`, `cost_ceiling`) -- the basis
+  for §5.4's BEST CURRENT UNDERSTANDING, UNCONFIRMED finding that no dollar-denominated,
+  session-halting spend ceiling exists anywhere in Hermes' documented surface.

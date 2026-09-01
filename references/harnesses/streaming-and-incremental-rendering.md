@@ -1096,18 +1096,354 @@ altogether.
 
 ---
 
-## 5. Synthesis
+## 5. Hermes Agent (Nous Research)
 
-| Concern | Claude Code | Copilot CLI | OpenCode | pi |
-|---|---|---|---|---|
-| Partial tool-call JSON: attempted a mid-parse? | No evidence found; changelog shows byte/JSON reassembly *bugs* fixed (v2.1.92, v2.1.94), never a speculative-parse feature | Docs state tool calls arrive whole, no fragmentation of arguments at the SDK's own event layer (bounded, adjacent-surface citation) | Source-confirmed: never attempted anywhere in three independently-written consumers (`publish-llm-event.ts`, `message-updater.ts`, TUI's `data.tsx`) | No evidence of a JSON mid-parse either -- but source-confirmed to attempt exactly this for a *different* structured grammar: a still-incomplete Mermaid diagram body, rendered live by default (§4.3) |
-| Partial tool-call JSON: held in live state at all while pending? | Unknown (closed source) | Unknown; docs suggest not, since arguments aren't fragmented to begin with | Diverges *within the same codebase*: the shared `core` reducer no-ops the delta entirely; the TUI's and app's own reducers accumulate the raw string but gate its display until the call is complete | `toolcall_delta`/`toolcall_end` follow the identical caller-must-accumulate discipline as the wire level (llm-api-contract.md §3.5); no source read this session shows the TUI attempting to render a partial tool-call argument string |
-| Render-cost mitigation under sustained streaming | Time-based coalescing (100ms window, ~37% CPU cut, v2.1.191), no-op subtree-walk skipping (v2.1.196), a swapped-out WASM layout engine (v2.1.85) | Spinner/polling-cost optimization (v1.0.13), a `time_to_first_chunk` OTel metric (v1.0.19) to measure the user-facing consequence | SolidJS fine-grained reactive signals (only the specific memoized value that changed re-renders) plus an explicit reuse-check in the Markdown projector (`project()`'s frozen-block-skip, §3.4) -- a declarative/structural answer rather than a time-based debounce | A literal ~60fps render-pass floor (`MIN_RENDER_INTERVAL_MS = 16`, §4.4) coalescing any burst of `requestRender()` calls into one `doRender()` per window, plus a `process.nextTick`-based bypass for input latency specifically |
-| Terminal/DOM flicker mitigation | Synchronized-output escape sequences (v2.1.200 and others), a dedicated `NO_FLICKER` mode (v2.1.89) and a separate `/tui fullscreen` renderer (v2.1.110), both independently maintained | Synchronized output *skipped* under tmux specifically to avoid a flicker regression (v1.0.66) -- the same mechanism, opposite conclusion for one terminal/multiplexer combination | Not directly addressed by any source read this session (OpenTUI's own internals, a third-party dependency, were out of scope) | Same synchronized-output convention (`\x1b[?2026h`/`l`) plus a source-confirmed differential line-diff renderer (§4.5); its own `clearOnShrink` setting names an explicit, still-only-partially-fixed flicker-vs-scroll-jump tradeoff (Issue #5825) |
-| Display pace vs. delivery cadence | Symptom-level tuning only (line-by-line granularity, v2.1.78/v2.1.181); no algorithm exposed | Not documented | Fully source-verified, explicit, tunable algorithm (`createPacedValue`, §3.5) decoupling the two entirely, with its own burst-catch-up and immediate-reveal-on-large-backlog escape valve | No comparable mechanism found (repo-wide code search for "typewriter"/"pace"/"reveal" returned nothing, §4.6); render coalescing (above) is the only throttle, and it governs render-pass frequency, not reveal rate |
-| Incremental Markdown-partial handling | Changelog shows dozens of dated Markdown-rendering bugs fixed (tables, strikethrough, blockquotes, nested lists) but no exposed algorithm | Buffered (`--stream off`) vs. streamed output confirmed as genuinely separate Markdown-rendering code paths (nested-list rendering bug fixed only in buffered mode) | Fully source-verified tokenize/freeze/heal/reuse algorithm (`markdown-stream.ts`, §3.4), web/app surface only -- not shared with the terminal TUI | Fully source-verified whole-string re-lex on every delta (no freeze-tail discipline), plus a targeted fix for one specific artifact (streamed partial closing code-fences, §4.2) and a `pending`-flagged heuristic for still-open LaTeX delimiters |
+VERIFIED, `github.com/NousResearch/hermes-agent`, `main` branch, fetched fresh
+this session (2026-09-01) via `gh api`/`gh search code` plus raw-content
+`curl` against `raw.githubusercontent.com` -- Hermes Agent is a fifth,
+independent, self-hosted product with no dependency on any harness covered
+elsewhere on this page; see [Permissions & sandboxing
+architecture](permissions-and-sandboxing.md) §6 and [Hooks and lifecycle
+extensibility](hooks-lifecycle-extensibility.md) §6 for this book's fuller
+architectural introduction to the harness itself, not repeated here. Like
+OpenCode and pi, and unlike Claude Code and Copilot CLI, Hermes ships its
+own full implementation source rather than only a documented CLI surface:
+a Python agent runtime (the `agent/` package, run by a persistent
+"gateway" process this book's hooks-lifecycle-extensibility.md §6.1 already
+documents as running Hermes as a multi-platform messaging service, not only
+a local CLI) paired with a from-scratch TypeScript/React terminal UI
+(`ui-tui/`) that itself sits on `@hermes/ink` -- a private, in-repo fork of
+the `ink` React-for-CLIs renderer (`ui-tui/packages/hermes-ink`, its own
+`package.json` naming `react-reconciler`, `@alcalzone/ansi-tokenize`,
+`wrap-ansi`, `cli-boxes` -- the same dependency footprint upstream Ink
+itself ships) rather than a stock, unmodified copy. Every claim below is
+read directly from that source (file paths and line-level detail cited
+per subsection) or from the gateway's own typed event contract
+(`ui-tui/src/gatewayTypes.ts`); no CHANGELOG.md exists in this repository
+the way one does for Claude Code, Copilot CLI, or pi, so dated history
+below is drawn instead from GitHub Releases (`gh api .../releases`,
+31 releases fetched this session, tags `v2026.3.12` through `v2026.8.31`)
+and from source-code comments that themselves name a specific, numbered
+issue or pull request.
 
-**The design lesson.** Across all four harnesses, "parsing partial tool
+```mermaid
+flowchart TD
+    Py["Python agent runtime (agent/)\nchat_completion_helpers.py / codex_runtime.py\nstream_single_writer.py: claim/check a\nmonotonic writer token (Issue #65991)"]
+    Py --> GW["Gateway event bus\ngatewayTypes.ts union:\nmessage.start -> message.delta{text, rendered?}\n-> message.interim -> message.complete\n(separate thinking.delta / reasoning.delta channel)"]
+    GW --> TC["turnController.recordMessageDelta():\nbufRef += text  (ALWAYS raw text;\nrendered/ANSI fragment ignored -- Issue #16391 fix)"]
+    TC --> Sched["scheduleStreaming(): adaptive batch delay\nSTREAM_IDLE_BATCH_MS=16 / _TYPING_=80 / _SCROLL_=96"]
+    Sched --> Bound["boundedLiveRenderText(): hard tail-cap\non the live buffer before it is ever rendered"]
+    Bound --> SMD["StreamingMd: forward-scanning incremental parser\nfreezes settled top-level blocks (memoized <Md>),\nonly the live tail re-tokenizes per delta"]
+    SMD --> Ink["React reconciler -> @hermes/ink\ncell-level VirtualScreen diff, DECSTBM hardware\nscroll, DEC 2026 sync output (Zellij carve-out)"]
+    Ink --> BP{"previous frame's\nstdout.write drained?"}
+    BP -->|no, under ceiling| Coalesce["coalesce: skip frame,\nretry at drain tick\n(Issue #31486, max 10 frames)"]
+    Coalesce --> Ink
+    BP -->|yes, or ceiling hit| Screen["terminal"]
+    GW -.-> Plugins["plugin_stream_hooks.py:\non_stream_start/_delta/_end\ndispatched off-thread, bounded queue,\ndrop-oldest backpressure"]
+```
+
+### 5.1 The gateway event vocabulary, and a real accumulate-vs-replace regression (`#16391`)
+
+VERIFIED, `ui-tui/src/gatewayTypes.ts` (full 22,324-byte file read this
+session). The gateway's own discriminated-union `GatewayEvent` type names
+the exact vocabulary the TUI (and, per the repo's `web/` and `apps/`
+directories, its Electron "Desktop" and browser surfaces as well) consumes
+for a streaming turn: `message.start` (no payload -- a bare marker),
+`message.delta` (`payload: { rendered?: string; text?: string }`),
+`message.interim` (a corrective full-text snapshot, handled separately
+below), and `message.complete` (final text plus `finalMessages`). A
+parallel, structurally separate channel exists for the reasoning/thinking
+stream (`thinking.delta`, `reasoning.delta`/`reasoning.available`), and a
+third for tool-call lifecycle (`tool.progress`, `tool.generating`,
+`tool.start`, `tool.complete`) -- notably, no `tool.delta`/tool-argument
+fragment event appears anywhere in the 53-member union this session
+grepped in full, meaning tool-call arguments are not fragmented for
+display at this gateway-to-client layer at all, the same absence this
+page's §5 (Synthesis, below) already finds for Claude Code, Copilot CLI,
+OpenCode, and pi.
+
+The `message.delta` payload's own two-field shape -- carrying both a plain
+`text` fragment and an optional pre-rendered `rendered` ANSI fragment --
+is the surface of a real, dated regression, VERIFIED directly from two
+independent sources read this session: the source comment on
+`turnController.ts`'s own `recordMessageDelta` method (`ui-tui/src/app/
+turnController.ts`, line 682) and the regression test that reproduces it
+(`ui-tui/src/__tests__/createGatewayEventHandler.test.ts`, tests literally
+titled "prefers raw text over Rich-rendered ANSI on message.complete
+(#16391)" and "always accumulates raw text in message.delta and ignores
+`rendered` (#16391)"). Read together: the gateway's Python side can, per a
+config key VERIFIED in `hermes_cli/config_defaults.py`
+(`display.final_response_markdown`, values `render`/`strip`/`raw`, default
+`"strip"`), pre-render the assistant's Markdown into ANSI escape codes
+server-side (almost certainly via Python's `rich` library, though this
+session did not independently fetch the renderer call site to confirm the
+library by name) and ship that alongside the plain-text fragment on every
+`message.delta`. The pre-fix code path, named directly in the source
+comment, "replaced the entire buffer with `rendered` (an *incremental*
+Rich ANSI fragment), which on every tick discarded everything streamed so
+far -- visible as overlapping coloured text and lost prose"; the fix makes
+`recordMessageDelta` always accumulate the plain `text` field only
+(`this.bufRef += text`) and, per the `message.complete` test, always
+prefer raw `text` over `rendered` there too, "so raw text must win" and
+visible escape codes never leak into `@hermes/ink`'s own ANSI-aware
+rendering pipeline -- a concrete instance of two independently-produced
+ANSI streams (the gateway's `rich`-rendered fragment and Ink's own styling
+layer) conflicting when composited naively, resolved here by discarding
+the server-rendered copy for display purposes entirely and falling back to
+it only when `text` itself is absent from the payload (a documented,
+tested fallback in the same test file). This is a materially different
+failure mode from every other quadratic-growth or partial-JSON bug this
+page documents elsewhere (Claude Code §1.2, pi §4.1): not a reassembly-cost
+problem, but two independently-styled representations of the same content
+racing for which one the client trusts.
+
+### 5.2 Fully incremental Markdown: freeze-on-paragraph-boundary scanning, arrived at independently of OpenCode's and pi's own designs
+
+VERIFIED, `ui-tui/src/components/streamingMarkdown.tsx` (167-line file read
+in full this session). The exported `StreamingMd` component's own header
+comment states its own design history candidly, including two earlier,
+explicitly-rejected approaches: rendering the accumulated string through
+the plain `<Md text={full}/>` component on every delta "re-tokenizes the
+whole message every time (O(total) x deltas)"; a "prior stable-prefix
+split" that "fixed the per-delta cost but not the per-block cliff: each
+advanced boundary re-tokenized the entire prefix from scratch --
+O(blocks^2) -- plus an O(total) fence rescan." The shipped design fixes
+both: a forward scanner (`advanceScan`, called on every delta) walks only
+newly-arrived, newline-terminated lines, tracking open/closed code-fence
+and display-math (`$$`/`\[`) state in a `StreamScanState` ref that persists
+across deltas; every time a blank-line boundary (`"\n\n"` outside an open
+fence or math block) is crossed, the text since the previous boundary is
+committed as a **settled block**, pushed onto an append-only `blocks`
+array, and rendered through a `<Md key={i} text={block}/>` instance that,
+once mounted, never receives a changed `text` prop again -- so React's own
+`memo()` and the `Md` component's internal per-instance `useMemo` mean each
+settled block tokenizes **exactly once**, for the whole remaining life of
+the turn. Only the still-growing tail past the last settled boundary is
+re-parsed on each delta, so the amortized per-delta cost is O(tail), not
+O(total) or O(blocks^2). Three invariants the comment states explicitly
+are worth naming precisely because they are conservative-by-design rather
+than accidental gaps: a partial trailing line (no `\n` yet) is never
+scanned, since it could still turn out to open a fence; a blank-line
+boundary can never be retroactively merged backward once committed, so a
+Markdown setext-heading underline only binds the contiguous line directly
+above it; and an unmatched `$$`/`\[` opener is treated as open **forever**,
+more conservative than the plain `Md` component's own whole-text fallback
+handling, specifically because a block, once frozen into the `blocks`
+array, can never be un-decided later if its closing delimiter turns out to
+arrive after all.
+
+This is functionally the same "freeze completed structure, keep only the
+live tail incremental" discipline this page's OpenCode section documents
+(§3.4, `markdown-stream.ts`'s tokenize/freeze/heal/reuse pipeline) and
+explicitly contrasts with pi's own choice (§4.2) to accept a full re-lex of
+the entire accumulated message on every delta as the cost of a simpler
+implementation -- Hermes' own source comments show no awareness of either
+prior art, arriving at the freeze-on-boundary design through its own
+two-stage optimization history (whole-text re-lex, then stable-prefix
+split, then this fully incremental scanner) rather than by borrowing
+either. A second, complementary cache exists for **settled** history
+specifically (not the live tail): `ui-tui/src/components/markdown.tsx`'s
+own `Md` component keeps a theme-keyed `WeakMap<Theme, Map<string,
+ReactNode[]>>` with an LRU-bounded inner map (`MD_CACHE_LIMIT = 512`,
+evicting the least-recently-used entry via `Map`'s own insertion-order
+iteration), whose own comment states a *different* motivating problem
+than the streaming case: "useMemo's per-instance cache dies on remount, so
+virtualization re-parses every row that scrolls back into view" -- i.e.
+this cache exists to keep a virtualized scrollback list cheap on
+re-mount/re-scroll, a distinct concern from `StreamingMd`'s own in-flight
+accumulation problem, confirmed by `messageLine.tsx`'s own source: a
+message renders through `StreamingMd` only while `isStreaming` is true,
+switching to the plain, LRU-cached `Md` the moment the turn's
+`message.complete` event lands.
+
+### 5.3 Context-adaptive render pacing, and a hard tail-cap on the live buffer
+
+VERIFIED, `ui-tui/src/app/turnController.ts` and `ui-tui/src/config/
+timing.ts` (both read in full this session). `scheduleStreaming()`
+defers each render-triggering state patch behind a single in-flight
+`setTimeout`, so a burst of `message.delta` events arriving faster than
+the current delay collapses into one `patchTurnState({ streaming:
+... })` call per window -- the same *purpose* as Claude Code's
+changelog-documented 100ms coalescing window (§1.1), OpenCode's 24ms
+reveal ticker (§3.5), and pi's fixed 16ms `MIN_RENDER_INTERVAL_MS` floor
+(§4.4) -- but Hermes' own delay is not a single constant: `timing.ts`
+defines `STREAM_IDLE_BATCH_MS = 16`, `STREAM_TYPING_BATCH_MS = 80`, and
+`STREAM_SCROLL_BATCH_MS = 96`, and `turnController`'s own
+`boostStreamingForTyping()`/`boostStreamingForScroll()`/`relaxStreaming()`
+methods switch `streamDelay` between them based on what the *user* is
+doing concurrently with the stream arriving -- widening the batch window
+to 80ms while the user is actively typing in the composer, and to (at
+least) 96ms while they are scrolling the transcript, then relaxing back to
+the 16ms floor once both stop. This is a materially different design axis
+from every other harness's own render-cost mitigation on this page: none
+of Claude Code's, Copilot CLI's, OpenCode's, or pi's documented mechanisms
+are shown varying their own coalescing window by *what the user is
+concurrently doing*, only by the stream's own delivery rate or a fixed
+budget.
+
+A second, independent mechanism bounds the *size* of the rendered buffer
+rather than the *rate* it is revealed at: `boundedLiveRenderText()`
+(`ui-tui/src/lib/text.ts`) caps the in-flight text to `LIVE_RENDER_MAX_CHARS`
+characters and a maximum line count before `StreamingMd` ever sees it,
+front-trimming a huge in-progress reply down to its live tail (labelled
+"showing live tail" in the truncation marker its own source emits) --
+called both from `scheduleStreaming()`'s own patch and, per
+`messageLine.tsx`'s source, wrapped around the text handed to
+`StreamingMd` a second time at the render call site itself. No comparable
+"cap the render target's own size, independent of pacing" mechanism is
+named anywhere else in this book's coverage of Claude Code, Copilot CLI,
+OpenCode, or pi; it is closest in spirit to, but a different mechanism
+from, pi's own `clearOnShrink` tradeoff (§4.5), which manages a shrinking
+*rendered line count* rather than truncating the *source text* before it
+is ever tokenized.
+
+### 5.4 `@hermes/ink`: a cell-level virtual-screen diff engine, hardware scroll regions, and a multiplexer-specific synchronized-output carve-out
+
+VERIFIED, `ui-tui/packages/hermes-ink/src/ink/log-update.ts` (a
+27,120-byte file, read in full this session) and `.../optimizer.ts`. This
+is the single deepest terminal-rendering mechanism this book has sourced
+anywhere: rather than diffing two full rendered *strings* line-by-line the
+way pi-tui's own differential renderer does (§4.5), `@hermes/ink`'s
+`LogUpdate.render(prev, next)` diffs two **cell-level virtual screens**
+(`Screen`, a 2D grid of `Cell`s each carrying a character, a style-pool ID,
+and an optional hyperlink) via a `diffEach(prev.screen, next.screen, ...)`
+callback that visits only cells whose content, style, or hyperlink
+actually changed, skipping unwritten wide-character spacer cells and cells
+that would only add trailing whitespace. Several specific optimizations
+are only legible at this cell granularity: a **DECSTBM hardware-scroll**
+path (`setScrollRegion`/`csiScrollUp`/`csiScrollDown`) that, when a
+`ScrollBox`'s `scrollTop` changes, issues a terminal-native scroll-region
+shift instead of rewriting every row the scroll displaced, with the
+source's own comment naming the atomicity risk directly: "without
+atomicity the outer terminal renders the intermediate state -- region
+scrolled, edge rows not yet painted -- a visible vertical jump on every
+frame," which is why the caller passes `decstbmSafe = false` (falling back
+to the ordinary cell diff, "more bytes, no intermediate state") whenever
+the terminal lacks a way to make the DECSTBM-then-diff sequence atomic; a
+`fullResetSequence_CAUSES_FLICKER()` escape hatch, its own name admitting
+the tradeoff, forced specifically on a terminal-size change, or when
+shrinking content would expose previously-scrolled-back rows a partial
+clear operation cannot reach; and a final `optimize()` pass (`.../
+optimizer.ts`, read in full) that merges adjacent cursor-move and style
+patches, dedupes repeated hyperlink-open sequences, and cancels
+cursor-hide/show pairs that cancel out, shrinking the final byte count
+written to the terminal below what the raw per-cell diff alone would
+produce.
+
+Synchronized output (DEC private mode 2026, the same `BSU`/`ESU` escape
+convention this page's §1.1 and §4.5 already document Claude Code's and
+pi's own use of) is applied conditionally rather than unconditionally: a
+source comment in `ink.tsx`, read this session, states a Hermes-specific,
+named exception directly -- "Never emit BSU/ESU (DEC 2026) on terminals
+that don't support it -- main screen included. Multiplexers like Zellij
+re-parse and re-chunk the stream with their own timing, so the markers buy
+no atomicity and stale frames get pushed into main-screen scrollback as
+repeated chrome (`#66490`)." This is a third, independently-arrived-at data
+point (alongside Copilot CLI's own tmux-specific synchronized-output
+skip, §2.2, and pi's own unconditional use, §4.5) that terminal
+multiplexers are a recurring, cross-harness source of synchronized-output
+edge cases -- here resolved for one specific multiplexer (Zellij) by name,
+via a dated, numbered issue.
+
+### 5.5 Backpressure-aware frame coalescing (Issue #31486), and off-thread plugin stream-hook dispatch
+
+VERIFIED, `ui-tui/packages/hermes-ink/src/ink/constants.ts`, `ink.tsx`, and
+`ink-backpressure.test.ts` (all read this session). This is the one
+mechanism on this page grounded not in a fixed time budget or a delivery-
+rate heuristic, but in actual **OS-level stdout flow control**: Node's own
+`stream.write()` returns `false`, and defers its completion callback,
+when the underlying pipe's kernel buffer is full -- exactly the condition
+the source comment names as the trigger, "a wide CR+LF burst on a
+high-context session" overwhelming the terminal's own parser. `ink.tsx`
+tracks `pendingWriteStart`, the timestamp of the most recent write whose
+drain callback has not yet fired; if a new frame is due while a previous
+write is still un-drained, the renderer does not queue another write on
+top of the backed-up pipe -- doing so, the comment states, "keeps the
+macrotask queue hot," which "starves the stdin 'readable' callback," the
+observed symptom being an apparent input freeze during heavy streaming.
+Instead it **coalesces**: the frame is skipped entirely and retried on a
+`FRAME_INTERVAL_MS >> 2` timer (a quarter of the ~60fps frame budget), up
+to `MAX_COALESCED_BACKPRESSURE_FRAMES = 10` consecutive skips, at which
+point the write is forced through regardless of drain state -- "so a
+terminal whose drain callback never fires (e.g. `EIO` on flush) can't
+wedge the renderer permanently." The regression test (`ink-backpressure
+.test.ts`, Issue `#31486`) constructs a `WedgedTty` whose `write()` always
+returns `false` and withholds its drain callback under direct test
+control, confirming the coalesce-then-force-through behavior end to end
+rather than only in a source comment. None of Claude Code's, Copilot
+CLI's, OpenCode's, or pi's own render-coalescing mechanisms on this page
+are documented as reading an actual OS-level backpressure signal the way
+this one does; every other mechanism this page finds coalesces on a
+*time* budget or a *reactive-signal* change, never on the write-side
+completion callback itself.
+
+A related, source-side safety mechanism belongs to the Python gateway
+rather than the TUI: `agent/stream_single_writer.py` (read in full this
+session) implements a best-effort "single-writer fence," `#65991`,
+guarding against exactly the race its own docstring names -- a stale,
+superseded streaming attempt (from a retry, or an interrupted-then-resumed
+turn) continuing to write deltas concurrently with the current legitimate
+stream. `claim_stream_writer()`/`stream_writer_is_current()` wrap the
+actual fence methods (`AIAgent._claim_stream_writer`/
+`_stream_writer_is_current`, defined elsewhere in `run_agent.py`, not
+independently read this session) in a duck-typed, exception-swallowing
+accessor whose own docstring states the fail-safe direction explicitly:
+"the fence is only ever allowed to drop a *provably* superseded stream --
+never the sole legitimate writer," so any failure to resolve the fence
+(a missing method, an exception, a `0` token) degrades to "no fence: keep
+streaming" rather than aborting a legitimate turn. Separately,
+`agent/plugin_stream_hooks.py` (read in full) confirms how the
+`on_stream_start`/`on_stream_delta`/`on_stream_end` **observer hooks**
+this book's [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md)
+§6.1 already documents by name are actually dispatched: each
+`(hook_name, callback)` pair gets its own dedicated background thread
+draining a bounded (`maxsize=1024`) queue, so `enqueue_plugin_stream_hook()`
+never runs plugin callback code inline on the hot streaming path -- a
+full queue drops its oldest item rather than blocking the producer -- and
+`stream_reasoning_deltas_enabled()` gates the reasoning-specific variant
+behind an explicit, opt-in `plugins.stream_reasoning_deltas` config key,
+off by default. This directly connects hooks-lifecycle-extensibility.md's
+own catalogue of Hermes' three hook systems to this page's own subject
+matter: the specific reason a slow or misbehaving plugin *cannot* stall
+the live render is this off-thread, bounded-queue dispatch design, verified
+here at the source level rather than only asserted by the hooks page's own
+docs citation.
+
+### 5.6 Synthesis for Hermes Agent
+
+Read end to end, Hermes' own engineering record shows the same *shape* of
+problem this page already documents for Claude Code, OpenCode, and pi --
+a dated, source-and-test-confirmed accumulation bug at the reassembly
+layer (§5.1, `#16391`), a multi-generation incremental-Markdown design
+that a source comment itself narrates through two rejected earlier stages
+before landing on a fully incremental scanner (§5.2), and an explicit
+render-coalescing mechanism tuned against real-world cost (§5.3-§5.5) --
+reached, again, by an entirely independent engineering team via its own
+vocabulary (`bufRef`, `StreamScanState`, `boundedLiveRenderText`,
+`MAX_COALESCED_BACKPRESSURE_FRAMES`) with no evidence of borrowing from
+any of the three other source-inspectable harnesses this page covers. Its
+two genuinely distinctive contributions to this page's overall picture are
+the backpressure-aware frame coalescing of §5.5 -- the only render-cost
+mitigation on this page grounded in an actual OS-level flow-control signal
+rather than a time budget or a reactive-value change -- and the
+context-adaptive pacing of §5.3, which is the only mechanism on this page
+shown varying its own batch window by what the *user* is doing (typing,
+scrolling) rather than only by what the *model* is producing.
+
+---
+
+## 6. Synthesis
+
+| Concern | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
+|---|---|---|---|---|---|
+| Partial tool-call JSON: attempted a mid-parse? | No evidence found; changelog shows byte/JSON reassembly *bugs* fixed (v2.1.92, v2.1.94), never a speculative-parse feature | Docs state tool calls arrive whole, no fragmentation of arguments at the SDK's own event layer (bounded, adjacent-surface citation) | Source-confirmed: never attempted anywhere in three independently-written consumers (`publish-llm-event.ts`, `message-updater.ts`, TUI's `data.tsx`) | No evidence of a JSON mid-parse either -- but source-confirmed to attempt exactly this for a *different* structured grammar: a still-incomplete Mermaid diagram body, rendered live by default (§4.3) | No evidence found -- source-confirmed absence: the gateway's own 53-member `GatewayEvent` union (§5.1) carries no tool-argument-delta event at all, only whole-shot `tool.progress`/`tool.generating`/`tool.start`/`tool.complete` |
+| Partial tool-call JSON: held in live state at all while pending? | Unknown (closed source) | Unknown; docs suggest not, since arguments aren't fragmented to begin with | Diverges *within the same codebase*: the shared `core` reducer no-ops the delta entirely; the TUI's and app's own reducers accumulate the raw string but gate its display until the call is complete | `toolcall_delta`/`toolcall_end` follow the identical caller-must-accumulate discipline as the wire level (llm-api-contract.md §3.5); no source read this session shows the TUI attempting to render a partial tool-call argument string | N/A -- no event exists at this layer to hold a partial tool-call string in the first place (source-confirmed absence, §5.1) |
+| Render-cost mitigation under sustained streaming | Time-based coalescing (100ms window, ~37% CPU cut, v2.1.191), no-op subtree-walk skipping (v2.1.196), a swapped-out WASM layout engine (v2.1.85) | Spinner/polling-cost optimization (v1.0.13), a `time_to_first_chunk` OTel metric (v1.0.19) to measure the user-facing consequence | SolidJS fine-grained reactive signals (only the specific memoized value that changed re-renders) plus an explicit reuse-check in the Markdown projector (`project()`'s frozen-block-skip, §3.4) -- a declarative/structural answer rather than a time-based debounce | A literal ~60fps render-pass floor (`MIN_RENDER_INTERVAL_MS = 16`, §4.4) coalescing any burst of `requestRender()` calls into one `doRender()` per window, plus a `process.nextTick`-based bypass for input latency specifically | Context-adaptive batch delay (16/80/96ms idle/typing/scrolling, §5.3) *plus* the only mechanism on this page keyed to a real OS-level signal: `stdout.write()`'s own drain callback, coalescing skipped frames up to a bounded ceiling (`MAX_COALESCED_BACKPRESSURE_FRAMES = 10`, Issue #31486, §5.5) |
+| Terminal/DOM flicker mitigation | Synchronized-output escape sequences (v2.1.200 and others), a dedicated `NO_FLICKER` mode (v2.1.89) and a separate `/tui fullscreen` renderer (v2.1.110), both independently maintained | Synchronized output *skipped* under tmux specifically to avoid a flicker regression (v1.0.66) -- the same mechanism, opposite conclusion for one terminal/multiplexer combination | Not directly addressed by any source read this session (OpenTUI's own internals, a third-party dependency, were out of scope) | Same synchronized-output convention (`\x1b[?2026h`/`l`) plus a source-confirmed differential line-diff renderer (§4.5); its own `clearOnShrink` setting names an explicit, still-only-partially-fixed flicker-vs-scroll-jump tradeoff (Issue #5825) | Same synchronized-output convention, explicitly *disabled* for terminals/multiplexers (named example: Zellij, Issue #66490) that re-chunk the stream with their own timing (§5.4); backed by a cell-level (not line-level) `VirtualScreen` diff plus DECSTBM hardware scroll-region shifting -- the deepest terminal-diff mechanism sourced anywhere in this book |
+| Display pace vs. delivery cadence | Symptom-level tuning only (line-by-line granularity, v2.1.78/v2.1.181); no algorithm exposed | Not documented | Fully source-verified, explicit, tunable algorithm (`createPacedValue`, §3.5) decoupling the two entirely, with its own burst-catch-up and immediate-reveal-on-large-backlog escape valve | No comparable mechanism found (repo-wide code search for "typewriter"/"pace"/"reveal" returned nothing, §4.6); render coalescing (above) is the only throttle, and it governs render-pass frequency, not reveal rate | Three named, fixed batch delays switched by *user activity* (typing/scrolling/idle, §5.3) rather than a continuously adaptive ticker; a separate, independent mechanism (`boundedLiveRenderText`) hard-caps the *size* of the live buffer before it is ever tokenized, a distinct axis from every other harness's own pacing mechanism |
+| Incremental Markdown-partial handling | Changelog shows dozens of dated Markdown-rendering bugs fixed (tables, strikethrough, blockquotes, nested lists) but no exposed algorithm | Buffered (`--stream off`) vs. streamed output confirmed as genuinely separate Markdown-rendering code paths (nested-list rendering bug fixed only in buffered mode) | Fully source-verified tokenize/freeze/heal/reuse algorithm (`markdown-stream.ts`, §3.4), web/app surface only -- not shared with the terminal TUI | Fully source-verified whole-string re-lex on every delta (no freeze-tail discipline), plus a targeted fix for one specific artifact (streamed partial closing code-fences, §4.2) and a `pending`-flagged heuristic for still-open LaTeX delimiters | Fully source-verified, fully incremental forward-scanner (`StreamingMd`, §5.2): freezes each settled top-level block into a permanently-memoized component and re-tokenizes only the live tail, arrived at independently after two earlier, explicitly-rejected designs (whole-text re-lex, then a stable-prefix split) named in its own source comments |
+
+**The design lesson.** Across all five harnesses, "parsing partial tool
 calls out of a token stream" turns out, on the evidence actually gathered
 this session, to have a strikingly uniform answer at the argument-JSON
 layer specifically: nobody examined in this book attempts to parse or
@@ -1115,19 +1451,21 @@ display a genuinely incomplete JSON object mid-stream. Every mechanism found
 either declines to hold the partial string in live state at all (OpenCode's
 shared `core` reducer), holds it but withholds it from display until
 complete (OpenCode's TUI and web/app reducers, both independently), or --
-per the one adjacent-surface citation available for Copilot, and per pi's own
-`toolcall_end`-only-carries-parsed-arguments discipline -- appears not to
-fragment tool-call arguments for display at all. pi's own Mermaid-rendering
-finding (§4.3) is the one genuine complication to that uniformity: it shows
-that "decline to parse an incomplete structured grammar mid-stream" is a
-choice made specifically and consistently for tool-call JSON across every
-harness examined, not a universal law about partial structured text in
+per the one adjacent-surface citation available for Copilot, per pi's own
+`toolcall_end`-only-carries-parsed-arguments discipline, and per Hermes'
+own gateway event union never fragmenting tool-call arguments into a delta
+event at all (§5.1) -- appears not to fragment tool-call arguments for
+display at all. pi's own Mermaid-rendering finding (§4.3) is the one genuine
+complication to that uniformity: it shows that "decline to parse an
+incomplete structured grammar mid-stream" is a choice made specifically and
+consistently for tool-call JSON across every harness examined, not a
+universal law about partial structured text in
 general -- a harness that has already built the machinery to parse a grammar
 safely (Mermaid, via a dedicated third-party renderer with its own
 failure-handling contract) can and does choose to run that parse
 speculatively on each delta, provided a failed or incomplete attempt degrades
 gracefully rather than corrupting the render. The genuinely divergent, harder
-engineering problem all four harnesses *do* visibly grapple with, each in its
+engineering problem all five harnesses *do* visibly grapple with, each in its
 own idiom, is the second-order one this page's name points at more than its
 handoff description initially suggested: turning an already-safely-accumulated,
 still-growing plain-text or Markdown string into a terminal or DOM update
@@ -1135,13 +1473,23 @@ that neither flickers, stalls, nor burns unbounded CPU as the growth rate
 varies -- and, per OpenCode's uniquely source-visible §3.5 finding, optionally
 re-pacing that reveal to a rate independent of the network's own delivery
 cadence entirely (a refinement pi's own coalescing floor, per §4.6, does not
-attempt). Claude Code's multi-year changelog record and pi's own
+attempt, though Hermes' own context-adaptive batch delay, §5.3, re-paces by a
+different variable again -- concurrent user activity rather than network
+cadence). Claude Code's multi-year changelog record and pi's own
 still-partially-open shrink/scroll-jump bug (§4.5) are, between them, the
 deepest evidence in this book of how much sustained engineering effort that
 second problem alone can demand even once the first one (safe JSON
 reassembly) is solved -- and how it can remain only partially solved for
 years at a time even in a codebase whose implementation is fully
-source-inspectable.
+source-inspectable. Hermes' own backpressure-aware frame coalescing (§5.5) is
+a distinct, deeper layer again: it is the only mechanism this book has
+sourced anywhere that ties a render-cost mitigation directly to the
+operating system's own flow-control signal (a `stdout.write()` drain
+callback) rather than to a measured or assumed delivery cadence, suggesting
+that even a fully time-budgeted, fully source-inspectable coalescing scheme
+(pi's own `MIN_RENDER_INTERVAL_MS`, §4.4) can still be insufficient once the
+bottleneck moves from "how fast the model streams" to "how fast the terminal
+itself can drain."
 
 ---
 
@@ -1149,8 +1497,9 @@ source-inspectable.
 
 Claude Code, Copilot CLI, and OpenCode sources fetched or read fresh in the
 original session that authored this page (2026-08-01); the pi section (§4)
-was researched and added in a separate session (2026-09-01), sources fetched
-fresh then, as itemized in its own block below.
+was researched and added in a separate session (2026-09-01); the Hermes
+Agent section (§5) was researched and added in this same 2026-09-01 session,
+sources fetched fresh then, as itemized in its own block below.
 
 **Claude Code (authoritative for its own documented CLI behavior; no
 implementation source exists in this repo):**
@@ -1266,3 +1615,95 @@ session):**
 - A repo-wide `gh search code` for `typewriter`, `pace`, and `reveal` against
   `earendil-works/pi`, returning zero results -- the negative finding named
   in §4.6.
+
+**Hermes Agent (authoritative for its own documented behavior AND, like
+OpenCode and pi, its own real implementation; `github.com/NousResearch/
+hermes-agent`, `main` branch, fetched fresh 2026-09-01, the same session as
+this page's pi section but a separate research pass):**
+- `gh api repos/NousResearch/hermes-agent` -- confirmed canonical repo
+  identity (`homepage: hermes-agent.nousresearch.com`, MIT license,
+  Python as primary language, `main` default branch); covers §5 intro.
+- `ui-tui/src/gatewayTypes.ts` (22,324-byte file, fetched via
+  `raw.githubusercontent.com` and read in full) -- the full `GatewayEvent`
+  discriminated union, confirming the `message.start`/`message.delta`/
+  `message.interim`/`message.complete` lifecycle, the separate
+  `thinking.delta`/`reasoning.delta` channel, and the absence of any
+  tool-argument-delta event; covers §5.1 and the Synthesis table.
+- `ui-tui/src/app/turnController.ts` (36,339-byte file, read in full) --
+  `recordMessageDelta()`'s accumulate-raw-text-only discipline and its
+  own `#16391` source comment, `scheduleReasoning()`/`scheduleStreaming()`'s
+  timer-based coalescing, `boostStreamingForTyping()`/
+  `boostStreamingForScroll()`/`relaxStreaming()`'s context-adaptive
+  `streamDelay` switching, and `hydrateStreamingText()`; covers §5.1 and
+  §5.3.
+- `ui-tui/src/config/timing.ts` (fetched in full) -- `STREAM_IDLE_BATCH_MS`
+  (16), `STREAM_TYPING_BATCH_MS` (80), `STREAM_SCROLL_BATCH_MS` (96),
+  `STREAM_BATCH_MS`, `REASONING_PULSE_MS`, and `RESIZE_COALESCE_MS`;
+  covers §5.3.
+- `ui-tui/src/lib/text.ts` (fetched in full) -- `boundedLiveRenderText()`/
+  `boundedRenderText()`'s tail-capping truncation logic; covers §5.3.
+- `ui-tui/src/__tests__/createGatewayEventHandler.test.ts` (fetched in
+  full) -- the two `#16391` regression tests ("prefers raw text over
+  Rich-rendered ANSI on message.complete" and "always accumulates raw
+  text in message.delta and ignores `rendered`") that confirm the fix's
+  exact before/after behavior; covers §5.1.
+- `hermes_cli/config_defaults.py` (fetched via `gh api ... -H "Accept:
+  application/vnd.github.raw"`) -- the `display.final_response_markdown`
+  config key (`render`/`strip`/`raw`, default `"strip"`); covers §5.1.
+- `ui-tui/src/components/streamingMarkdown.tsx` (167-line file, read in
+  full, located via `gh search code`) -- `StreamingMd`'s fully incremental
+  forward-scanning parser (`createScanState`/`applyLine`/`advanceScan`),
+  its own source-comment history of two earlier, rejected designs, and its
+  three named conservative invariants; covers §5.2.
+- `ui-tui/src/components/markdown.tsx` (fetched in full) -- the `Md`
+  component's theme-keyed, LRU-bounded (`MD_CACHE_LIMIT = 512`)
+  cross-instance cache and its own virtualized-scrollback motivating
+  comment; covers §5.2.
+- `ui-tui/src/components/messageLine.tsx` (fetched in full) -- confirmed
+  the `isStreaming`-gated switch between `StreamingMd` (in-flight) and the
+  plain, LRU-cached `Md` (settled history); covers §5.2.
+- `ui-tui/src/components/streamingAssistant.tsx` (fetched in full) --
+  `StreamingAssistant`'s live-block flattening/ordering logic around the
+  in-flight streaming segment; covers §5's intro mermaid diagram context.
+- `ui-tui/packages/hermes-ink/package.json` (fetched in full) -- confirmed
+  `@hermes/ink` as an in-repo fork of `ink` (shared `react-reconciler`,
+  `@alcalzone/ansi-tokenize`, `wrap-ansi`, `cli-boxes` dependency
+  footprint); covers §5 intro.
+- `ui-tui/packages/hermes-ink/src/ink/log-update.ts` (27,120-byte file,
+  read in full) -- `LogUpdate.render()`'s cell-level `VirtualScreen` diff,
+  DECSTBM hardware-scroll-region shifting, and the named
+  `fullResetSequence_CAUSES_FLICKER()` escape hatch; covers §5.4.
+- `ui-tui/packages/hermes-ink/src/ink/optimizer.ts` (fetched in full) --
+  the post-diff `optimize()` patch-merging pass; covers §5.4.
+- `ui-tui/packages/hermes-ink/src/ink/ink.tsx` (fetched in full, grepped
+  for `backpressure`/`pendingWriteStart`/`MAX_COALESCED`) -- the
+  synchronized-output Zellij carve-out (`Issue #66490`) and the
+  backpressure-aware frame-coalescing logic itself (`Issue #31486`);
+  covers §5.4 and §5.5.
+- `ui-tui/packages/hermes-ink/src/ink/constants.ts` (fetched in full) --
+  `FRAME_INTERVAL_MS = 16` and `MAX_COALESCED_BACKPRESSURE_FRAMES = 10`,
+  with the source comment's own rationale for the ceiling; covers §5.5.
+- `ui-tui/packages/hermes-ink/src/ink/ink-backpressure.test.ts` (fetched
+  in full) -- the `WedgedTty`-based regression test for Issue #31486,
+  confirming the coalesce-then-force-through behavior end to end; covers
+  §5.5.
+- `agent/stream_single_writer.py` (fetched in full) -- the Python-side
+  single-writer fence (`claim_stream_writer`/`stream_writer_is_current`,
+  Issue #65991) and its fail-open-to-"no fence" degradation discipline;
+  covers §5.5.
+- `agent/plugin_stream_hooks.py` (fetched in full) -- the per-callback,
+  bounded-queue (`maxsize=1024`), background-thread dispatch of
+  `on_stream_start`/`on_stream_delta`/`on_stream_end` observer hooks and
+  the opt-in `plugins.stream_reasoning_deltas` gate; covers §5.5, and
+  connects directly to [Hooks and lifecycle
+  extensibility](hooks-lifecycle-extensibility.md) §6.1's own citation of
+  the same hook names from `hermes-agent.nousresearch.com/docs/user-guide/
+  features/hooks`.
+- `gh api repos/NousResearch/hermes-agent/releases` (31 releases fetched,
+  tags `v2026.3.12` through `v2026.8.31`, bodies filtered for
+  stream/render/flicker/scroll-jump/coalesce-related bullet points in the
+  absence of any `CHANGELOG.md` in this repository) -- the dated Desktop
+  (Electron) app history named in §5's intro paragraph (60fps render
+  passes, per-token re-render elimination, GPU-acceleration-disabled
+  flicker fix on remote displays, scroll-jump fixes, and an early
+  `patch_stdout`-era spinner-flicker fix at `v2026.3.12`).

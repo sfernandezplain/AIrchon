@@ -16,7 +16,7 @@ that tool and posting a `tool_result` block back **is** the Observation
 being appended to context. This page grounds that mechanism at the byte
 level; agent-loop.md names the pattern.
 
-Two materially different wire contracts are in play across the five
+Two materially different wire contracts are in play across the six
 harnesses this book covers, because they are built by different vendors
 against different providers: **Anthropic's Messages API** (a typed
 content-block array per message, one `stop_reason` field) and
@@ -27,7 +27,11 @@ distinct from Anthropic's `content_block_*` event names) -- with pi's
 own §3.5 additionally naming Google's Generative AI API as a fourth wire
 family its own provider abstraction speaks natively, not independently
 detailed at the wire level on this page the way §1/§2 detail the other
-two. Every claim below is tagged VERIFIED (fetched this session from a
+two, and Hermes Agent's own §3.6 (added 1 September 2026) confirming from
+source that the same two wire families -- plus AWS Bedrock's distinct
+Converse API -- are all reachable through exactly two pinned SDK
+packages, the `openai` package doing double duty for both of §2's OpenAI
+contracts. Every claim below is tagged VERIFIED (fetched this session from a
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED, and a fact
 verified for one provider's API is never assumed to hold for the other's
 without its own citation -- the same authority-overreach guard this book
@@ -739,6 +743,204 @@ DeepSeek's docs naming it, per §3.4's citation), so treat "DeepSeek wraps pi-ai
 unmodified" as the plain reading of the provider's name rather than as independently
 confirmed integration-code detail.
 
+### 3.6 Hermes Agent (Nous Research)
+
+VERIFIED, fetched 1 September 2026 directly from `github.com/NousResearch/hermes-agent`
+(`main` branch): `pyproject.toml` (in full), `agent/chat_completion_helpers.py` (the
+full 5,109-line file), `agent/transports/base.py`, `agent/transports/types.py`, and
+`agent/error_classifier.py` (the full ~99 KB file), all read via `curl` against
+`raw.githubusercontent.com`, cross-referenced against Hermes' own documentation site,
+`hermes-agent.nousresearch.com/docs/user-guide/features/fallback-providers.md` and
+`.../provider-routing.md`, both fetched fresh this session (WebFetch/`curl`). Unlike
+§3.2's closed-source Copilot CLI, Hermes' wire-contract handling is fully
+source-verified at implementation precision -- the deepest level of verification this
+page achieves for any harness alongside OpenCode (§3.3) -- while also, uniquely among
+the six harnesses this page now covers, shipping user-facing documentation that
+independently corroborates the source-level retry/fallback behavior rather than only
+describing configuration syntax. Hermes Agent is a sixth, independent, self-hosted
+product -- see [Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§6 and [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §6 for
+this book's fuller architectural introduction to the harness itself, not repeated here.
+
+**The OpenAI Python SDK as Hermes' default transport, regardless of which provider is
+actually being spoken to.** `pyproject.toml`'s own dependency-scope comment states the
+rule directly: "Scope rule: only packages used by EVERY hermes session belong here" in
+`[project.dependencies]`, and `openai==2.24.0` -- exact-pinned, per the file's own
+supply-chain-hardening rationale citing the 2026-05 `mistralai` PyPI worm incident -- is
+the one LLM-client package in that core list. `anthropic==0.87.0` is instead declared as
+an *optional extra* ("Native Anthropic provider — only needed when provider=anthropic
+(not via OpenRouter or other aggregators)"), lazy-installed on demand. This means every
+OpenAI-Chat-Completions-shaped backend Hermes talks to by default -- OpenRouter, Nous
+Portal, GitHub Models, NVIDIA NIM, Kimi/Moonshot, TokenHub, LM Studio, Qwen Portal,
+xAI's chat-completions endpoint -- is dispatched through the same one pinned OpenAI SDK
+instance (`request_client.chat.completions.create(**api_kwargs)`, read directly at
+`chat_completion_helpers.py:1003`), and that the native Anthropic SDK is reserved for
+the one `api_mode` (`anthropic_messages`) that talks to Anthropic's own Messages API
+(§1) directly rather than through an aggregator. `pyproject.toml`'s own comment on the
+`pydantic` version bump additionally confirms that OpenAI's newer **Responses API**
+(§2) is reached through that *same* `openai==2.24.0` package's own `.responses`
+resource, not a separate client: the comment names a segfault "when the OpenAI SDK's
+Responses API resource is exercised from a non-main thread, which is the
+`codex_responses` dispatch in `agent/chat_completion_helpers.py:_call`." AWS Bedrock is
+the one genuinely separate transport: `build_api_kwargs`'s own comment states plainly
+that `bedrock_converse` mode "bypasses the OpenAI client entirely," calling boto3's
+native `client.converse()` / `converse_stream()` Bedrock Converse API directly, with
+`agent/bedrock_adapter.py`'s `normalize_converse_response()` producing "an
+OpenAI-compatible SimpleNamespace so the rest of the agent loop can treat bedrock
+responses like chat_completions responses" -- normalizing at the *response* layer for
+Bedrock specifically, rather than Bedrock speaking through any shared request-building
+transport class. Four `api_mode` values in total, read directly out of
+`build_api_kwargs`'s own branching (`chat_completion_helpers.py:1829-2156`):
+`anthropic_messages`, `bedrock_converse`, `codex_responses`, and the default
+`chat_completions`.
+
+```mermaid
+flowchart TD
+    Build["build_api_kwargs(agent, messages, tools)"] --> Mode{api_mode}
+    Mode -->|anthropic_messages| Ant["anthropic SDK (extra)\nclient.messages.create/.stream()\n-> Anthropic Messages API, S1"]
+    Mode -->|bedrock_converse| Bed["boto3 bedrock-runtime client\nconverse() / converse_stream()\n-- bypasses OpenAI client entirely"]
+    Mode -->|codex_responses| Codex["openai SDK (core)\n.responses resource\n-> OpenAI Responses API, S2"]
+    Mode -->|chat_completions default| Chat["openai SDK (core)\n.chat.completions resource\n-> OpenAI Chat Completions,\nspoken to OpenRouter/Nous Portal/\nGitHub Models/NVIDIA NIM/Kimi/\nxAI/LM Studio/Qwen Portal etc."]
+    Ant --> Transport["ProviderTransport:\nconvert_messages -> convert_tools\n-> build_kwargs -> normalize_response"]
+    Codex --> Transport
+    Chat --> Transport
+    Bed --> BedNorm["normalize_converse_response()\n(response-layer only, no shared\nProviderTransport class)"]
+    Transport --> NR["NormalizedResponse\n(content, tool_calls, finish_reason,\nreasoning, usage, provider_data)"]
+    BedNorm --> NR
+    NR --> Loop["agent loop (run_agent.py)"]
+```
+
+**The `ProviderTransport` pipeline and a `NormalizedResponse` whose canonical
+`finish_reason` is OpenAI's own four-value vocabulary.** `agent/transports/base.py`'s
+`ProviderTransport` abstract base class names its own scope explicitly in its module
+docstring: a transport owns exactly "`convert_messages → convert_tools → build_kwargs →
+normalize_response`" for one `api_mode`, and does **not** own "client construction,
+streaming, credential refresh, prompt caching, interrupt handling, or retry logic --
+those stay on `AIAgent`." This is a narrower slice of responsibility than OpenCode's own
+four-axis `Route.make(Protocol, Endpoint, Auth, Framing)` composition (§3.3), which
+folds endpoint construction and per-request auth into the same route object: Hermes
+keeps request/response *shape* conversion in the transport layer and pushes auth,
+client lifecycle, and retry one level up onto the agent object itself, a different
+division of the same normalization problem rather than a thinner version of OpenCode's.
+`agent/transports/types.py`'s shared dataclasses give the transport layer's shared
+output vocabulary directly: `ToolCall` (`id`, `name`, a JSON-**string** `arguments`
+field -- the OpenAI-shaped, not Anthropic-shaped, convention per §2.1 -- plus a
+`provider_data` dict carrying protocol-specific extras such as Codex's
+`call_id`/`response_item_id` or Gemini's `thought_signature`), `Usage`
+(`prompt_tokens`/`completion_tokens`/`total_tokens`/`cached_tokens`), and
+`NormalizedResponse` (`content`, `tool_calls`, `finish_reason`, `reasoning`, `usage`,
+`provider_data`). The dataclass's own inline comment names `finish_reason`'s canonical
+value set outright: `"stop"`, `"tool_calls"`, `"length"`, `"content_filter"` -- this is
+**OpenAI's own four-value Chat Completions/Responses vocabulary** (§2.2) adopted
+verbatim as Hermes' normalization target, in contrast to OpenCode's bespoke six-value
+`FinishReason` enum (§3.3) or pi's own five-terminal-plus-`"pending"` `stopReason` enum
+(§3.5) -- both of the other two source-verified harnesses on this page invent their own
+enum rather than canonicalizing onto either upstream vocabulary directly. The generic
+`map_finish_reason(reason, mapping)` helper each transport's own mapping dict feeds
+through falls back to `"stop"` for an unrecognized or `None` reason -- a more permissive
+default-on-unknown behavior than OpenCode's dedicated `"unknown"` bucket (§3.3's table),
+worth flagging as a real, if narrow, normalization-fidelity difference: an
+unrecognized stop signal reads as ordinary successful completion in Hermes' scheme
+rather than as its own distinguishable case.
+
+**Streaming across all four `api_mode` values, plus a harness-level "discard and
+reconnect" recovery strategy distinct from Anthropic's own documented resumption
+procedure.** `interruptible_streaming_api_call`'s own docstring enumerates all four
+paths directly: `chat_completions` sets `stream: true` against an OpenAI-compatible
+endpoint through the `openai` SDK; `anthropic_messages` opens
+`request_client.messages.stream(**final_kwargs)` -- confirmed read directly at
+`chat_completion_helpers.py:4690` -- the native Anthropic SDK's own streaming context
+manager, whose `get_final_message()` accumulator (also read directly) is what
+reconstructs the same `content_block_*`/`message_delta` sequence §1.5 documents at the
+wire level; `codex_responses` delegates to `_run_codex_stream`, reached through the
+`openai` SDK's own `.responses` streaming surface (§2.3's `response.*` event names);
+and `bedrock_converse` uses boto3's `converse_stream()`, whose own worker-thread
+comment warns it "blocks inside `for event in event_stream` with NO read timeout,"
+requiring Hermes' own stale-timeout watchdog to detect a wedged Bedrock stream that the
+SDK itself will not time out. A stream-level retry budget,
+`env_int("HERMES_STREAM_RETRIES", 2)` (three total attempts by default,
+user-configurable), governs a documented, code-level distinction not found on this
+page's other five harness sections: a stream interrupted **mid-tool-call** (tracked via
+a `_can_silent_retry` guard) triggers a **silent reconnect** -- partial-JSON
+accumulators are cleared, a user-visible "⚠ Connection dropped mid tool-call;
+reconnecting…" notice fires, the stale request client is closed, and the identical
+streaming request is resent over a fresh connection, discarding the partial delivery
+entirely -- rather than attempting anything resembling Anthropic's own documented
+partial-content continuation procedure (§1.5's Claude-4.5-vs-4.6 resume-as-assistant-
+prefix-vs-resume-as-new-user-message split). This is a harness-level recovery choice
+operating a layer above where Anthropic's own resumption mechanism would even apply,
+not a violation of it: Hermes chooses to restart the whole streaming call rather than
+splice a captured partial text block back in. A related, provider-shaped edge case is
+also handled explicitly: some OpenRouter-fronted providers encode a genuine API error
+as SSE `data:` payload content instead of raising an SDK-level exception, and Hermes'
+own `ProviderStreamError` class plus `_parse_provider_sse_events`/
+`_provider_stream_error_from_text` helpers parse that raw SSE text back into a
+structured, classifiable error rather than letting it surface as an opaque JSON-decode
+failure.
+
+**The `FailoverReason` error taxonomy and its exponential-backoff, per-turn fallback
+logic.** `agent/error_classifier.py`'s own module docstring states its purpose plainly:
+"a structured taxonomy of API errors and a priority-ordered classification pipeline
+that determines the correct recovery action (retry, rotate credential, fallback to
+another provider, compress context, or abort)." The `FailoverReason` enum names
+roughly twenty distinct failure classes grouped by category -- `auth`/`auth_permanent`
+(transient-vs-permanent authentication failure), `billing`/`rate_limit`/
+`upstream_rate_limit` (a 429 attributable to the aggregator's *upstream model*, not the
+caller's own key, triggering model fallback rather than credential rotation),
+`overloaded`/`server_error` (503/529 vs. 500/502), `timeout`/`ssl_cert_verification`
+(the latter explicitly non-retryable, since a TLS handshake failure "is deterministic
+for the host" and retrying only reproduces it), `context_overflow`/`payload_too_large`/
+`image_too_large`/`image_corrupt`, `model_not_found`/`provider_policy_blocked`/
+`content_policy_blocked`, `format_error`/`invalid_encrypted_content`/
+`multimodal_tool_content_unsupported`, several Anthropic- and llama.cpp-specific
+classes (`thinking_signature`, `long_context_tier`,
+`oauth_long_context_beta_forbidden`, `llama_cpp_grammar_pattern`), and a catch-all
+`unknown` (retryable with backoff). Each classification returns a `ClassifiedError`
+dataclass carrying not just the `reason` but four boolean recovery-hint fields the
+retry loop consults directly rather than re-deriving them itself: `retryable`,
+`should_compress`, `should_rotate_credential`, and `should_fallback`.
+`classify_api_error`'s own docstring names its priority-ordered pipeline as nine
+stages (numbered 0-8): a plugin `transform_api_error_classification` hook first (an
+explicit hook-driven extension point onto this exact classification decision, per
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md)'s own territory),
+then provider-specific pattern special-cases, HTTP-status-aware refinement, error-code
+classification, message-pattern matching, SSL/TLS transient-alert detection,
+server-disconnect-plus-large-session heuristics treated as context overflow, generic
+transport-error heuristics, and finally the `unknown` fallback. `try_activate_fallback`
+implements the documented exponential backoff directly: `60 * (2 ** backoff_count)`
+seconds, capped at 14,400 (four hours), escalating only on *consecutive* rate-limit/
+billing failures and reset by a successful primary-provider restore -- so a single 429
+only benches the primary for 60 seconds, not the full four-hour ceiling. Hermes' own
+`fallback-providers.md` documentation corroborates this from the user-facing side
+without contradicting the source: rate limits and server errors trigger fallback "after
+exhausting retry attempts," while auth failures (401/403) and not-found (404) trigger
+it "immediately (no point retrying)" -- i.e. `retryable=False` in the classifier's own
+terms -- and fallback is documented as strictly **per-turn**, activating at most once
+per user turn and restoring the primary automatically on the next turn, with a
+"reset-aware" refinement that skips a doomed primary retry when the primary's own
+credential reports a known rate-limit-reset timestamp (Claude Pro/Max's 5-hour windows,
+Codex weekly limits) that has not yet elapsed. This same trigger-and-backoff machinery
+is what activates the credential-pool rotation
+([Model routing / selection](model-routing-and-selection.md) §5.2 documents the pool's
+own `fill_first`/`round_robin`/`least_used`/`random` selection policy once rotation is
+triggered) -- this page documents the failure classification that *decides* to rotate;
+that page documents what happens once it does.
+
+**`extra_body` as the generic escape hatch for aggregator-specific request fields.**
+Hermes' own `provider-routing.md` documentation states the wire mechanism directly:
+OpenRouter/Nous Portal provider-routing preferences (`sort`, `only`, `ignore`, `order`,
+`require_parameters`, `data_collection`) are "passed... via the `extra_body.provider`
+field," with the docs explicitly naming `extra_body` as "the OpenAI Python SDK
+argument" that "becomes the top-level `provider` object in the JSON request." This
+confirms, from Hermes' own documentation rather than inferred behavior, that the
+`openai` SDK's own generic `extra_body` kwarg -- a mechanism for injecting fields the
+SDK's typed parameters do not model -- is Hermes' standard channel for aggregator-level
+routing metadata riding on top of an otherwise-ordinary OpenAI Chat Completions request,
+distinct from the `should_fallback`/provider-swap machinery described immediately above:
+provider routing selects *which upstream sub-provider* an aggregator uses for a request
+that is still going to the same aggregator, where fallback swaps the aggregator/provider
+entirely.
+
 ---
 
 ## 4. Synthesis
@@ -759,6 +961,7 @@ confirmed integration-code detail.
 | OpenCode | Fully source-verified: a four-axis `Protocol`/`Endpoint`/`Auth`/`Framing` route composition, one protocol module per wire contract (`anthropic-messages.ts`, `openai-chat.ts`, `openai-responses.ts`, `gemini.ts`, `bedrock-converse.ts`), each with its own `mapFinishReason()` normalizing into one shared six-value `FinishReason` enum and one shared `LLMEvent` tagged union, plus explicit, source-documented workarounds where the contracts genuinely disagree (hosted-tool continuation shape, tool-result media support, native vs. text-wrapped mid-conversation system updates) |
 | DeepSeek Harness | Fully source-verified (docs, not implementation code, for this specific point): names the substitutability boundary itself, one level of abstraction above OpenCode's four axes, as a **capability seam** -- a Service Definition/Provider/Consumer three-role unit, with `ctx.llm` as the seam governing this page's own subject, real interchangeable providers (`llm-deepseek`, `llm-pi-ai`, `llm-replay`) mounted underneath a provider-neutral Consumer interface the agent loop itself never inspects |
 | pi | Fully README-verified (a first-party package README documenting the implementation at genuine precision, though this session did not additionally cross-check pi's own TypeScript source): the same four wire-protocol families (`anthropic-messages`/`openai-completions`/`openai-responses`/`google-generative-ai`) as named `api` discriminators, a normalized `StreamEvent` tagged union directly comparable to OpenCode's `LLMEvent`, a five-terminal-value `stopReason` enum (the leanest of the four enumerations this page catalogues) plus a sixth partial-only `"pending"` value, an explicit ordered auth/header-merge pipeline with a fail-closed stored-credential-owns-its-provider rule, and a documented guarantee that stream failures never throw -- they surface as an `error` event plus a still-well-formed final message |
+| Hermes Agent | Fully source-verified (`agent/chat_completion_helpers.py`, `agent/transports/base.py`/`types.py`, `agent/error_classifier.py`): one pinned `openai==2.24.0` SDK instance serves both of §2's OpenAI contracts (Chat Completions for the `chat_completions` default, the same package's `.responses` resource for `codex_responses`) across every OpenAI-compatible aggregator/gateway, a separate optional `anthropic==0.87.0` SDK serves §1's contract natively, and AWS Bedrock's Converse API is reached via boto3 directly, bypassing both SDKs; a `ProviderTransport` ABC (`convert_messages → convert_tools → build_kwargs → normalize_response`) normalizes onto a shared `NormalizedResponse` whose `finish_reason` canonicalizes onto **OpenAI's own** four-value vocabulary rather than a bespoke enum; a ~20-member `FailoverReason` taxonomy plus a `ClassifiedError`'s four boolean recovery hints drive exponential-backoff (60s doubling to a 4h cap) per-turn provider fallback and credential-pool rotation |
 
 **The design lesson.** Every harness examined on this page has to solve
 the same underlying problem even though only OpenCode's solution is
@@ -796,7 +999,26 @@ union plus one normalized terminal-reason enum" as the right shape for
 this exact problem, each reached independently, is itself a datapoint
 worth taking seriously: this looks like a discovered necessity of
 building a multi-provider agent harness, not a coincidence of API design
-taste.
+taste. Hermes Agent supplies a fifth, source-verified instance of the same
+convergence -- its own `ProviderTransport`/`NormalizedResponse` pair -- but
+with a materially different choice at the one point where it could have
+invented a sixth bespoke enum: rather than following OpenCode's, pi's, and
+(by necessity) Claude Code's own path of minting a new terminal-reason
+vocabulary, Hermes canonicalizes directly onto OpenAI's own four-value
+`finish_reason` set, treating one upstream provider's vocabulary as the
+shared target rather than designing a neutral fifth one -- a plausible
+consequence of the `openai` SDK already being Hermes' one pinned,
+every-session-loaded dependency (§3.6) that OpenCode and pi, with no
+single default SDK of comparable centrality, did not have the same
+incentive toward. Separately, Hermes' error-classification layer
+(`FailoverReason`/`ClassifiedError`, §3.6) is this page's first
+source-verified example of a harness maintaining a wire-error taxonomy
+detailed enough to distinguish *why* a request should be retried,
+credential-rotated, provider-failed-over, or context-compressed as four
+independently-triggerable recovery actions rather than a single generic
+retry-with-backoff path -- a layer this page's other five harness sections
+do not document at comparable resolution, though none of them is shown to
+lack one.
 
 ---
 
@@ -891,3 +1113,41 @@ here):**
   abstraction (`models.json`'s `api` field, provider/model `compat` overrides, the
   credential-resolution order also covered in
   [auth-and-usage-accounting.md](auth-and-usage-accounting.md)'s own pi section).
+
+**Hermes Agent (authoritative for its own documented behavior; fetched 1 September
+2026 from `github.com/NousResearch/hermes-agent`, `main` branch, via `curl` against
+`raw.githubusercontent.com`):**
+- `pyproject.toml` (in full) -- the `openai==2.24.0` core dependency and
+  `anthropic==0.87.0` optional-extra split, the supply-chain-hardening exact-pin
+  rationale, and the `pydantic`-bump comment naming the `codex_responses` dispatch as
+  the OpenAI SDK's own `.responses` resource; covers §3.6's opening SDK-foundation
+  claim.
+- `agent/chat_completion_helpers.py` (the full 5,109-line file) -- `build_api_kwargs`'s
+  four-`api_mode` branching (`chat_completion_helpers.py:1829-2156`), the
+  `ProviderStreamError`/SSE-error-parsing helpers, `_dispatch_nonstreaming_api_request`'s
+  per-mode dispatch (including the `bedrock_converse` "bypasses the OpenAI client
+  entirely" comment), `try_activate_fallback`'s exponential-backoff/per-turn-cooldown
+  logic, and `interruptible_streaming_api_call`'s four-mode streaming docstring plus its
+  `HERMES_STREAM_RETRIES`-gated mid-tool-call silent-reconnect path (read directly
+  around line 4871 and lines 4980-5109); the native Anthropic SDK's
+  `request_client.messages.stream(**final_kwargs)` call confirmed directly at line 4690.
+- `agent/transports/base.py` -- the `ProviderTransport` ABC's own
+  `convert_messages → convert_tools → build_kwargs → normalize_response` scope
+  docstring and its explicit "does NOT own" exclusion list.
+- `agent/transports/types.py` -- the shared `ToolCall`/`Usage`/`NormalizedResponse`
+  dataclasses and the `finish_reason` docstring naming OpenAI's own four-value
+  vocabulary (`"stop"`, `"tool_calls"`, `"length"`, `"content_filter"`) as the
+  canonical normalized target, plus `map_finish_reason()`'s unknown-falls-back-to-
+  `"stop"` behavior.
+- `agent/error_classifier.py` (the full ~99 KB file) -- the module docstring's stated
+  purpose, the `FailoverReason` enum's full ~20-member taxonomy, the `ClassifiedError`
+  dataclass's four boolean recovery-hint fields, and `classify_api_error`'s own
+  nine-stage (0-8) priority-ordered classification pipeline docstring.
+- `hermes-agent.nousresearch.com/docs/user-guide/features/fallback-providers.md`
+  (WebFetch/`curl`) -- the "When Fallback Triggers" status-code-to-trigger table,
+  the per-turn/reset-aware fallback semantics, and the prompt-cache-invalidation
+  warning on every provider swap.
+- `hermes-agent.nousresearch.com/docs/user-guide/features/provider-routing.md`
+  (WebFetch/`curl`) -- the `provider_routing` config schema and the "How It Works"
+  section's direct statement that these preferences ride the OpenAI Python SDK's own
+  `extra_body` argument onto the aggregator's top-level `provider` JSON field.

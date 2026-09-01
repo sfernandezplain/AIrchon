@@ -1,4 +1,4 @@
-# Prompt/context caching -- Claude Code, GitHub Copilot CLI, and OpenCode
+# Prompt/context caching -- Claude Code, GitHub Copilot CLI, OpenCode, pi, and Hermes Agent
 
 **Scope note.** This page is about **server-side prefix reuse** -- the
 mechanism that lets a provider (Anthropic, Bedrock, OpenAI, Gemini) skip
@@ -16,12 +16,12 @@ than re-derived.
 
 Every claim is tagged VERIFIED (fetched this session, or already verified
 and cited in a page linked above) or BEST CURRENT UNDERSTANDING,
-UNCONFIRMED. Claude Code, Copilot CLI, and OpenCode are three separate
-products built on top of (in Claude Code's case, exclusively) or across (in
-Copilot CLI's and OpenCode's case) multiple model providers -- nothing
-confirmed for one harness, or for the underlying Anthropic/Bedrock API
-mechanism itself, is assumed to hold for another harness without its own
-citation.
+UNCONFIRMED. Claude Code, Copilot CLI, OpenCode, pi, and Hermes Agent are
+five separate products built on top of (in Claude Code's case,
+exclusively) or across (in Copilot CLI's, OpenCode's, pi's, and Hermes
+Agent's case) multiple model providers -- nothing confirmed for one
+harness, or for the underlying Anthropic/Bedrock API mechanism itself, is
+assumed to hold for another harness without its own citation.
 
 ---
 
@@ -943,22 +943,432 @@ TTL-override env vars, no explicit retention enum exposed to the caller) and Cop
 
 ---
 
-## 5. Synthesis
+## 5. Hermes Agent (Nous Research)
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | pi |
-|---|---|---|---|---|
-| Verifiability | Docs-only; no public implementation | Docs + changelog only; no public implementation | Source-verified (`packages/llm`), `dev` branch (caveat applies) | Source-verified (`packages/ai`), `main` branch |
-| Underlying provider(s) | Anthropic API exclusively (+ Bedrock/Vertex/Foundry as hosting, not model-family, variants) | Multi-provider (GPT, Claude, Gemini, BYOK/BYOM) | Multi-provider, explicit branch per protocol (Anthropic/Bedrock explicit breakpoints; OpenAI/Gemini implicit no-op) | Multi-provider (Anthropic, OpenAI Responses/Completions, Google, Bedrock, plus OpenAI-compatible third parties); explicit per-protocol branch, same shape as OpenCode |
-| Cache-key inputs named | Model, effort level, tool-definition set, plugin/MCP state, request-header flags (fast mode) | Model, reasoning effort, "context size," enabled tools/MCP servers | Model route id (gates whether the policy pass runs at all); breakpoint placement itself is prefix-based, not a separate key | `cacheRetention` (explicit enum, not inferred from auth), `sessionId` (feeds both session-affinity headers and OpenAI's `prompt_cache_key`) |
-| Default breakpoint placement | Not client-controlled -- Anthropic API applies its own default policy; Claude Code's contribution is *request ordering* (layer table, §1.1) so a stable prefix exists to cache | Undocumented at this granularity | Explicit, source-defined: last tool def + last system part + latest user message (`cache-policy.ts`) | Explicit, source-defined: system prompt (one or two blocks depending on OAuth "stealth mode") + last tool def + last user message's last block (§4.2) |
-| Breakpoint cap | Inherited from the Anthropic API (4, §1.9); not itself re-stated as a Claude-Code-specific number | Not documented | Explicit, enforced client-side before the request is sent (`ANTHROPIC_BREAKPOINT_CAP`/`BEDROCK_BREAKPOINT_CAP = 4`), matching the API cap | Respected by construction (at most 4 breakpoints ever placed: 1-2 system + 1 tool + 1 message), not by an explicit runtime counter |
-| TTL options | 5m / 1h, chosen automatically by auth path, overridable via env vars | 1h (most models) / 24h (OpenAI models specifically) | 5m default / 1h via `ttlSeconds >= 3600` bucket, per explicit `CacheHint.ttlSeconds` | 5m ("short", default) / 1h (Anthropic/Bedrock "long") or 24h (OpenAI "long"), an explicit `cacheRetention` value orthogonal to auth mode |
-| Cache-write cost multiplier (Anthropic) | 1.25x (5m) / 2x (1h) of base input -- cited from the API docs, not restated as Claude-Code-specific | Not stated | Cited identically in the package's own README as the design rationale for defaulting caching on | Not independently re-stated as a multiplier in source; `cost.cacheWrite` is a per-model $/M-token rate, not a multiplier formula |
-| Cache-read cost multiplier | ~10% of standard input rate (both Claude Code docs and Anthropic API docs state this) | "~10% of the normal input price" | Not independently re-stated as a fixed multiplier in source; consistent with the same underlying API | Not independently re-stated as a fixed multiplier; `cost.cacheRead` is a per-model $/M-token rate |
-| Observability fields | `cache_creation_input_tokens` / `cache_read_input_tokens`, surfaced in `/usage`, `/cost`, OTel | OTel `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens`, `/usage` cache write+read display | `cacheReadInputTokens` / `cacheWriteInputTokens` normalized into the shared internal `Usage` type across every provider | `usage.cacheRead` / `usage.cacheWrite` / Anthropic-only `usage.cacheWrite1h`, plus opt-in `showCacheMissNotices` transcript notices and a TUI footer line |
-| Compaction/cache interaction | Compaction's own summarization request itself reads the live prefix from cache while warm (§1.2) | Not documented at this level of mechanism | Compaction's overflow-detection formula consumes the same normalized cache-read/cache-write token fields (§3.4/context-compression.md §3.2) | Compaction/branch-summary requests explicitly set `cacheRetention: "none"` to avoid a cache write for a one-off prompt (§4.8) -- the opposite policy from Claude Code's |
-| User-facing config lever | Five `DISABLE_PROMPT_CACHING*` env vars + two TTL env vars, settable in managed settings org-wide | Not documented (no equivalent env-var table found) | None found on the docs config page; appears to be a programmatic `LLMRequest.cache` field only (§3.5) | `PI_CACHE_RETENTION` env var, per-request `cacheRetention` option, and per-provider/model `compat` fields in `models.json` (§4.10) -- the most explicit documented surface of the four |
-| Subagent/fork cache behavior | Subagent: separate cache, 5m TTL even on subscription. Fork: inherits and reads parent's cache | Not documented | Not investigated this session (out of scope of `packages/llm`; would require `packages/opencode`'s subagent/session-forking call sites) | Not investigated this session (out of scope of `packages/ai`; would require `packages/coding-agent`'s own subagent/handoff call sites) |
+VERIFIED, fetched 1 September 2026. Hermes Agent is a sixth, independent,
+self-hosted product with no dependency on any harness covered elsewhere on
+this page -- see [Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§6 for this book's fuller architectural introduction, not repeated here.
+Three source layers were read this session and are cited separately
+because they do not fully agree with one another: the user-facing docs
+aggregate at `hermes-agent.nousresearch.com/docs/assets/files/llms-full-*.txt`
+(a single concatenated dump of every page under `website/docs/`, each
+section preceded by its own `<!-- source: website/docs/... -->` marker,
+which this section cites by that per-page path); the dedicated developer
+page `website/docs/developer-guide/context-compression-and-caching.md`
+(more mechanism-precise than the user-facing page, and itself dated
+against the same fetch); and the actual implementation, read in full
+directly from `github.com/NousResearch/hermes-agent`, `main` branch, via
+`gh api`: `agent/prompt_caching.py` (breakpoint placement), the
+`anthropic_prompt_cache_policy()` function inside `agent/agent_runtime_helpers.py`
+(route eligibility and layout selection), and `agent/prompt_cache_boundary.py`
+(the builder-declared stable-prefix registry). Where the three layers
+disagree, §5.1 states the discrepancy explicitly rather than silently
+preferring one; where they agree, the source is cited as the more precise
+restatement of the same user-facing claim.
+
+### 5.1 Three documented layers, and where they disagree
+
+The user-facing configuration page states plainly: "Hermes turns on
+cross-session prompt caching automatically when the active provider
+supports it -- no user config needed... For Claude on native Anthropic,
+OpenRouter, and Nous Portal, Hermes attaches `cache_control` breakpoints
+with the 1-hour TTL (`ttl: "1h"`) on the system prompt and skill blocks,"
+and separately: "No knob exists to disable this -- caching is always-on."
+The developer-guide caching page, read the same session, states a
+different default: "TTL selection: Default is `5m` (5 minutes). Use `1h`
+for long-running sessions," and its own `config.yaml` example shows
+`prompt_caching: cache_ttl: "5m"`. The actual source resolves this in
+favor of the developer page, not the user-facing one: `_build_marker(ttl)`
+in `agent/prompt_caching.py` only sets a `"ttl"` key when the caller
+explicitly passes `"1h"`, and `build_prompt_cache_plan()`'s own signature
+defaults `cache_ttl: str = "5m"` -- the 5-minute tier is the code's actual
+default, and 1-hour is an opt-in tier a caller (or the `prompt_caching.cache_ttl:
+"1h"` config key) must request, not the out-of-the-box behavior the
+user-facing page's prose describes. Second, and more materially: the same
+user-facing page's "No knob exists to disable this" is contradicted by
+`anthropic_prompt_cache_policy()`'s own opening lines, quoted directly: "If
+the operator has set `prompt_caching.cache_ttl` to a falsy value (`false`,
+`null`, `"off"`, etc.) in config.yaml, prompt caching is fully disabled --
+this early return ensures the disable survives `/model` switches, fallback
+re-derivation, and runtime snapshot restoration (#33555)" -- a real,
+source-confirmed, undocumented disable lever (`agent._cache_disabled`) that
+the user-facing docs state does not exist. Third, the breakpoint layout
+itself: the developer-guide page's own prose names a fixed "system_and_3"
+strategy (one system breakpoint plus the 3rd-to-last, 2nd-to-last, and
+last non-system messages), while the source module's own docstring
+describes a **dual** layout gated on whether a caller-registered stable
+system prefix exists for the current request -- covered in full in §5.2.
+None of these three discrepancies is flagged as an error in either
+document; user-facing prose and a developer reference page necessarily
+compress and simplify relative to the code that actually ships, and this
+section treats the source, fetched directly from the same commit this
+session, as authoritative for what currently executes.
+
+### 5.2 The four-breakpoint budget: a stable-prefix-aware layout and a legacy fallback
+
+```mermaid
+flowchart TD
+    Start["build_prompt_cache_plan(messages, tools, cache_ttl)"] --> Strip["strip_anthropic_cache_control()\n-- idempotent: never re-marks past 4"]
+    Strip --> Sys{"messages[0].role == system?"}
+    Sys -->|yes| Prefix{"static_system_prefix registered\nfor this system content?"}
+    Prefix -->|yes, non-empty suffix| Split["2 system breakpoints:\nstatic prefix + full system-prompt end"]
+    Prefix -->|no, or whole-prefix match| Whole["1 system breakpoint:\nwhole system message"]
+    Sys -->|no| NoSys["0 system breakpoints"]
+    Split --> Remain2["2 remaining breakpoints\n-> latest 2 cacheable non-system messages"]
+    Whole --> Remain3["3 remaining breakpoints\n-> latest 3 cacheable non-system messages\n(legacy 'system_and_3')"]
+    NoSys --> Remain4["4 breakpoints\n-> latest 4 cacheable non-system messages"]
+```
+
+`agent/prompt_caching.py`'s own module docstring states the mechanism
+directly: "The default layout uses 4 cache_control breakpoints: the static
+system prefix, the end of the system prompt, and the last 2 non-system
+messages. When a static system prefix is unavailable, it falls back to one
+system breakpoint plus the last 3 messages. All markers use the same TTL."
+`apply_anthropic_cache_control()` -- the function both layouts route
+through -- first calls `strip_anthropic_cache_control()` on any message
+already carrying a marker, so re-invoking the planner (for example after a
+provider failover mid-turn, §5.5) can never accumulate past the 4-marker
+budget regardless of how many times it runs. When the first message is
+`role == "system"` and a `static_system_prefix` string was supplied that
+is an exact prefix of that message's content, `_apply_system_cache_markers()`
+splits the system content into two parts on the wire only -- `[{"type":
+"text", "text": static_prefix, "cache_control": marker}, {"type": "text",
+"text": suffix, "cache_control": marker}]` -- consuming 2 of the 4
+breakpoints and leaving 2 for the message array; otherwise the whole
+system message gets one marker and 3 remain for messages. The remaining
+budget is spent on the most recent messages that `_can_carry_marker()`
+judges capable of actually carrying a marker on the destination's wire
+layout (empty-content assistant turns and, on some routes, `role: "tool"`
+messages are excluded so a breakpoint is never spent on a marker the
+provider silently drops, §5.5). This 4-breakpoint cap is the same
+Anthropic API ceiling this page documents in §1.9, §3.2 (OpenCode), and
+§4.2 (pi) -- Hermes is the third harness on this page, after OpenCode and
+pi, to enforce that cap client-side rather than merely inherit whatever
+the provider does with an unbounded marker count.
+
+### 5.3 Route eligibility: one function resolving `(should_cache, use_native_layout)` across a dozen wire shapes
+
+```mermaid
+flowchart TD
+    A["anthropic_prompt_cache_policy(agent, provider, base_url, api_mode, model)"] --> B{"agent._cache_disabled?"}
+    B -->|yes| N0["(False, False)\n-- undocumented disable lever, #33555"]
+    B -->|no| C{"provider == 'moa'?"}
+    C -->|yes| D["resolve real aggregator's own\nprovider/model, recurse (S5.6)"]
+    C -->|no| E{"custom-provider declared\nprompt_caching capability?"}
+    E -->|explicit true/false| F["honor declaration verbatim\n(layout follows transport)"]
+    E -->|not declared| G{"MiniMax-M3 on Anthropic wire?"}
+    G -->|yes| N1["(False, False)\n-- M3 uses MiniMax's own automatic\ncontent-keyed cache, no marker needed"]
+    G -->|no| H{"native Anthropic\n(api.anthropic.com)?"}
+    H -->|yes| Y1["(True, True) native layout"]
+    H -->|no| I{"OpenRouter/Nous Portal +\nClaude or Kimi family?"}
+    I -->|yes| Y2["(True, False) envelope layout"]
+    I -->|no| J{"Nous Portal + Qwen model?"}
+    J -->|yes| Y3["(True, False) envelope layout"]
+    J -->|no| K{"3rd-party anthropic_messages\nwire + Claude?"}
+    K -->|yes| Y4["(True, True) native layout"]
+    K -->|no| L{"LiteLLM chat_completions\nproxy + Claude? (#84506)"}
+    L -->|yes| Y5["(True, False) envelope layout"]
+    L -->|no| M{"MiniMax M2.x family\non Anthropic wire?"}
+    M -->|yes| Y6["(True, True) native layout"]
+    M -->|no| P{"Alibaba-family provider\n+ Qwen model? (#84733)"}
+    P -->|yes| Y7["(True, False) envelope layout"]
+    P -->|no| N2["(False, False)\n-- no known caching contract"]
+```
+
+`anthropic_prompt_cache_policy()`, read in full from
+`agent/agent_runtime_helpers.py`, is the single function deciding, per
+request, both *whether* to inject `cache_control` at all and *which* of
+two wire layouts to use, returning a `(should_cache, use_native_layout)`
+tuple its own docstring defines precisely: "`use_native_layout` -- place
+markers on the *inner* content blocks (native Anthropic accepts and
+requires this layout); when False markers go on the message envelope
+(OpenRouter and OpenAI-wire proxies expect the looser layout)." The
+function's branch order, read directly rather than inferred, resolves in
+this priority: an `agent._cache_disabled` early return; a `provider ==
+"moa"` recursive resolution against the real aggregator (§5.6); an
+explicit per-custom-provider `prompt_caching` capability declaration in
+`config.yaml` (`get_custom_provider_model_capability()`), honored verbatim
+in either direction, "explicit false is authoritative too"; an exclusion
+for MiniMax-M3 on the Anthropic wire (that model "rides MiniMax's own
+server-side automatic prefix cache... content-keyed, no marker needed," so
+a marker would be dead weight, "never observable... nor billable"); native
+Anthropic (`(True, True)`); OpenRouter or Nous Portal serving a Claude
+**or Kimi/Moonshot** model on the envelope layout (`(True, False)`) --
+this Kimi branch is not named anywhere in the user-facing docs read this
+session, and its own source comment records the specific empirical payoff
+that justified adding it: "Observed within-turn progression with cache
+enabled: 1% → 67% → 84% → 97% (#25970)" for `moonshotai/kimi-k2.6` on a
+64K-token prompt, against "~1% cache hits" and a full-price re-bill every
+turn without the branch; Nous Portal serving a Qwen model (`(True,
+False)`); a third-party gateway on the native `anthropic_messages` wire
+serving Claude (`(True, True)`); a LiteLLM proxy exposing
+`/v1/chat/completions` for a Claude model (`(True, False)`) -- a branch the
+function's own comment says was added specifically because the endpoint
+"supports Anthropic-style `cache_control` fine; only the provider
+detection missed it (#84506)," previously silently re-billing the full
+prompt every turn; MiniMax's M2.7/M2.5/M2.1/M2 family on its own
+Anthropic-compatible endpoint (`(True, True)`); and finally the
+Qwen/Alibaba family (§5.4) on the envelope layout (`(True, False)`), with
+an explicit, comment-documented exclusion for DeepSeek models on the same
+routes ("OpenCode Zen's relay rejects the Anthropic-style content block
+format... causing HTTP 400 (#77217)"). Every branch not matched falls
+through to `(False, False)` -- no marker, no cost reduction, and (per the
+comments guarding several of these branches) a full-price re-bill of the
+entire prompt on every turn, which is precisely the failure mode several
+of the branches above were added, with a GitHub issue number, to close.
+
+**A naming caveat this section flags explicitly, not silently.** The
+`ALIBABA_FAMILY_PROVIDERS` frozenset in `agent/prompt_caching.py` --
+`{"opencode", "opencode-zen", "opencode-go", "alibaba"}` -- and this
+page's own §5.3/§5.4 use of the strings "OpenCode Zen" and "OpenCode Go"
+refer to `opencode.ai`'s own **model-hosting subscription products**
+("OpenCode Zen: pay-as-you-go access to curated models"; "OpenCode Go:
+$10/month subscription for open models" -- both fetched this session from
+`website/docs/integrations/providers.md`) -- third-party inference
+endpoints Hermes Agent can route requests through as one provider choice
+among many. This is a distinct entity from the **OpenCode harness**
+this page documents in §3 (`packages/llm/src/cache-policy.ts`, the
+`sst`/`anomalyco` OpenCode agent CLI): both are published by the same
+organization behind `opencode.ai`, but nothing read this session ties
+Hermes' own Qwen/Alibaba-family caching branch to the OpenCode harness's
+own client-side cache-policy code documented in §3 -- they are two
+unrelated pieces of software sharing a brand name, and no claim in this
+section about "OpenCode Zen"/"OpenCode Go" routing should be read as a
+claim about the OpenCode harness's own caching mechanism.
+
+### 5.4 TTL resolution, and a wire-measured clamp that contradicts the vendor's own published docs
+
+`effective_cache_ttl()` (`agent/prompt_caching.py`) clamps a requested
+`"1h"` down to `"5m"` for the whole Alibaba/Qwen family by default --
+"Qwen/Alibaba context caching documents an explicit five-minute window
+(renewed on hit); the Anthropic `1h` tier is ignored/rejected there" -- a
+provider-catalog-level clamp confirmed independently, from the model
+catalog rather than the request-construction code, for pi's own Bedrock
+path (§4.5) and OpenCode's own provider dispatch (§3.3), though pi's and
+OpenCode's own clamps are for different provider families and were not
+cross-checked against Hermes' here. What distinguishes Hermes' own
+handling is a single named exception carrying an unusually direct piece of
+evidence: `MEASURED_1H_PROVIDERS = frozenset({"opencode-go"})`, whose
+source comment quotes a controlled A/B measurement verbatim --
+"Controlled run: identical request, only the ttl flag varying, read back
+after 11 minutes with no intervening call... `qwen3.8-max ttl=1h ->
+cache_read 2122 SURVIVED`, `qwen3.8-max ttl=- -> cache_read 0 EXPIRED
+<- control`, `glm-5.2 ttl=1h -> cache_read 2092 SURVIVED`, `minimax-m2.5
+ttl=1h -> cache_read 0 EXPIRED`" -- and states plainly that this
+measurement **contradicts** the reasoning the original blanket clamp was
+based on: "Wire measurement on the opencode-go route contradicts the
+docs" (Alibaba's own published Qwen documentation). The comment also warns
+against a specific measurement trap on that same route: "opencode-go
+labels EVERY write `ephemeral_5m_input_tokens` whatever ttl was requested.
+That label is NOT evidence of the retention window." A second, narrower
+exception nested inside the first, `NO_1H_TIER_MODELS = frozenset({"minimax-m2.5"})`,
+denies the 1-hour tier back to that one model on that one measured route
+only -- "consulted only for providers already in `MEASURED_1H_PROVIDERS`,"
+explicitly scoped so as not to leak into MiniMax-M2.5's own separate,
+unrelated Anthropic-compatible route (§5.3), which remains 1h-eligible on
+its own terms. This is the only instance on this page of a harness's own
+source recording a live wire measurement that overturned a vendor's
+published documentation, rather than merely citing that documentation as
+given.
+
+### 5.5 Placement mechanics: role-aware markers, a builder-declared sub-message boundary, and failover-safe re-decoration
+
+`_apply_cache_marker()` handles the same three content-type shapes pi's
+own `getCacheControl()` placement logic handles (§4.2) -- string content,
+list content, empty content -- but branches further on **role** and on
+**layout** (native vs. envelope) in ways pi's single-protocol-per-file
+design does not need to: a `role: "tool"` message on the native Anthropic
+layout gets a top-level marker the transport adapter relocates into the
+`tool_result` block, while the same message on an envelope route gets no
+marker at all unless its content is a non-empty list (OpenRouter silently
+drops a top-level marker on `role: "tool"`, so wasting a breakpoint there
+is worse than not marking it). A further, narrower carve-out --
+`tool_part_markers=False` -- exists specifically for LiteLLM-style
+envelope proxies: `envelope_tool_part_cache_markers_supported()`'s own
+docstring explains that such proxies "map content parts verbatim: the
+part-level marker lands at `tool_result.content[0]`, which the Anthropic
+Messages schema forbids -- a non-retryable HTTP 400 that kills the whole
+turn (#89886)," so on a detected LiteLLM route (`_is_litellm_route()`,
+matched on a whole delimited `litellm` token in either the provider id or
+the base-URL hostname, deliberately avoiding a bare substring match that
+would false-positive on a host like `notlitellm.example.com`) tool
+messages are excluded from marking entirely and "the breakpoint budget
+reallocates to the nearest eligible message instead."
+
+A second mechanism, unrelated to the system-prompt split of §5.2, applies
+to **user** messages specifically: `agent/prompt_cache_boundary.py`
+implements a process-local, size-and-count-bounded (`_MAX_ENTRIES = 32`,
+`_MAX_CHARS = 4 * 1024 * 1024`) LRU registry of "builder-declared stable
+prefixes," whose own module docstring frames the problem directly:
+"Skill, webhook, and cron builders concatenate a large static scaffold
+(activation note + expanded skill body) with a small volatile invocation
+tail (ticket payload, timestamps, run context) into one user-message
+string. Only the builder knows the exact byte where the volatile tail
+begins, so it registers the stable prefix here at construction time" via
+`register_stable_prefix()`; `find_stable_prefix()` then returns the
+longest registered prefix that is a genuine, non-whitespace-tailed prefix
+of a given user message's content, and `_apply_cache_marker()` consults it
+before falling back to marking the whole message -- splitting a single
+skill-invocation user message into a cached scaffold block and an unmarked
+volatile tail so that "a changed ticket ID or timestamp no longer
+invalidates the whole skill body" (#81867). This is a materially more
+granular placement unit than anything else this page documents: Claude
+Code, Copilot CLI, OpenCode, and pi all place breakpoints at
+message-boundary granularity; Hermes additionally places one **inside** a
+single user message when a builder has registered the boundary.
+
+Finally, `apply_anthropic_cache_control()`'s own idempotence is
+deliberate rather than incidental: every call first strips any
+pre-existing `cache_control` key (top-level and per-content-part) from a
+copy of each marked message before re-marking, specifically so that
+"calling this twice (or handing it messages a prior call already marked)
+can never accumulate past 4 markers" -- the concrete case named in the
+source comment being a mid-turn provider failover (#72626), where a
+request already decorated for one provider's cache policy is
+re-decorated for a different provider's policy after a stream failure,
+and `strip_anthropic_cache_control()`'s own docstring specifies that it
+flattens content back to a byte-exact plain string only for the exact
+two- and one-part shapes this same module produces, never for organically
+multi-part content such as a merged user turn or an imported transcript.
+
+### 5.6 Model-identity cache-key sensitivity, and the mixture-of-agents caching bug this page can now explain precisely
+
+The developer-guide caching page states the general rule directly, as a
+named design pattern: "Model identity is part of the cache key:
+Provider-side caches are scoped to the model (and account/API key)
+serving the request. Any mid-conversation model change -- an explicit
+`/model` switch, primary-model fallback, or a credential-pool rotation
+onto a different account -- means the next request gets zero cache hits
+and re-reads the full conversation at undiscounted input price." This
+page's own [Model routing & selection](model-routing-and-selection.md)
+§5.3 already documents, from the same user-facing docs, that Hermes'
+Mixture-of-Agents feature is designed so this never happens to the *main*
+conversation: "MoA is built so the main conversation's prompt cache is
+never broken... Selecting a MoA preset is a normal model selection: it
+does not mutate past context, swap toolsets, or rebuild the system prompt
+mid-conversation," because the acting aggregator's own request looks like
+an ordinary turn with the reference models' advisory output appended to
+the tail of the latest user message, below the entire cached prefix.
+`anthropic_prompt_cache_policy()`'s own source, read this session, shows
+precisely why a second, narrower fix was needed to make that guarantee
+hold for the **aggregator's own outbound request specifically**: when the
+resolved `provider` string is the literal `"moa"` virtual-provider
+placeholder, neither its provider id nor its (also placeholder) model
+name matches any real caching branch, so the acting aggregator's own
+call -- often Claude on OpenRouter -- would silently fall through to
+`(False, False)` and lose caching entirely. The fix, read directly, is a
+recursive resolution: `anthropic_prompt_cache_policy()` detects
+`provider == "moa"`, loads the resolved preset's real aggregator
+`provider`/`model` via `resolve_moa_preset()`/`resolve_runtime_provider()`,
+and recurses into itself with those real values substituted -- and the
+source comment names the regression this closes with a concrete figure:
+"measured: 85% cache share solo vs 2% on the identical model via MoA --
+tens of millions of re-billed input tokens per benchmark run." This is a
+case where two independently-fetched sources -- the user-facing MoA
+feature page's forward-looking design claim, and the runtime-helpers
+source's own historical-bug-plus-fix comment -- combine into a fuller
+account than either alone: the design guarantee the docs state is real
+for the current source, and it required a specific, separately-named fix
+for the virtual-provider case the general Mixture-of-Agents design
+discussion doesn't itself mention.
+
+### 5.7 Mechanisms that are not an Anthropic-style marker at all
+
+Three provider paths named in `website/docs/integrations/providers.md`
+and `website/docs/developer-guide/adding-providers.md` use a caching
+mechanism structurally different from every `cache_control` breakpoint
+discussed above, and this page keeps them distinct rather than folding
+them into the same "marker" vocabulary. **xAI Grok**, routed through the
+`codex_responses` transport, gets no request-side cache marker at all;
+instead, "Hermes automatically enables prompt caching by sending the
+`x-grok-conv-id` header with every API request. This routes requests to
+the same server within a conversation session, allowing xAI's
+infrastructure to reuse cached system prompts and conversation history" --
+a session-affinity routing header conceptually adjacent to, but
+structurally distinct from, pi's own session-affinity headers (§4.7):
+both exist to steer repeat requests toward the same backend replica so
+that *replica-local* caching can engage, and neither is itself the cache
+marker. **OpenAI Codex/Responses and Meta's Muse Spark** (`api.meta.ai`),
+sharing the same `codex_responses` `api_mode`, "auto-sends
+`prompt_cache_retention: 24h` for prompt caching," with the source noting
+"`api.meta.ai` achieves 93-99% cache hits only on `/v1/responses`" -- the
+same `prompt_cache_retention` field name and 24-hour figure this page's
+§2.2 (Copilot CLI) and §4.4 (pi) already document for OpenAI models,
+independently confirmed here a third time from Hermes' own adding-providers
+developer guide. **The Responses API's `previous_response_id`/`conversation`
+mechanism**, documented on Hermes' own OpenAI-compatible API server
+(`POST /v1/responses`), is caching-*adjacent* rather than a cache marker:
+"the server stores full conversation history (including tool calls and
+results) so multi-turn context is preserved without the client managing
+it" -- server-side conversation-state replay, capped and evicted ("Max 100
+stored responses (LRU eviction)," persisted in SQLite so it survives
+gateway restarts), a mechanism about *not re-sending history the client
+already has*, not about *the provider skipping recomputation of a prefix
+it was sent*; the two are easy to conflate and this section keeps them
+separate deliberately. Finally, **AWS Bedrock and Azure Foundry** routes
+for Claude models get no Hermes-side marker construction at all --
+`website/docs/user-guide/configuration.md` states plainly that these
+"fall back to the provider's own caching defaults" -- a materially
+different design choice from pi's own Bedrock Converse adapter (§4.5),
+which builds an explicit `cachePoint` block itself for the same
+Claude-on-Bedrock case rather than leaving the whole mechanism to the
+provider's own default.
+
+### 5.8 Interaction with memory, compaction, and user-facing observability
+
+Memory injection's own frozen-snapshot design, already documented in this
+book's [Memory management](memory-management.md) §5 from the same Hermes
+docs page fetched there, exists specifically to protect this page's own
+subject matter: MEMORY.md/USER.md content is captured once at session
+start "to preserve the LLM's prefix cache for performance" rather than
+re-read live every turn, cross-referenced here rather than re-derived.
+Several smaller CLI/TUI features are documented, in the same session's
+reading of `website/docs/user-guide/cli.md`, as explicitly cache-neutral
+by design rather than merely un-mentioned: `!`-prefixed shell mode ("the
+command and its output are not added to history, so your context stays
+clean and the prompt cache is untouched"), Focus view ("display-only...
+prompt caching is completely unaffected"), and status-bar field selection
+("no effect on prompt caching or request payloads"). The CLI and TUI both
+surface a live `cache_hit` field ("prompt cache hit ratio -- resets on
+model switch and compression"), and the web dashboard's Analytics tab
+reports a per-day and per-model cache-hit-rate breakdown alongside token
+and cost figures -- an observability surface broader in scope (a
+persistent, queryable historical dashboard) than any of Claude Code's
+`/usage`, Copilot CLI's OTel attributes, OpenCode's normalized `Usage`
+type, or pi's `showCacheMissNotices` transcript notices, though none of
+those four is itself a persistent multi-day analytics view, so the
+comparison is one of *surface*, not of underlying accounting precision.
+One interaction this page's pi section documents explicitly (§4.8) --
+whether a compaction/summarization call itself is deliberately excluded
+from writing to the cache -- is **not confirmed either way for Hermes**
+from what was read this session: `agent/context_compressor.py`'s own
+summarization request-construction path was not fetched, and neither the
+developer-guide caching page nor the context-compression-and-caching page
+states a `cache_ttl`/retention choice for that specific call. This is
+flagged as an open question rather than assumed silent, precisely because
+this page has already found two independent harnesses (Claude Code,
+favorable; pi, averse) taking opposite stances on the identical design
+question (§4.8).
+
+---
+
+## 6. Synthesis
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
+|---|---|---|---|---|---|
+| Verifiability | Docs-only; no public implementation | Docs + changelog only; no public implementation | Source-verified (`packages/llm`), `dev` branch (caveat applies) | Source-verified (`packages/ai`), `main` branch | Source-verified (`agent/prompt_caching.py`, `agent_runtime_helpers.py`, `prompt_cache_boundary.py`), `main` branch -- and the one harness on this page whose own docs and source were found to disagree with each other (§5.1) |
+| Underlying provider(s) | Anthropic API exclusively (+ Bedrock/Vertex/Foundry as hosting, not model-family, variants) | Multi-provider (GPT, Claude, Gemini, BYOK/BYOM) | Multi-provider, explicit branch per protocol (Anthropic/Bedrock explicit breakpoints; OpenAI/Gemini implicit no-op) | Multi-provider (Anthropic, OpenAI Responses/Completions, Google, Bedrock, plus OpenAI-compatible third parties); explicit per-protocol branch, same shape as OpenCode | Multi-provider (Anthropic-native, OpenRouter, Nous Portal, third-party Anthropic-wire gateways, MiniMax, Qwen/Alibaba, LiteLLM, xAI, OpenAI Codex/Responses, Bedrock, Azure Foundry); one function (§5.3) resolving a dozen-plus named wire shapes rather than a fixed per-protocol branch table |
+| Cache-key inputs named | Model, effort level, tool-definition set, plugin/MCP state, request-header flags (fast mode) | Model, reasoning effort, "context size," enabled tools/MCP servers | Model route id (gates whether the policy pass runs at all); breakpoint placement itself is prefix-based, not a separate key | `cacheRetention` (explicit enum, not inferred from auth), `sessionId` (feeds both session-affinity headers and OpenAI's `prompt_cache_key`) | Model + provider + account/credential identity, named explicitly as the cache key by the dev docs (§5.6): any mid-session `/model` switch, fallback, or credential-pool rotation onto a different account is stated to zero out the next request's cache hits |
+| Default breakpoint placement | Not client-controlled -- Anthropic API applies its own default policy; Claude Code's contribution is *request ordering* (layer table, §1.1) so a stable prefix exists to cache | Undocumented at this granularity | Explicit, source-defined: last tool def + last system part + latest user message (`cache-policy.ts`) | Explicit, source-defined: system prompt (one or two blocks depending on OAuth "stealth mode") + last tool def + last user message's last block (§4.2) | Explicit, source-defined dual layout (§5.2): static system prefix + system-prompt end + latest 2 non-system messages when a stable prefix is registered, else 1 system breakpoint + latest 3 non-system messages -- the only harness on this page with a documented *sub-message* placement unit (§5.5) |
+| Breakpoint cap | Inherited from the Anthropic API (4, §1.9); not itself re-stated as a Claude-Code-specific number | Not documented | Explicit, enforced client-side before the request is sent (`ANTHROPIC_BREAKPOINT_CAP`/`BEDROCK_BREAKPOINT_CAP = 4`), matching the API cap | Respected by construction (at most 4 breakpoints ever placed: 1-2 system + 1 tool + 1 message), not by an explicit runtime counter | Enforced client-side by construction and idempotently: `strip_anthropic_cache_control()` re-runs on every planning pass so re-invoking the planner (e.g. on provider failover) can never exceed 4 (§5.2, §5.5) |
+| TTL options | 5m / 1h, chosen automatically by auth path, overridable via env vars | 1h (most models) / 24h (OpenAI models specifically) | 5m default / 1h via `ttlSeconds >= 3600` bucket, per explicit `CacheHint.ttlSeconds` | 5m ("short", default) / 1h (Anthropic/Bedrock "long") or 24h (OpenAI "long"), an explicit `cacheRetention` value orthogonal to auth mode | 5m default / 1h opt-in (`_build_marker`, §5.1) -- Qwen/Alibaba-family models clamped back to 5m regardless of request, except one wire-measured route+model combination (§5.4) |
+| Cache-write cost multiplier (Anthropic) | 1.25x (5m) / 2x (1h) of base input -- cited from the API docs, not restated as Claude-Code-specific | Not stated | Cited identically in the package's own README as the design rationale for defaulting caching on | Not independently re-stated as a multiplier in source; `cost.cacheWrite` is a per-model $/M-token rate, not a multiplier formula | Not independently re-stated as a multiplier; the dev docs cite only an aggregate "~75%" input-cost reduction figure for multi-turn conversations, not a per-tier multiplier |
+| Cache-read cost multiplier | ~10% of standard input rate (both Claude Code docs and Anthropic API docs state this) | "~10% of the normal input price" | Not independently re-stated as a fixed multiplier in source; consistent with the same underlying API | Not independently re-stated as a fixed multiplier; `cost.cacheRead` is a per-model $/M-token rate | Not independently re-stated as a fixed multiplier; consistent with the same ~75%-reduction figure above rather than a stated per-token discount |
+| Observability fields | `cache_creation_input_tokens` / `cache_read_input_tokens`, surfaced in `/usage`, `/cost`, OTel | OTel `gen_ai.usage.cache_read.input_tokens` / `gen_ai.usage.cache_creation.input_tokens`, `/usage` cache write+read display | `cacheReadInputTokens` / `cacheWriteInputTokens` normalized into the shared internal `Usage` type across every provider | `usage.cacheRead` / `usage.cacheWrite` / Anthropic-only `usage.cacheWrite1h`, plus opt-in `showCacheMissNotices` transcript notices and a TUI footer line | Live CLI/TUI `cache_hit` status-bar field (resets on model switch/compression) plus a persistent, multi-day, per-model web-dashboard Analytics view -- the only harness on this page with a queryable historical cache-hit-rate dashboard, not just a per-session figure (§5.8) |
+| Compaction/cache interaction | Compaction's own summarization request itself reads the live prefix from cache while warm (§1.2) | Not documented at this level of mechanism | Compaction's overflow-detection formula consumes the same normalized cache-read/cache-write token fields (§3.4/context-compression.md §3.2) | Compaction/branch-summary requests explicitly set `cacheRetention: "none"` to avoid a cache write for a one-off prompt (§4.8) -- the opposite policy from Claude Code's | Not confirmed either way this session (§5.8) -- the summarization request-construction path (`agent/context_compressor.py`) was not fetched, so Hermes' own stance on this specific question is an open item rather than assumed silent |
+| User-facing config lever | Five `DISABLE_PROMPT_CACHING*` env vars + two TTL env vars, settable in managed settings org-wide | Not documented (no equivalent env-var table found) | None found on the docs config page; appears to be a programmatic `LLMRequest.cache` field only (§3.5) | `PI_CACHE_RETENTION` env var, per-request `cacheRetention` option, and per-provider/model `compat` fields in `models.json` (§4.10) -- the most explicit documented surface of the four | `prompt_caching.cache_ttl` in `config.yaml` ("5m"/"1h") -- plus an undocumented falsy-value full-disable path (`false`/`null`/`"off"`) confirmed only in source, directly contradicting the user-facing docs' own "no knob exists to disable this" (§5.1) |
+| Subagent/fork cache behavior | Subagent: separate cache, 5m TTL even on subscription. Fork: inherits and reads parent's cache | Not documented | Not investigated this session (out of scope of `packages/llm`; would require `packages/opencode`'s subagent/session-forking call sites) | Not investigated this session (out of scope of `packages/ai`; would require `packages/coding-agent`'s own subagent/handoff call sites) | Not investigated this session for `delegate_task` subagents specifically; the one confirmed cross-session-boundary case is Mixture-of-Agents (§5.6), where the acting aggregator's own cache is a fixed, explicitly-patched special case rather than the general subagent path |
 
 **The design lesson.** All four harnesses converge on the same
 underlying economic argument -- a cache read costs roughly a tenth of a
@@ -993,14 +1403,49 @@ by actually toggling a provider's own *implicit* caching off
 (`prompt_cache_options: { mode: "explicit" }` on capable OpenAI models when
 the caller opts out) rather than only ever adding markers on top of it.
 pi's own compaction/branch-summary opt-out (§4.8) is also the one place in
-this page's whole four-harness comparison where two harnesses take
-*opposite* stances on the identical mechanism -- Claude Code treats its
-compaction call as cache-favorable and lets it ride the warm prefix, pi's
-coding-agent treats the same kind of call as cache-averse and deliberately
-declines to write it -- which is itself evidence that "should a one-off
-summarization request touch the cache" is a genuine, unresolved design
-choice rather than a fact about the underlying API that all correct
+this page's four-harness comparison up to that point where two harnesses
+take *opposite* stances on the identical mechanism -- Claude Code treats
+its compaction call as cache-favorable and lets it ride the warm prefix,
+pi's coding-agent treats the same kind of call as cache-averse and
+deliberately declines to write it -- which is itself evidence that "should
+a one-off summarization request touch the cache" is a genuine, unresolved
+design choice rather than a fact about the underlying API that all correct
 implementations must converge on.
+
+**Hermes Agent's own contribution is a different kind of data point than
+any of the first four: not a new placement heuristic or a new TTL model,
+but the clearest demonstration on this page that a harness's *documented*
+caching behavior and its *shipped* caching behavior can diverge, and that
+finding this requires reading the source rather than trusting the docs.**
+Three separate discrepancies surfaced in §5.1 alone -- a default-TTL
+mismatch (1h in the user-facing docs, 5m in both the developer docs and
+the code), an "always-on, cannot be disabled" claim the source directly
+contradicts with a working `_cache_disabled` flag, and a fixed
+"system_and_3" layout description that the source shows is actually one
+of two adaptively-chosen layouts. None of this makes Hermes' engineering
+worse than the other four harnesses' -- if anything, §5.4's wire-measured
+Qwen/Alibaba TTL table and §5.5's builder-declared sub-message cache
+boundary are more empirically rigorous than anything a documentation page
+alone could convey, and §5.6's traced-and-fixed Mixture-of-Agents caching
+regression (a real bug, a measured before/after cache-share figure, and a
+recursive-resolution fix, all in one function) is a level of engineering
+transparency about a *shipped defect* that none of Claude Code's or
+Copilot CLI's changelog-only sourcing on this page can match, since
+neither of those two harnesses' implementation is public at all. What it
+does establish is a genuine methodological point for this book as a
+whole: for a harness with public source, a claim's docs-only citation and
+its source-verified citation are not interchangeable, and where the two
+were fetched in the same session and disagree, this page's own discipline
+requires stating the disagreement rather than picking whichever reads
+more cleanly. Hermes is also the harness that pushes route-level dispatch
+furthest past OpenCode's and pi's own per-protocol `if`/copy-pasted-resolver
+patterns (§3, §4.1): rather than one branch per wire protocol, a single
+function threads a dozen-plus named provider/route/model combinations
+through one ordered chain of `(should_cache, use_native_layout)` returns,
+with several branches -- Kimi-on-OpenRouter, LiteLLM-proxied Claude,
+Qwen-on-Nous-Portal -- each traceable in the source to a specific,
+GitHub-issue-numbered production regression that the branch exists to
+close, rather than to a design document written in advance.
 
 ---
 
@@ -1108,3 +1553,62 @@ stable release tag):**
   the `compat` field documentation table, the Bedrock prompt-caching provider note, the
   `showCacheMissNotices` setting, and the compaction/branch-summary `cacheRetention: "none"`
   opt-out and its accompanying doc-page prose; covers §4.3, §4.5, §4.8, §4.9, §4.10.
+
+**Hermes Agent (Nous Research; authoritative for its own documented behavior and, unlike
+Claude Code and Copilot CLI above, its own real implementation; fetched 1 September 2026):**
+- `https://hermes-agent.nousresearch.com/docs/assets/files/llms-full-*.txt` -- a single
+  concatenated dump of every page under `website/docs/`, each preceded by its own
+  `<!-- source: website/docs/... -->` marker (cited below by that per-page path), fetched
+  fresh this session:
+  - `user-guide/configuration.md`, "Prompt caching" section -- the always-on framing, the
+    stated 1-hour default TTL and "system prompt and skill blocks" placement claim, the
+    Qwen Cloud 5-minute cap and xAI/Bedrock/Foundry carve-outs, the "no knob exists to
+    disable this" claim, and the `prompt_caching.cache_ttl` config example; covers §5.1,
+    §5.3, §5.4, §5.7.
+  - `developer-guide/context-compression-and-caching.md`, "Prompt Caching (Anthropic)"
+    section -- the `agent/prompt_caching.py` source pointer, the "system_and_3" strategy
+    description, the cache-marker format table, the five numbered cache-aware design
+    patterns (including the model-identity-as-cache-key rule quoted in §5.6), and the
+    CLI startup cache-status banner; covers §5.1, §5.2, §5.6. The same page's dual
+    compression-system documentation is cross-referenced, not re-derived, from
+    [context-compression.md](context-compression.md).
+  - `integrations/providers.md` -- the xAI `x-grok-conv-id` session-pinned caching
+    paragraph, the OpenCode Zen/OpenCode Go provider-catalog entries (`opencode.ai`'s own
+    model-hosting products, distinct from the OpenCode harness, §5.3), and the Qwen
+    Cloud/Bedrock/Azure Foundry provider notes; covers §5.3, §5.4, §5.7.
+  - `developer-guide/adding-providers.md` -- the `codex_responses` `api_mode`'s automatic
+    `prompt_cache_retention: 24h` for OpenAI Codex, xAI Grok, and Meta Muse Spark
+    (`api.meta.ai`), and the "93-99% cache hits only on `/v1/responses`" figure; covers §5.7.
+  - `user-guide/features/mixture-of-agents.md`, "Prompt caching" section -- the
+    never-breaks-the-main-cache design claim for MoA, cross-referenced from
+    [Model routing & selection](model-routing-and-selection.md) §5.3 and reconciled here
+    against the source-level regression/fix in §5.6.
+  - `user-guide/features/api-server.md` -- the `POST /v1/responses` `previous_response_id`/
+    `conversation` server-side conversation-state mechanism and its SQLite-backed,
+    100-entry LRU-evicted storage limit, distinguished in §5.7 from an Anthropic-style
+    cache marker.
+  - `user-guide/cli.md` -- the `!` shell-mode, Focus-view, and status-bar-field
+    cache-neutrality statements and the `cache_hit` status-bar field description; covers
+    §5.8.
+  - `user-guide/features/web-dashboard.md` -- the Analytics tab's per-day and per-model
+    cache-hit-rate reporting; covers §5.8.
+  - `user-guide/features/memory.md` -- the frozen-snapshot prefix-cache-preservation
+    rationale, cross-referenced from [Memory management](memory-management.md) §5 rather
+    than re-derived; covers §5.8.
+- `https://github.com/NousResearch/hermes-agent`, `main` branch, fetched via `gh api
+  repos/NousResearch/hermes-agent/contents/...` this session (full file contents,
+  base64-decoded):
+  - `agent/prompt_caching.py` -- `PromptCachePlan`, `_apply_cache_marker()`,
+    `_apply_system_cache_markers()`, `_build_marker()`, `effective_cache_ttl()` and its
+    `ALIBABA_FAMILY_PROVIDERS`/`MEASURED_1H_PROVIDERS`/`NO_1H_TIER_MODELS` frozensets (with
+    the wire-measured cache-read A/B table quoted in §5.4), `build_prompt_cache_plan()`,
+    `apply_anthropic_cache_control()`, `strip_anthropic_cache_control()`,
+    `envelope_tool_part_cache_markers_supported()`, and the module's own docstring
+    describing the dual breakpoint layout; covers §5.1, §5.2, §5.4, §5.5.
+  - `agent/agent_runtime_helpers.py` -- `anthropic_prompt_cache_policy()` in full (the
+    route-eligibility/layout decision function) and `_is_litellm_route()`/
+    `_has_litellm_token()`; covers §5.1, §5.3, §5.6.
+  - `agent/prompt_cache_boundary.py` -- the builder-declared stable-prefix registry
+    (`register_stable_prefix()`, `find_stable_prefix()`) and its own module docstring
+    explaining the skill/webhook/cron scaffold-vs-volatile-tail problem it exists to
+    solve; covers §5.5.

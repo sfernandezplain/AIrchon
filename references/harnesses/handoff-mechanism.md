@@ -774,19 +774,334 @@ harness's own design in this book.
 
 ---
 
-## 5. Synthesis
+## 5. Hermes Agent (Nous Research)
 
-| Dimension | Claude Code (subagent) | Claude Code (agent team) | Copilot CLI (custom agent) | Copilot CLI (`/delegate`) | OpenCode (Task tool) | pi (`subagent` example extension) |
-|---|---|---|---|---|---|---|
-| Default context on handoff-in | Fresh: own system prompt + CLAUDE.md + git snapshot + preloaded skills; NOT main history | Fresh: project context (CLAUDE.md/MCP/skills) + spawn prompt; NOT lead's history | "Own context window"; history-inheritance undocumented (BEST CURRENT UNDERSTANDING: likely fresh, by inference from framing) | N/A -- moves to a different machine/product entirely | Fresh child session by default (verified in source) | Fresh, source-verified: a genuinely separate OS process (`--no-session`), no parent history, only the task text + agent's own system-prompt file + tools/model |
-| Resumable / stateful continuation | Yes -- `SendMessage` to agent ID/name, full prior tool calls + reasoning retained | Yes -- mailbox messaging, teammate stays addressable while running | Undocumented | N/A -- cloud PR/session persists on GitHub, not a "resume" in the local sense | Yes -- `task_id` parameter re-enters the exact same child session | No -- `--no-session` writes no session file at all; every dispatch is one-shot |
-| What returns to the caller | One final summary message; intermediate work never reaches main context | Messages via mailbox + idle notification; shared task-list state | "Sub-agent output... incorporated into the parent agent's response" (SDK page) | A PR link + agent-session link, not a transcript | Only the last text part of the child's final message, explicitly not user-visible until re-summarized | Only the child's last assistant text message (`getFinalOutput()`), capped 50 KB/task in parallel mode; full messages retained only in tool-result `details` |
-| Peer-to-peer vs. parent-child | Parent-child only ("can only report back to the main agent") | Peer-to-peer, direct teammate-to-teammate messaging | Parent-child (subagent reports to the invoking agent) | Parent (local) to a wholly separate cloud product | Parent-child, navigable as a session tree in the TUI | Parent-child, strictly one-shot; a child cannot address its parent except via its own stdout |
-| Nesting/depth limit | 3 layers by default, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` | None -- explicitly "no nested teams," only the lead manages the team | Undocumented | N/A | 1 layer by default, `subagent_depth` config key (source-verified) | None found in source at all -- no depth counter threaded through spawn args or env; recursion is possible in principle if a user's own agent config lists `subagent` in its own `tools:` (none of the four shipped sample agents do) |
-| Concurrency limit | 20 concurrent, `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` | No documented numeric cap; token cost scales with active teammates | Undocumented | N/A (cloud-side, out of local control) | No enforced cap found; model is *encouraged* to fan out multiple Task calls per turn | 8 total / 4 concurrent, code-enforced (`MAX_PARALLEL_TASKS`/`MAX_CONCURRENCY`), not merely a prompted convention |
-| Permission handoff | Inherits parent's mode except `bypassPermissions`/`acceptEdits` take precedence; approval never relayable between agents | Starts at lead's mode; a denied action can't be relayed peer-to-peer either | Undocumented | N/A | Inherits only parent's *deny* + `external_directory` rules; `todowrite`/`task` denied by default unless the subagent's own definition grants them (source-verified) | Each child's `--tools` comes solely from that agent's own frontmatter, never from the parent's own grants; project-local agent definitions require an explicit `agentScope` opt-in plus a trust-confirmation prompt |
-| Foreground/background | Background by default since v2.1.198; permission prompts surface in main session naming the subagent | In-process teammates' own subagents forced foreground (documented limitation) | Undocumented | Always "background" relative to the local session -- local session is never blocked | Foreground is the documented default; background is experimental and flag-gated (`OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`) | Foreground from the dispatching tool call's own perspective (it awaits the child process), with live streaming of partial output via `onUpdate`; `AbortSignal` propagates `SIGTERM`, escalating to `SIGKILL` after 5s |
-| Verifiability | Docs-only (closed-source product); no implementation to cross-check | Docs-only, and explicitly marked experimental/subject to change | Docs-only across CLI + SDK pages, with a confirmed documentation gap on history inheritance | Docs-only | Docs **and** live `dev`-branch source, cross-checked against each other this session | Source-verified, but the source is a first-party *example extension*, not core product code -- no native mechanism exists to verify at all |
+Sources for this section: VERIFIED, fetched 1 September 2026. Docs pages
+fetched directly this session via `curl` from
+`hermes-agent.nousresearch.com/docs/`: `user-guide/features/delegation`,
+`user-guide/sessions` (via the site's own concatenated
+`docs/llms-full.txt` export, cross-checked against a fresh direct fetch
+of `developer-guide/context-compression-and-caching` returning HTTP 200
+for the same content), and `user-guide/configuration`. Source code
+fetched this session via `gh api` from `github.com/NousResearch/hermes-agent`,
+`main` branch: `tools/delegate_tool.py` (in full, 236 KB). Hermes Agent
+is a sixth, independent, self-hosted product -- see [Permissions &
+sandboxing architecture](permissions-and-sandboxing.md) §6 for this
+book's fuller architectural introduction to the harness itself, not
+repeated here. Hermes is also the one harness on this page whose word
+for at least one of its own mechanisms is literally "handoff" (§5.5
+below), which is not the same mechanism this page's title asks about
+for every other harness, and the distinction matters enough to state up
+front.
+
+```mermaid
+sequenceDiagram
+    participant Main as Parent AIAgent (session S)
+    participant DT as delegate_task tool
+    participant Child as Child AIAgent (in-process object)
+    participant DB as Child's own SessionDB row<br/>(parent_session_id = S)
+
+    Main->>DT: delegate_task(goal, context, role="leaf" or "orchestrator")
+    DT->>Child: AIAgent(skip_context_files=True, skip_memory=True,<br/>ephemeral_system_prompt = goal+context, plus embedded<br/>project context files if a workspace resolved,<br/>enabled_toolsets = parent's toolsets minus blocked set)
+    Child->>DB: own task_id / terminal session / file-ops cache;<br/>own dedicated SessionDB connection
+    Note over Child: Zero knowledge of parent's prior<br/>conversation, tool calls, or reasoning
+    Child-->>DT: final assistant message (structured summary)
+    DT-->>Main: only the summary re-enters the parent's context;<br/>full child transcript stays in the child's own session row
+```
+
+### 5.1 `delegate_task`: an in-process child `AIAgent`, not a spawned process -- fresh context, narrowed both ways
+
+Hermes' own delegation documentation states the isolation contract
+directly: "The `delegate_task` tool spawns child `AIAgent` instances
+with isolated context, inherited tool access, and their own terminal
+sessions. Each child gets a fresh conversation and works independently
+-- only its final summary enters the parent's context." Reading
+`tools/delegate_tool.py` in full this session resolves exactly how
+literal that isolation is at the implementation level, and the answer
+places Hermes closer to OpenCode's in-process child session (§3.1
+above) than to pi's genuinely separate OS process (§4.2 above): the
+tool's own code constructs the child as `child = AIAgent(base_url=...,
+model=..., capabilities=child_capabilities, enabled_toolsets=child_toolsets,
+quiet_mode=True, ephemeral_system_prompt=child_prompt,
+skip_context_files=True, skip_memory=True, session_db=child_session_db,
+parent_session_id=getattr(parent_agent, "session_id", None), ...)` --
+an ordinary Python object instantiated inside the same running process
+as the parent, not a `subprocess.spawn` of a second Hermes binary. The
+`skip_context_files=True`/`skip_memory=True` pair confirms the isolation
+happens at the constructor level, not merely by omission in a prompt
+template: the child's own normal context-file-discovery and
+memory-loading code paths are switched off entirely, and whatever
+project context the parent's own resolved workspace contributes is
+instead pre-baked once into `ephemeral_system_prompt` (`child_prompt`)
+before construction -- reconciling the docs' own separately-stated
+exception ("every subagent's system prompt embeds that workspace's
+project context files -- `.hermes.md` > `AGENTS.md` chain > `CLAUDE.md`
+> `.cursorrules` -- the same discovery, priority, and size caps as the
+main agent's system prompt; `SOUL.md` is excluded") with what the source
+actually does to produce it.
+
+**The child is a real, persisted session row with recorded lineage, not
+an ephemeral in-memory copy -- source-verified, not merely documented.**
+The code opens a **dedicated** `SessionDB` connection for the child
+(explicitly not the parent's live handle -- the comment beside this line
+names a specific prior bug, #81267, where a fire-and-forget background
+child's transcript was silently dropped once the parent's own database
+handle closed out from under it) and passes `parent_session_id=parent_agent.session_id`
+into the child's own constructor. This is the same shape this page
+documents for OpenCode's `sessions.create({ parentID: ctx.sessionID })`
+(§3.1) and structurally opposite pi's `--no-session` subagent example
+(§4.2), which deliberately writes no session record at all: a Hermes
+subagent is discoverable and searchable after the fact (via
+`session_search`, per [memory-management.md](memory-management.md) §5.3's
+FTS5 finding) precisely because it has its own durable id and parent
+pointer, even though nothing routes that transcript back into the
+parent's own live context. The docstring's own claim that each child
+gets "its own task_id (own terminal session, file ops cache)" is
+confirmed directly by the same file: `child_session_id =
+getattr(child, "session_id", ...)` is threaded through the tool's own
+completion-tracking and cleanup paths, and a dedicated cleanup block
+closes "terminal sandboxes, browser daemons, background processes,
+[and] httpx clients" that belong to the child specifically -- "so
+subagent subprocesses don't outlive the delegation" (a comment
+referring to the child's own *tool-level* subprocesses, e.g. a shell or
+Docker `exec`, not the child agent object itself, which remains
+in-process throughout).
+
+**What crosses at dispatch is exactly the model-facing surface the docs
+describe, no more.** `delegate_task` accepts only `goal`/`context` (and,
+for batches, an array of such pairs); the tool's own docs warn plainly
+against under-specifying it -- "BAD: `delegate_task(goal="Fix the
+error")` -- subagent has no idea what 'the error' is" versus a GOOD
+example passing the full file path, stack trace, and project root
+explicitly -- because nothing about the parent's own prior turns is
+reachable by the child at all. The child's own toolset is not a
+model-facing parameter of `delegate_task` itself: it *inherits* the
+parent's enabled toolsets wholesale (so a child can never end up with
+capabilities the parent itself lacks), with certain tools stripped
+regardless of the parent's grants -- `delegate_task` itself (blocked for
+leaf children by default), `clarify` (no user interaction), `memory` (no
+writes to shared persistent memory), `send_message` (no cross-platform
+side effects), and `cronjob` (no scheduling more work in the parent's
+name) -- while `execute_code` remains available to both leaf and
+orchestrator children so a child can still batch mechanical tool calls
+programmatically. What returns is narrowed the same way this page's
+other four harnesses narrow it: "only its final summary enters the
+parent's context, keeping token usage efficient" -- the child's own
+full transcript, tool calls, and reasoning stay in its own session row,
+retrievable later via `session_search` but never surfaced to the
+dispatching model automatically.
+
+### 5.2 Depth, concurrency, and durability: flat by default, no hard concurrency ceiling, and "durable" describes delivery, not resumable execution
+
+Nesting is flat by default and gated by an explicit model-facing `role`
+parameter, not merely a config-only ceiling: `role="leaf"` (the default)
+strips `delegate_task` from the child's own toolset entirely, while
+`role="orchestrator"` retains it, subject to `delegation.max_spawn_depth`
+-- read in source as `_get_max_spawn_depth()`, floored at 1 with no
+declared upper ceiling, and the module-level constant `MAX_DEPTH = 1`
+documents the shipped default in a code comment as "flat by default:
+parent (0) -> child (1); grandchild rejected unless max_spawn_depth
+raised." At the default depth of 1, `role="orchestrator"` is a
+documented no-op -- an orchestrator child still cannot spawn its own
+workers until an operator raises `max_spawn_depth` to 2 or higher, and a
+separate `delegation.orchestrator_enabled: false` kill switch forces
+every child to `leaf` regardless of the per-call `role` argument. This
+is a materially different shape from Claude Code's numeric
+`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` (§1.4) or OpenCode's `parentID`-chain
+walk against `cfg.subagent_depth` (§3.2): Hermes' depth gate is a
+two-part contract -- a numeric ceiling *and* a per-call role flag the
+model itself must set correctly -- rather than a single config value
+alone. Concurrency, by contrast, is a soft default with no hard
+ceiling at all: "Up to 3 concurrent subagents by default (configurable,
+no hard ceiling)" via `delegation.max_concurrent_children`, run through
+a `ThreadPoolExecutor` sized to that limit; batches larger than the
+configured limit return a tool error rather than being silently
+truncated, and a cost-warning in the docs spells out the multiplicative
+risk directly -- "With `max_spawn_depth: 3` and `max_concurrent_children:
+3`, the tree can reach 3x3x3 = 27 concurrent leaf agents."
+
+**Background dispatch is durable at the delivery layer, and explicitly
+not durable as resumable execution -- a distinction this page's other
+harnesses do not draw this precisely.** A completed background
+delegation's result is written to the active profile's own `state.db`
+*before* being posted to the normal turn queue, and delivery uses "a
+durable claim, so only the consumer that successfully accepts the
+synthetic turn acknowledges delivery; failed attempts release the claim
+for retry" -- surviving a Hermes process restart between completion and
+delivery. But this durability covers only the *already-finished*
+result, not an in-flight child: "This does not resume child execution
+after a crash. A delegation whose owner process disappears while it is
+still running is recorded as `unknown`, because Hermes cannot prove
+whether its external side effects happened." Nothing else on this page
+documents this particular three-way split (delivered / interrupted /
+provably-unknown) as an explicit status a delegation can land in.
+Separately, Hermes ships a mid-flight steering channel none of this
+page's other harnesses document: `delegate_task({"action": "steer",
+"subagent_id": ..., "message": ...})` "queues a course correction into a
+running child without stopping it," appending the text to the child's
+last tool result at its next iteration boundary rather than
+interrupting the in-flight tool call -- a genuinely different control
+primitive from "wait for it to finish" (OpenCode's `task_id` resume,
+§3.1) or "abort it outright" (pi's `AbortSignal` -> `SIGTERM`/`SIGKILL`,
+§4.2), sitting alongside an equally explicit `{"action": "stop"}` that
+does still let the child's own partial result re-enter the conversation
+as a normal completion.
+
+### 5.3 Compaction is an in-place rewrite by default -- and the one configurable path back to a genuine new session record
+
+This page's other sections deliberately hold compaction itself out of
+scope (see this page's own opening scope note, and
+[memory-management.md](memory-management.md) §1.7/§2.4), but Hermes'
+own compaction design intersects this page's specific question --
+whether crossing a context boundary produces a new session record --
+closely enough that the intersection is worth stating directly, and it
+resolves in the opposite direction from what a reader familiar with
+pi's `/handoff` example (§4.3) might expect. Hermes runs two
+independent compression layers: a **Gateway Session Hygiene** pass,
+"located in `gateway/run.py`," firing as "a safety net" at a fixed 85%
+of the model's context length using API-reported or roughly-estimated
+token counts, intentionally set higher than the agent's own compressor
+so it only "catches sessions that escaped" that primary path; and the
+**Agent `ContextCompressor`** itself (`agent/context_compressor.py`),
+the documented "primary compression system," firing by default at 50%
+of context (`compression.threshold`, overridable per model substring via
+`compression.model_thresholds`) using accurate API-reported token
+counts from inside the tool-calling loop.
+
+**The default behavior, `compression.in_place: true`, rewrites the
+live message list on the same session id -- explicitly not a handoff to
+a new session at all.** "A compaction rewrites the live message list on
+the same session id: the system prompt is rebuilt, the summarized
+middle is swapped in, and the pre-compaction turns are soft-archived
+under the same id (`active=0, compacted=1` in the session store) --
+still searchable via `session_search` and recoverable, never deleted.
+There is no `parent_session_id` chain and no `name #N` renumbering; one
+conversation keeps one durable id for its whole life." Hermes' own docs
+name the design motivation directly: this "eliminated the
+session-rotation bug cluster (lost `/goal` state, orphaned sessions,
+search gaps across boundaries)" that the *other*, non-default mode
+used to cause. That other mode is `compression.in_place: false` -- "the
+legacy rotating path, where each compaction commits a new session id
+linked to the previous one via `parent_session_id`" -- which is,
+mechanically, exactly the "new session record with a lineage pointer"
+pattern this page documents as pi's own `/handoff`/`/fork`
+mechanism (§4.3) and OpenCode's `parentID`-linked child sessions (§3.1),
+except triggered automatically by a token threshold rather than by an
+explicit user or model action, and today shipped **off** by default in
+favor of the in-place rewrite specifically because that automatic,
+unsolicited session-rotation behavior was found to be a bug source
+rather than a feature. Content-wise, the default `tail_mode: lean`
+policy mirrors the discipline this page's pi section (§4.3) documents
+for `serializeConversation`-style handoff content: one auxiliary LLM
+call per compaction produces a detailed, identifier-preserving summary,
+paired with a mechanically (regex, "never paraphrased") extracted
+anchor index of PR numbers, SHAs, paths, and error strings, every real
+user message quoted verbatim, and a `session_search` recovery pointer
+back to anything summarized away -- a structured extraction discipline
+independently convergent with, though not derived from, pi's own
+`convertToLlm`/`serializeConversation` reuse.
+
+### 5.4 `/compress` vs `/new`: the explicit, human-triggered version of the same question -- and Bot Mode's own carve-out
+
+Alongside the automatic thresholds above, Hermes exposes the same
+choice this page's other sections frame as "compact in place or start
+over" as two distinct, user-invoked slash commands, documented plainly
+in its own troubleshooting guidance: "`/compress` -- Compress the
+conversation (summarizes history, preserves key context)" or
+"`/new` -- Or start a fresh session." `/compress` manually triggers the
+same in-place summarization path described in §5.3 above (with
+`/compress here [N]` keeping the most recent N exchanges verbatim and
+summarizing only the rest, and `/compress focus <topic>` narrowing what
+a full summary preserves); `/new` is a hard boundary with **no**
+LLM-mediated extraction step of its own -- a brand-new session id and
+empty history, with nothing automatically carried across except
+whatever the user or a subsequent memory/skill lookup supplies. This is
+a materially thinner mechanism than pi's own `/handoff` example (§4.3):
+where pi's example runs a dedicated model call to produce a
+self-contained "Context / Files / Task" document for the *new* session
+before the user ever sees it, Hermes' `/new` performs no such
+generation step -- the choice on this page's own terms is binary
+(rewrite in place, or truly start over) rather than pi's third position
+(a model-generated, human-reviewed bridge document written into a new
+session).
+
+Bot Mode (this book's [memory-management.md](memory-management.md) §5
+and [Fan-out](fan-out.md) §5.2 already cover its persona-profile
+architecture, not repeated here) carves out its own exception to this
+choice specifically to protect a design guarantee: "Typing `/new` (or
+`/reset`) inside a Bot's canonical chat would fork the relationship
+into a scratch session -- the one thing Bot Mode promises never
+happens. The composer reroutes it to `/compact` instead: fresh working
+context, same conversation." Read beside §5.3's finding that
+`compression.in_place: true` is already the shipped default, this reads
+as a UI-level enforcement of the same in-place philosophy specifically
+for Bot Mode's persistent, human-visible relationship surface, where an
+ordinary session on the same profile keeps full `/new` freedom to
+actually start over.
+
+### 5.5 `/handoff <platform>`: a literal command sharing this page's own name, but a same-session cross-surface move, not agent-to-agent delegation
+
+Hermes' own CLI ships a command literally named `/handoff`, and it is
+worth stating precisely how little it resembles anything else on this
+page under that name: "`/handoff <platform>`... transfer[s] the live
+conversation to a messaging platform's home channel. The agent picks up
+exactly where the CLI left off -- same session id, full role-aware
+transcript, tool calls and all." Mechanically: the CLI validates that
+the target platform has a configured home channel and is not mid-turn,
+then marks the session pending and block-polls the gateway; a gateway
+watcher claims the handoff and asks the destination adapter (Telegram
+opens a new forum topic, Discord a 1440-minute auto-archive thread,
+Slack a seed-message-anchored thread, WhatsApp/Signal/Matrix/SMS fall
+back to the plain home channel since they have no native threads) for a
+fresh thread; the gateway then re-binds that destination key to the
+*existing* CLI session id and "forges a synthetic user turn asking the
+agent to confirm and summarize," whose reply lands in the new thread;
+and once acknowledged, the CLI prints a `/resume` hint and exits,
+leaving the conversation live on the platform until `/resume <title>`
+brings it back to a CLI.
+
+**No new session id is created and no context is narrowed at all --
+the opposite move from every other mechanism this section and page
+document.** Where `delegate_task` (§5.1) hands a *subset* of context to
+a *new, isolated* child, and compaction/`/new` (§5.3-§5.4) each pick a
+point along the "keep everything vs. start over" axis for a *single*
+conversation, `/handoff <platform>` keeps the exact same session id,
+the exact same full transcript, and merely changes which adapter (CLI
+process vs. a specific messaging platform's gateway thread) currently
+owns delivery -- the "full role-aware transcript, tool calls and all"
+phrasing is explicit that nothing is summarized or dropped in transit.
+This is the closest structural analogue on this page to Copilot CLI's
+`/delegate` (§2.2) by name and by the fact that both move a
+conversation to a genuinely different surface, but the two point in
+opposite directions on every dimension this page's synthesis table
+tracks: Copilot's `/delegate` hands off to an entirely separate cloud
+product, checkpoints the local work as a commit, and returns a pull-request
+link rather than a resumable conversation; Hermes' `/handoff` stays
+inside one product, carries the live session itself (not a snapshot of
+it) across a surface boundary, and is explicitly built to be resumed
+later on the originating surface. Failure handling is stated with the
+same numeric precision this page's Claude Code and OpenCode sections
+document for their own mechanisms: a 60-second timeout if no gateway
+ever claims the request (CLI session stays intact), up to 15 minutes of
+"Still transferring..." heartbeats for a slow replay on a long session,
+and a same-surface fallback (posting to the home channel directly) if
+thread creation itself fails.
+
+---
+
+## 6. Synthesis
+
+| Dimension | Claude Code (subagent) | Claude Code (agent team) | Copilot CLI (custom agent) | Copilot CLI (`/delegate`) | OpenCode (Task tool) | pi (`subagent` example extension) | Hermes Agent (`delegate_task`) |
+|---|---|---|---|---|---|---|---|
+| Default context on handoff-in | Fresh: own system prompt + CLAUDE.md + git snapshot + preloaded skills; NOT main history | Fresh: project context (CLAUDE.md/MCP/skills) + spawn prompt; NOT lead's history | "Own context window"; history-inheritance undocumented (BEST CURRENT UNDERSTANDING: likely fresh, by inference from framing) | N/A -- moves to a different machine/product entirely | Fresh child session by default (verified in source) | Fresh, source-verified: a genuinely separate OS process (`--no-session`), no parent history, only the task text + agent's own system-prompt file + tools/model | Fresh, source-verified: an in-process child `AIAgent` object (`skip_context_files=True`, `skip_memory=True`), not a subprocess; only `goal`/`context` cross, plus the parent's own resolved workspace's project context files pre-embedded in the child's system prompt |
+| Resumable / stateful continuation | Yes -- `SendMessage` to agent ID/name, full prior tool calls + reasoning retained | Yes -- mailbox messaging, teammate stays addressable while running | Undocumented | N/A -- cloud PR/session persists on GitHub, not a "resume" in the local sense | Yes -- `task_id` parameter re-enters the exact same child session | No -- `--no-session` writes no session file at all; every dispatch is one-shot | No dedicated resume-by-id path found for `delegate_task` itself, but the child gets its own durable, `parent_session_id`-linked session row (searchable via `session_search`); a running child can instead be redirected mid-flight via `action="steer"` without stopping it |
+| What returns to the caller | One final summary message; intermediate work never reaches main context | Messages via mailbox + idle notification; shared task-list state | "Sub-agent output... incorporated into the parent agent's response" (SDK page) | A PR link + agent-session link, not a transcript | Only the last text part of the child's final message, explicitly not user-visible until re-summarized | Only the child's last assistant text message (`getFinalOutput()`), capped 50 KB/task in parallel mode; full messages retained only in tool-result `details` | Only the child's final structured summary; full transcript stays in the child's own session row, retrievable later via `session_search` but never auto-surfaced to the parent |
+| Peer-to-peer vs. parent-child | Parent-child only ("can only report back to the main agent") | Peer-to-peer, direct teammate-to-teammate messaging | Parent-child (subagent reports to the invoking agent) | Parent (local) to a wholly separate cloud product | Parent-child, navigable as a session tree in the TUI | Parent-child, strictly one-shot; a child cannot address its parent except via its own stdout | Parent-child by default (`role="leaf"`); opt-in nested orchestration via `role="orchestrator"` bounded by `max_spawn_depth`, still parent-child at every layer, never peer-to-peer |
+| Nesting/depth limit | 3 layers by default, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` | None -- explicitly "no nested teams," only the lead manages the team | Undocumented | N/A | 1 layer by default, `subagent_depth` config key (source-verified) | None found in source at all -- no depth counter threaded through spawn args or env; recursion is possible in principle if a user's own agent config lists `subagent` in its own `tools:` (none of the four shipped sample agents do) | 1 layer by default, source-verified (`MAX_DEPTH = 1` / `delegation.max_spawn_depth`, floored at 1, no declared ceiling); a global `orchestrator_enabled: false` kill switch forces every child to `leaf` regardless of the per-call `role` |
+| Concurrency limit | 20 concurrent, `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` | No documented numeric cap; token cost scales with active teammates | Undocumented | N/A (cloud-side, out of local control) | No enforced cap found; model is *encouraged* to fan out multiple Task calls per turn | 8 total / 4 concurrent, code-enforced (`MAX_PARALLEL_TASKS`/`MAX_CONCURRENCY`), not merely a prompted convention | 3 concurrent by default, configurable, documented as having "no hard ceiling" (`delegation.max_concurrent_children`, `ThreadPoolExecutor`-sized); batches over the limit error rather than silently truncate |
+| Permission handoff | Inherits parent's mode except `bypassPermissions`/`acceptEdits` take precedence; approval never relayable between agents | Starts at lead's mode; a denied action can't be relayed peer-to-peer either | Undocumented | N/A | Inherits only parent's *deny* + `external_directory` rules; `todowrite`/`task` denied by default unless the subagent's own definition grants them (source-verified) | Each child's `--tools` comes solely from that agent's own frontmatter, never from the parent's own grants; project-local agent definitions require an explicit `agentScope` opt-in plus a trust-confirmation prompt | Inherits the parent's enabled toolsets wholesale (can never widen them); `delegate_task`/`clarify`/`memory`/`send_message`/`cronjob` blocked for leaf children regardless of the parent's own grants, `execute_code` retained by both roles (source-verified) |
+| Foreground/background | Background by default since v2.1.198; permission prompts surface in main session naming the subagent | In-process teammates' own subagents forced foreground (documented limitation) | Undocumented | Always "background" relative to the local session -- local session is never blocked | Foreground is the documented default; background is experimental and flag-gated (`OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`) | Foreground from the dispatching tool call's own perspective (it awaits the child process), with live streaming of partial output via `onUpdate`; `AbortSignal` propagates `SIGTERM`, escalating to `SIGKILL` after 5s | Background by default for top-level calls (returns a handle immediately, result posted back later); an orchestrator's own workers are awaited synchronously in-turn; background completion is durable *for delivery* via `state.db` but explicitly not resumable execution across a crash (recorded `status="unknown"`) |
+| Verifiability | Docs-only (closed-source product); no implementation to cross-check | Docs-only, and explicitly marked experimental/subject to change | Docs-only across CLI + SDK pages, with a confirmed documentation gap on history inheritance | Docs-only | Docs **and** live `dev`-branch source, cross-checked against each other this session | Source-verified, but the source is a first-party *example extension*, not core product code -- no native mechanism exists to verify at all | Docs **and** live `main`-branch source (`tools/delegate_tool.py`, read in full this session via `gh api`), cross-checked against each other |
 
 **The design lesson.** All three products converge on the same
 motivating idea -- keep bulk exploratory or side-task output out of the
@@ -841,12 +1156,45 @@ deliberately added one of these two examples -- the one genuinely new
 finding this page's research into pi contributes to the cross-harness
 picture.
 
+**Hermes Agent contributes two more genuinely new data points, and they
+point in opposite directions from each other.** On the table's own
+axis -- agent-to-agent dispatch -- `delegate_task` lands closest to
+OpenCode's Task tool among this page's five harnesses: both create a
+real, persisted, lineage-linked child session record rather than either
+a stateless fresh copy (Claude Code's, Copilot CLI's own undocumented
+case) or a genuinely separate process with no record at all (pi's
+`--no-session` example), and both are source-verified this session
+rather than docs-only. Off that axis entirely, Hermes is the only
+harness on this page where **the literal word "handoff"** names a third,
+structurally distinct thing: `/handoff <platform>` (§5.5) moves a live
+session -- unmodified, unsummarized, same id -- across a *surface*
+boundary (CLI to messaging gateway) rather than across an *agent*
+boundary, closer in spirit to a phone call being transferred between
+extensions than to any subagent-dispatch mechanism this page otherwise
+documents; a reader who assumes "Hermes' handoff mechanism" refers to
+`delegate_task` because that is what "handoff" means for every other
+harness on this page would be describing the wrong feature entirely.
+And on a third axis this page's scope note otherwise excludes, Hermes'
+own compaction design supplies a directly relevant negative data point:
+its *default* behavior (`compression.in_place: true`) deliberately does
+**not** create a new session record on compaction, while its
+non-default legacy mode (`in_place: false`) does so automatically,
+mechanically resembling pi's own opt-in, human-gated `/handoff` example
+(§4.3) but triggered by a token threshold rather than a deliberate
+model-and-user decision -- and shipped off specifically because
+Hermes' own maintainers found unsolicited session-rotation to be a bug
+source rather than a benefit. Where pi shows this page that "new
+session, not a rewrite" can be a deliberate design choice for
+less-lossy context handoff, Hermes shows the reverse lesson from
+production experience: the same shape, arrived at automatically instead
+of deliberately, was judged not worth keeping as a default.
+
 ---
 
 ## Sources
 
-All fetched 2026-07-30 except §4 (pi), fetched 1 September 2026 -- see its
-own dedicated bullet block below.
+All fetched 2026-07-30 except §4 (pi) and §5 (Hermes Agent), both
+fetched 1 September 2026 -- see their own dedicated bullet blocks below.
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `https://code.claude.com/docs/en/sub-agents` -- subagent definition
@@ -910,3 +1258,47 @@ own dedicated bullet block below.
   prompt and direct `ctx.modelRegistry.complete()` call, the human-editable
   review step, and `ctx.newSession({ parentSession, ... })`'s new-file-plus-
   lineage-field mechanics.
+
+**Hermes Agent (authoritative for its own documented and source-read
+behavior only; fetched 1 September 2026):**
+- `hermes-agent.nousresearch.com/docs/user-guide/features/delegation`
+  (fetched directly via `curl` this session) -- §5.1-§5.2's full
+  `delegate_task` treatment: the fresh-conversation/isolated-context
+  contract, the project-context-files exception for a resolved
+  workspace, inherited-toolset and blocked-tools lists, `role="leaf"`/
+  `role="orchestrator"` and `delegation.max_spawn_depth`/
+  `orchestrator_enabled`, `delegation.max_concurrent_children`'s
+  no-hard-ceiling default, background dispatch and the durable-claim/
+  `status="unknown"`-on-crash distinction, and the `action="steer"`/
+  `action="stop"` mid-flight control surface.
+- `hermes-agent.nousresearch.com/docs/llms-full.txt` (the docs site's
+  own concatenated full-text export, fetched fresh via `curl` this
+  session; each cited passage traced to its own `<!-- source:
+  website/docs/... -->` marker within the file) -- §5.3's "Cross-Platform
+  Handoff" section (source file `user-guide/sessions.md`) underlying
+  §5.5's `/handoff <platform>` treatment, and the "Dual Compression
+  System"/"Configuration"/"In-place compaction" sections (source file
+  `developer-guide/context-compression-and-caching.md`) underlying
+  §5.3's compaction treatment (`compression.in_place`, `tail_mode: lean`,
+  `compression.threshold`/`model_thresholds`, the Gateway Session
+  Hygiene vs. Agent `ContextCompressor` split). The same
+  `developer-guide/context-compression-and-caching` page was
+  independently re-fetched directly this session (HTTP 200) to confirm
+  it exists at that URL and is not an artifact of the concatenated
+  export.
+- `hermes-agent.nousresearch.com/docs/user-guide/configuration` (fetched
+  directly via `curl` this session) -- cross-checked against the
+  `compression:`/`auxiliary.compression:` keys quoted from the
+  concatenated export above.
+- `github.com/NousResearch/hermes-agent`, `main` branch, via `gh api`
+  (fetched this session): `tools/delegate_tool.py`, read in full (236 KB)
+  -- §5.1's source-level confirmation that `delegate_task` constructs an
+  in-process `child = AIAgent(...)` object rather than a spawned
+  subprocess, the `skip_context_files=True`/`skip_memory=True`
+  constructor flags, the dedicated per-child `SessionDB` connection with
+  `parent_session_id` set to the parent's own session id (and the
+  #81267 bug comment motivating a dedicated handle), the module-level
+  `MAX_DEPTH = 1` constant and `_get_max_spawn_depth()` function, and the
+  child-resource cleanup block (`child.close()`, terminal sandboxes,
+  browser daemons) confirming the child agent object itself remains
+  in-process throughout its lifetime.

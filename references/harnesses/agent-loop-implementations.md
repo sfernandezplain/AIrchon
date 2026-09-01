@@ -1,18 +1,22 @@
-# Agent loop: Claude Code, GitHub Copilot CLI, and OpenCode, and how to verify each
+# Agent loop: Claude Code, GitHub Copilot CLI, OpenCode, pi, and Hermes Agent, and how to verify each
 
 **Scope note.** [agent-loop.md](agent-loop.md) is deliberately general-concepts
 only (Thought/Action/Observation, ReAct, stop-and-parse) and holds no
 harness sections on purpose. This page is the harness-specific
-companion: what Claude Code, Copilot CLI, and OpenCode each
-document/implement about their own loop, and -- per AUTHORITY OVERREACH
-discipline -- no harness's mechanism is assumed to describe another's.
-Added 2026-08-24: a Copilot CLI section, closing a real gap this page
-previously left (it originally covered only two of the book's three
-target harnesses); the Claude Code and OpenCode sections below are
+companion: what Claude Code, Copilot CLI, OpenCode, pi, and Hermes Agent
+each document/implement about their own loop, and -- per AUTHORITY
+OVERREACH discipline -- no harness's mechanism is assumed to describe
+another's. Added 2026-08-24: a Copilot CLI section, closing a real gap
+this page previously left (it originally covered only two of the book's
+three target harnesses); the Claude Code and OpenCode sections below are
 unchanged from the original 2026-07-30 write. Added 2026-09-01: a pi
 section (§4), covering a fourth harness already documented elsewhere in
 this book (see that section's own opening note for exactly which pages)
-but not previously covered on this specific page.
+but not previously covered on this specific page. Also added
+2026-09-01: a Hermes Agent section (§5), the fifth and last harness this
+book covers, sourced directly from its own public, open-source Python
+implementation rather than from documentation of a closed product --
+this page's most directly verifiable harness after OpenCode and pi.
 
 ## 1. Claude Code (Agent SDK docs)
 
@@ -508,9 +512,327 @@ primary turn loop without a further, dedicated source read of
 `packages/coding-agent/src/server/create-harness.ts`'s own caller(s) and
 `harness.md` itself.
 
-## 5. Comparison
+## 5. Hermes Agent (Nous Research)
 
-All four document the same shape at the level the Hugging Face course
+**Source and naming note.** Hermes Agent is genuinely open source --
+`github.com/NousResearch/hermes-agent` (`main` branch, confirmed as the
+repository's default branch this session via `gh api
+repos/NousResearch/hermes-agent`), the same canonical repository this
+book's [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md)
+§6 and [Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§6 already introduce architecturally (three entry points -- CLI,
+gateway, cron -- funnelled into one `AIAgent` class; seven sandboxed
+terminal execution backends) -- not repeated here. Unlike Claude Code's
+and Copilot CLI's own sections above, where the honest limit is "this is
+what the vendor's docs say, no source exists to check it against," and
+closer to OpenCode's and pi's own sections, this section is grounded
+directly in Hermes' real, currently-shipping Python source, fetched via
+`raw.githubusercontent.com` on 1 September 2026: `agent/conversation_loop.py`
+(the loop body itself), `agent/tool_executor.py` and
+`agent/tool_dispatch_helpers.py` (tool dispatch and parallelism
+planning), `agent/iteration_budget.py`, `agent/verification_stop.py`,
+`agent/kanban_stop.py` (stop-condition guards), `hermes_cli/config.py`
+and `cli.py` (the config/CLI layer that sets the loop's caps), and
+`run_agent.py` (the `AIAgent` class itself, of which
+`conversation_loop.py`'s own module docstring states it was "extracted
+from `run_agent.AIAgent`" -- `AIAgent.run_conversation()` is now a "thin
+forwarder" to the standalone function this section documents).
+
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant Agent as AIAgent.run_conversation()
+    participant Loop as conversation_loop while-loop
+    participant Provider as Provider adapter
+    participant Exec as _execute_tool_calls (segment planner)
+    participant Tools as handle_function_call
+
+    Caller->>Agent: run_conversation(user_message)
+    Agent->>Loop: forwards (thin wrapper)
+    loop each iteration, api_call_count += 1
+        Loop->>Loop: iteration_budget.consume() or _budget_grace_call bypass
+        Loop->>Provider: api_messages (system + history)
+        Provider-->>Loop: assistant_message, finish_reason
+        alt tool_calls present
+            Loop->>Exec: dispatch batch
+            Exec->>Exec: plan parallel/sequential segments
+            Exec->>Tools: one call per tool (thread pool for parallel segments)
+            Tools-->>Exec: results
+            Exec->>Loop: role=tool messages appended
+        else finish_reason != tool_calls
+            Loop->>Loop: verify-on-stop / kanban-stop nudge?
+            alt nudge fires
+                Loop->>Loop: append synthetic nudge, continue
+            else
+                Loop->>Caller: final_response, break
+            end
+        end
+    end
+```
+
+### 5.1 The entry point, and a genuine internal vocabulary clash over "turn"
+
+VERIFIED, `agent/conversation_loop.py`'s own module docstring (full file
+read this session): `AIAgent.run_conversation()` is "now a thin
+forwarder" to `agent.conversation_loop.run_conversation(agent, ...)`, "the
+roughly 3,900-line `run_conversation` body that drives one user turn
+through the agent (model call, tool dispatch, retries, fallbacks,
+compression, post-turn hooks, background memory/skill review nudges)."
+One exception exists ahead of the loop entirely: VERIFIED, same file --
+"if `agent.api_mode == \"codex_app_server\"`: return
+`agent._run_codex_app_server_turn(...)`" hands the entire turn to an
+embedded Codex app-server subprocess instead ("terminal/file
+ops/patching all run inside Codex. Default Hermes path is bypassed
+entirely"), a second, alternate loop implementation this section does
+not further investigate.
+
+The loop itself is a single `while` statement: VERIFIED, same file --
+`while (api_call_count < agent.max_iterations and
+agent.iteration_budget.remaining > 0) or agent._budget_grace_call:`. On
+its own this reads as an ordinary "model call, then tool dispatch, then
+repeat" ReAct loop of the same shape this page's other four sections
+document -- but Hermes' own source is internally inconsistent about what
+word names which part of it, a genuinely notable finding once the two
+usages are placed side by side. `conversation_loop.py`'s own docstring
+(quoted above) calls the *entire* `run_conversation()` call -- everything
+inside the `while` loop, however many iterations it takes -- "one user
+turn." VERIFIED, however, `hermes_cli/config.py`'s `resolve_turn_limit()`
+docstring and code (full file grepped this session): the user-facing
+config key is `agent.max_turns`, and its own docstring calls each single
+pass through the loop a "turn" -- "Normalize a raw `agent.max_turns` value
+into an int iteration cap... The returned int is always >= 1, so loop
+conditions like `while api_call_count < agent.max_iterations` behave
+correctly." `iteration_budget.py`'s own docstring, a third file, calls
+that same single pass an "iteration" instead of a "turn." So within one
+codebase, "turn" is used by one module to mean the whole multi-iteration
+`run_conversation()` call and by another to mean exactly one
+LLM-call-plus-tool-round -- the same word spanning both scopes other
+harnesses on this page keep terminologically separate (Claude Code and
+Copilot CLI both reserve "turn" for one LLM call plus its tool
+execution, §1/§2 above; pi's own `turn_start`/`turn_end` pair does the
+same, §4). This is not a claim that either Hermes module is "wrong" --
+it is a directly observed naming inconsistency inside the one harness
+on this page whose source can actually be read closely enough to notice
+it.
+
+### 5.2 One iteration: request assembly, the provider call, and the tool-call gate
+
+VERIFIED, `agent/conversation_loop.py` (grepped and read in section):
+each iteration increments `api_call_count`, consumes one unit of
+`agent.iteration_budget` (§5.4 below), fires an optional
+`agent.step_callback` (an `agent:step` gateway-hook event, cross-referenced
+rather than re-derived from
+[hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md)),
+drains any pending `/steer` message queued mid-call, then assembles
+`api_messages` -- system prompt plus history, passed through a context-engine
+tier-selection step (`_apply_context_engine_selection`), non-ASCII/surrogate
+sanitization, and a prompt-cache plan (`build_prompt_cache_plan`) --
+before dispatching to whichever provider adapter the session is
+configured for. The repository ships one adapter per major API shape
+(`anthropic_adapter.py`, `bedrock_adapter.py`, `gemini_native_adapter.py`,
+`codex_responses_adapter.py`, alongside a default OpenAI-compatible
+path), confirming multi-provider support is a first-class, source-level
+concern rather than a single hard-coded wire format. The response comes
+back as an `assistant_message` object carrying a `finish_reason` and,
+where present, a `tool_calls` array; VERIFIED, same file -- `if
+assistant_message.tool_calls:` is the single branch point separating
+"execute the batch and loop again" from "finalize the turn," structurally
+the same gate this page's other four sections describe (a turn with no
+tool calls ends the loop; one with tool calls does not), reached here,
+as with pi (§4), by an unrelated engineering team from an unrelated
+codebase.
+
+### 5.3 Tool dispatch: a segment planner over parallel-safe and sequential-barrier runs
+
+VERIFIED, `AIAgent._execute_tool_calls()`'s own docstring in
+`run_agent.py` (full method read this session): "The segment planner
+splits the batch into maximal contiguous runs of parallel-safe calls
+(read-only tools, non-overlapping file targets, opted-in MCP tools)
+separated by sequential barriers (interactive, unsafe, or unrecognized
+tools). Homogeneous batches keep their original single-path dispatch;
+mixed batches execute segment by segment in emission order so safe
+subsets still run concurrently while side-effect ordering is
+preserved." Mechanically: a batch of one tool call always dispatches via
+`_execute_tool_calls_sequential()`; a larger batch is first run through
+`agent/tool_dispatch_helpers.py`'s `_plan_tool_batch_segments()`, which
+returns an ordered list of `("parallel"|"sequential", calls)` tuples,
+and a batch that resolves to exactly one segment keeps the direct
+`_execute_tool_calls_concurrent()` or `_execute_tool_calls_sequential()`
+path; only a genuinely mixed batch is handed to
+`agent/tool_executor.py`'s `execute_tool_calls_segmented()`, which walks
+the segments in order, calling the concurrent executor for each
+parallel run and the sequential executor for each barrier, with
+turn-level bookkeeping (aggregate tool-output budget enforcement,
+`/steer` injection) deferred to a single whole-batch pass after every
+segment finishes rather than repeated per segment.
+
+The parallel-admission rules themselves are a real, source-verified
+engine, not a flat allowlist: VERIFIED, `tool_dispatch_helpers.py` --
+`_NEVER_PARALLEL_TOOLS = frozenset({"clarify"})` always forces a
+sequential barrier; a fixed `_PARALLEL_SAFE_TOOLS` set (`read_file`,
+`search_files`, `web_search`, `web_extract`, `vision_analyze`,
+`session_search`, `skill_view`, `skills_list`, `image_generate`, and
+three Home-Assistant read tools) is always admitted; and a distinct
+path-scoped tier -- `_PATH_SCOPED_READERS = {"read_file",
+"search_files"}` and `_PATH_SCOPED_WRITERS = {"write_file", "patch"}` --
+is admitted to a parallel run only when the actual file paths targeted
+across a batch do not overlap, computed from patch-body file headers
+for `patch` calls rather than from a same-named `path=` argument that a
+model could spoof, closing "the classic same-block write->read race" the
+module's own comment names directly. MCP tools are admitted per-server,
+gated on that server's own `supports_parallel_tool_calls: true`
+declaration. Concurrent dispatch itself runs on real OS threads: VERIFIED,
+`tool_executor.py` -- `execute_tool_calls_concurrent()` submits each
+admitted call to a `DaemonThreadPoolExecutor` capped at
+`_MAX_TOOL_WORKERS = 8` (further reduced for a batch containing
+`image_generate` calls, per a separate configured limit), daemon threads
+deliberately chosen because "an interrupted/timed-out batch is abandoned
+with `shutdown(wait=False)`, but stdlib `ThreadPoolExecutor` workers are
+non-daemon and registered in `concurrent.futures`' atexit hook, which
+joins them unconditionally -- so one wedged tool thread would block
+interpreter exit forever." Every individual call, whichever path
+dispatches it, ultimately reaches `model_tools.handle_function_call()`
+(via `_ra().handle_function_call(...)`, wrapped in tool-execution
+middleware that this book's [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md)
+§6 already documents the pre/post-tool-call hook layer around, not
+re-derived here); its result is appended to `messages` as a `role:
+"tool"` message keyed to the original `tool_call_id`, in the model's
+original emission order regardless of which thread finished first, so
+the next provider call always sees a strictly alternating,
+correctly-paired transcript.
+
+### 5.4 The natural stop condition, and three distinct nudges that can override it
+
+VERIFIED, `agent/conversation_loop.py`: reaching the `else` side of the
+tool-call gate (§5.2) -- a response with no tool calls -- reaches a
+"finalization" block, and this is where Hermes' own natural stop
+condition lives, gated behind up to three independent, source-verified
+checks before the loop actually breaks:
+
+1. **Dropped-tool-call recovery.** A code comment names the observed
+   trigger directly: "Some providers (observed: claude-opus-4.8 /
+   claude-sonnet-4.5 on GitHub Copilot, ~2026-07) return
+   `finish_reason=\"tool_calls\"` while the parsed `tool_calls` array is
+   empty -- the model signalled it wanted to act but the payload shipped
+   no call." When this exact mismatch occurs, Hermes re-prompts instead
+   of accepting the narration as a final answer, "bounded to 3
+   CONSECUTIVE stalls; the budget resets after any successful tool
+   round," via a synthetic assistant/user message pair flagged so
+   neither is written to the durable transcript.
+2. **Verify-on-stop.** VERIFIED, `agent/verification_stop.py`'s own
+   module docstring: "intentionally policy-only. It never runs checks
+   itself; it turns the passive verification ledger into a bounded
+   follow-up when the model tries to finish immediately after editing
+   code without fresh evidence." Opt-in and off by default
+   (`verify_on_stop_enabled()`'s own docstring: "The default is `False`
+   (opt-in...)", overridable via `HERMES_VERIFY_ON_STOP` or
+   `agent.verify_on_stop` in config), it skips turns that touched only
+   non-code paths (markdown, README, LICENSE) and otherwise injects a
+   synthetic nudge bounded to `max_attempts: int = 2` by the function's
+   own default parameter.
+3. **Kanban-stop.** VERIFIED, `agent/kanban_stop.py`'s own module
+   docstring: kanban-dispatched worker sessions "must end with
+   `kanban_complete` or `kanban_block`. Models (especially GLM / Qwen
+   families) sometimes narrate the next step (\"Let me write the report
+   now\") and stop with `finish_reason=stop` and no tool calls. Hermes
+   treats that as a clean exit -> `rc=0` -> dispatcher
+   `protocol_violation`." The guard is scoped narrowly --
+   `kanban_stop_nudge_enabled()` is "on when `HERMES_KANBAN_TASK` is set
+   (dispatcher-spawned worker)" only, not for ordinary interactive or
+   gateway sessions -- and bounded to `_DEFAULT_MAX_ATTEMPTS = 2`.
+
+Only once none of these three fires does the loop genuinely end: the
+final assistant message is appended, the session is flushed to disk, and
+(per the same file) `agent._safe_print(f"Conversation completed after
+{api_call_count} OpenAI-compatible API call(s)")` -- an explicit,
+human-readable count of exactly how many provider round-trips the
+now-completed "turn," in `conversation_loop.py`'s own §5.1 sense of the
+word, actually took.
+
+Separately, VERIFIED (same file, both `_final_response` sites read in
+full this session): a `finish_reason == "length"` response whose parsed
+`tool_calls` nonetheless contains entries is never executed. The code
+logs "Truncated tool call arguments detected (`finish_reason={finish_reason!r}`)
+-- refusing to execute," discards the call, and returns "Response
+truncated due to output length limit" rather than risk running a
+write/edit/bash call built from truncated arguments -- the same
+stopReason-gates-tool-execution safety rule this page's §4 documents,
+independently, for pi's own `failToolCallsFromTruncatedMessage()`. Two
+unrelated engineering teams, on two unrelated codebases, converging on
+an identical mitigation for the identical failure mode (a
+length-truncated response that still parses as a syntactically valid
+but semantically incomplete tool call) is, alongside the "model is the
+decision-maker for when to stop" convergence this page's §6 already
+documents across all five harnesses, a second genuine point of
+independent design convergence this page can now cite.
+
+### 5.5 Hard caps: iteration budget, a self-clearing grace call, and a real config-default inconsistency
+
+VERIFIED, `agent/iteration_budget.py` (full file read this session): a
+thread-safe `IterationBudget` class wraps a simple lock-guarded counter
+-- `consume()` returns `False` once `used >= max_total`, and a separate
+`refund()` method exists specifically because "`execute_code`
+(programmatic tool calling) iterations are refunded ... so they don't
+eat into the budget," a carve-out none of this page's other four
+sections documents an equivalent for. Two independent break conditions
+sit ahead of the budget check on every iteration: an interrupt request
+(`agent._interrupt_requested`) breaks immediately with
+`_turn_exit_reason = "interrupted_by_user"`, and a background/auxiliary
+aggregate check (`_review_input_budget_exhausted()`) breaks a
+detached-review sub-run once its own cumulative token budget crosses a
+threshold, "mirroring the iteration-budget exit" per the code's own
+comment. The budget check itself has one documented escape hatch:
+VERIFIED, `agent/conversation_loop.py` -- when `agent._budget_grace_call`
+is `True`, the loop consumes and clears that one-shot flag instead of
+calling `iteration_budget.consume()`, guaranteeing exactly one further
+iteration runs even though the budget is otherwise exhausted, self-clearing
+so the very next check reverts to the ordinary hard stop. This session
+found where the flag is declared and consumed
+(`agent/agent_init.py`, `agent/conversation_loop.py`) but no call site
+that sets it `True` -- **BEST CURRENT UNDERSTANDING, UNCONFIRMED**
+regarding what actually arms this grace mechanism (a `/continue`-style
+user command, a gateway hook, or some other trigger this session's
+files did not surface).
+
+What actually bounds `max_iterations`/`max_turns` by default turns out
+to be a genuinely, source-verifiably inconsistent number across the
+codebase, not a single settled figure -- worth stating plainly rather
+than picking whichever citation sounds most authoritative. VERIFIED,
+`hermes_cli/config.py`'s `resolve_turn_limit()` (the function that
+normalizes the user-facing `agent.max_turns` config key into the
+`agent.max_iterations` value the loop actually checks): "YAML `None` /
+`null` / absent value -> `default` (which is itself
+`TURN_LIMIT_UNLIMITED` -- max_turns is unlimited by default)," and
+`TURN_LIMIT_UNLIMITED = sys.maxsize`; the same module's own comment
+states plainly, "max_turns is unlimited unless the user sets an explicit
+positive integer cap." `cli.py` independently confirms the live wiring:
+"Env var bridge (set by gateway/run.py from config.yaml, or by the user
+directly). Empty/unset -> default (unlimited)." Against that, two other
+files in the same repository assert a concrete default of 500 that this
+session found no code path actually enforcing: `iteration_budget.py`'s
+own module docstring states "the parent's cap comes from
+`max_iterations` (default 500)," and a defensive `cli.py` fallback reads
+`getattr(self.agent, "max_iterations", 500)` for a warning message,
+i.e. 500 appears twice as an assumed fallback value but the actual,
+normalized, shipped default -- per the one function whose job is
+specifically to compute that default -- is unlimited. The same
+inconsistency recurs one level down, for subagents: `cli.py`'s own
+`DEFAULT_CONFIG` dict sets `"delegation": {"max_iterations": 45, #
+Max tool-calling turns per child agent}`, while the example config
+shipped in the repository, `cli-config.yaml.example`, comments `#
+Max tool-calling turns per child (default: 250)` beside its own
+`delegation: max_iterations: 250` line -- two different numbers, both
+present in the same repository, each asserted as "the default" in its
+own file. None of this page's other four harnesses' sections document
+an equivalent internal inconsistency over their own default cap values,
+because none of the other three closed-source harnesses expose enough
+of their own internals to notice one, and pi's own `AgentLoopConfig`
+type (§4) has no default-cap field to be inconsistent about in the
+first place.
+
+## 6. Comparison
+
+All five document the same shape at the level the Hugging Face course
 teaches generically -- evaluate, act, observe, repeat, stop when the
 model stops requesting tools or a hard limit is hit. Concrete
 differences, all VERIFIED from each harness's own source above:
@@ -540,7 +862,17 @@ differences, all VERIFIED from each harness's own source above:
   message queues) is triggered neither by a harness-side counter
   (OpenCode) nor by an absent completion signal (Copilot CLI) but
   purely by explicit user action -- a third, distinct trigger class for
-  the same "inject a message to force one more turn" move.
+  the same "inject a message to force one more turn" move. Hermes
+  Agent's own ordinary stop condition is likewise model-driven (a
+  response with no tool calls reaches "finalization," §5.4) but layers
+  on *three* independent, narrowly-scoped nudges before actually
+  breaking -- a dropped-tool-call retry (bounded to 3 consecutive
+  stalls), an opt-in, off-by-default verify-on-stop nudge for coding
+  turns (bounded to 2 attempts), and a kanban-worker-only terminal-tool
+  nudge (bounded to 2 attempts, active only under
+  `HERMES_KANBAN_TASK`) -- more nudge mechanisms, each individually
+  scoped tighter, than any other single harness on this page documents
+  in one place.
 - **Budget/limit shape.** Claude Code's `max_budget_usd` is a hard,
   pre-emptively-enforced spend cap that ends the loop outright.
   Copilot CLI's nearest analogue, `sessionLimits.maxAiCredits`, is
@@ -552,7 +884,19 @@ differences, all VERIFIED from each harness's own source above:
   produces a hard stop with zero further model calls the way Claude
   Code's caps do. pi has no analogue at all in this dimension -- its
   nearest numeric cap, `retry.provider.maxRetries`, bounds per-call HTTP
-  retries, not turns or spend, and defaults to `0` (disabled).
+  retries, not turns or spend, and defaults to `0` (disabled). Hermes
+  Agent has the shape of a turn-count cap (`agent.max_iterations`,
+  incremented per iteration via a thread-safe `IterationBudget`,
+  §5.5) closest to OpenCode's step limit among the harnesses on this
+  page, but its actual *default* is, source-verified, unlimited
+  (`resolve_turn_limit()`'s own `TURN_LIMIT_UNLIMITED = sys.maxsize`
+  sentinel applies whenever the user has not set an explicit positive
+  `agent.max_turns`) -- closer to pi's own no-cap posture in practice
+  than to OpenCode's step limit, which this page's §3 does not document
+  as user-configurable to "off." Hermes additionally has a one-shot
+  `_budget_grace_call` escape hatch, source-confirmed to force exactly
+  one further iteration past an otherwise-exhausted budget, with no
+  other harness on this page documenting an equivalent grace mechanism.
 - **Verifiability.** Claude Code's and Copilot CLI's loops are each
   knowable only through what their respective companies choose to
   document (the Agent SDK page for Claude Code; the separate Copilot
@@ -568,14 +912,44 @@ differences, all VERIFIED from each harness's own source above:
   reading `agent-session.ts`'s own import statement that this is the
   implementation driving pi's real interactive/print/RPC sessions,
   rather than the separate, larger `AgentHarness` specification that
-  also lives in the same package.
+  also lives in the same package. Hermes Agent is verifiable the same
+  direct way as pi -- `agent/conversation_loop.py`,
+  `agent/tool_executor.py`, `agent/iteration_budget.py`, and the rest
+  of §5's sources are the actual, currently-shipping implementation,
+  not a docs paraphrase -- with one added wrinkle neither OpenCode nor
+  pi's sections exhibit: this page found the codebase's own internal
+  documentation (module docstrings, code comments) *disagreeing with
+  itself* about default cap values and about what the word "turn"
+  scopes over (§5.1, §5.5), a level of scrutiny only possible because
+  the source itself, not just one docs page or one file, was read
+  closely enough to compare against a second file's claims.
 - **Turn/tool-execution boundary.** Claude Code, Copilot CLI, and
   OpenCode all treat "one LLM call" as the atomic turn unit, with tool
   execution happening *between* two turns. pi's own `turn_start`/
   `turn_end` pair instead brackets one LLM call *and* the execution of
   every tool call that response contained, as one turn -- a smaller
   but real structural difference in the same overall Action/Observation
-  shape.
+  shape. Hermes Agent matches the majority shape (Claude Code/Copilot
+  CLI/OpenCode), not pi's: one "iteration" is one provider call, and
+  tool execution happens after it, within that same `while`-loop pass,
+  before the next iteration's provider call -- it does not bracket the
+  call and its tool round under one single named event pair the way
+  pi's `turn_start`/`turn_end` does.
+- **Parallel tool dispatch granularity.** Claude Code's own documented
+  rule is coarse and binary -- read-only tools may run concurrently,
+  mutating tools (Edit/Write/Bash) always run sequentially, and a
+  custom tool defaults to sequential unless it declares
+  `readOnlyHint` (§1). Hermes Agent's own segment planner (§5.3) is
+  considerably finer-grained and, unusually, *content-aware*: a batch
+  mixing read-only and mutating filesystem tools can still run
+  concurrently in part, because path-scoped readers and writers are
+  admitted to the same parallel run only when the actual target paths
+  in the batch (parsed from patch bodies for `patch` calls, not from a
+  spoofable `path=` argument) do not overlap, with a real
+  `DaemonThreadPoolExecutor` (cap 8 workers) doing the concurrent
+  dispatch. None of Copilot CLI's, OpenCode's, or pi's own sections on
+  this page document an equivalently fine-grained, path-overlap-aware
+  admission rule for their own within-turn tool-call batches.
 
 BEST CURRENT UNDERSTANDING, UNCONFIRMED: whether OpenCode has an
 analogue to Claude Code's budget cap (`max_budget_usd`) or to its
@@ -591,7 +965,13 @@ SDK docs or the CLI's own changelog fetched this session, which is
 `AgentHarness` (§4's closing paragraph) ever governs turn-loop
 behavior for any real deployment of the CLI, and what its own
 lane-based subagent mechanism's turn/step semantics are -- `harness.md`
-was not read in full this session given its size.
+was not read in full this session given its size. Likewise UNCONFIRMED
+for Hermes Agent: what call site, if any, ever sets
+`agent._budget_grace_call = True` (§5.5) -- this session found only its
+declaration and its one-shot consumption, not its trigger; and what the
+`codex_app_server` alternate turn path (§5.1) does internally --
+`agent/transports/codex_app_server_session.py` was named in a code
+comment but not fetched or read this session.
 
 ## Sources
 
@@ -655,3 +1035,35 @@ was not read in full this session given its size.
   "lanes... subagents" quote) but not read in full given the document's
   size (200KB+) -- flagged as an open question in §4's own closing
   paragraph, not treated as fully verified.
+- `github.com/NousResearch/hermes-agent`, `main` branch, fetched 1
+  September 2026 -- confirmed via `gh api repos/NousResearch/hermes-agent`
+  as the repository's default branch (the standing caveat this page
+  applies to OpenCode's and pi's own `dev`/`main` branches applies here
+  too: `main` is a live branch, not a pinned release tag). Full-file
+  reads via `raw.githubusercontent.com/NousResearch/hermes-agent/main/<path>`:
+  `agent/conversation_loop.py` (the ~3,900-line `run_conversation`
+  function itself: the outer `while` loop condition, the tool-call gate,
+  the finalization block's dropped-tool-call/verify-on-stop/kanban-stop
+  nudge chain, the `finish_reason=="length"` truncated-tool-call refusal,
+  the `codex_app_server` early-return bypass); `agent/tool_executor.py`
+  and `agent/tool_dispatch_helpers.py` (the segment planner, the
+  path-overlap parallel-admission rules, `_MAX_TOOL_WORKERS = 8`, the
+  `DaemonThreadPoolExecutor` rationale, `handle_function_call` as the
+  single per-call dispatch site); `agent/iteration_budget.py` (the
+  `IterationBudget` class, its `consume()`/`refund()` semantics, and its
+  own module docstring's "default 500" claim); `agent/verification_stop.py`
+  and `agent/kanban_stop.py` (both modules' own docstrings and their
+  `max_attempts`/`_DEFAULT_MAX_ATTEMPTS` constants); `agent/agent_init.py`
+  (grepped for `_budget_grace_call`'s declaration); `run_agent.py`
+  (grepped and read in section for the `AIAgent` class itself,
+  specifically `run_conversation()`'s thin-forwarder body and
+  `_execute_tool_calls()`'s own docstring and dispatch logic);
+  `hermes_cli/config.py` (`resolve_turn_limit()` and
+  `TURN_LIMIT_UNLIMITED`, establishing the real default cap value); and
+  `cli.py` and `cli-config.yaml.example` (the `agent.max_turns`/
+  `HERMES_MAX_ITERATIONS` wiring and the `delegation.max_iterations`
+  45-vs-250 default inconsistency). This book's own
+  [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md)
+  §6 and [Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+  §6 are cross-referenced, not re-derived, for Hermes' broader
+  architectural introduction (entry points, sandboxed terminal backends).

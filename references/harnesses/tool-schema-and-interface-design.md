@@ -38,15 +38,17 @@ source independently rather than borrowing the other's fetch.
 Every claim below is tagged VERIFIED (fetched fresh this session from a
 named, authoritative source) or BEST CURRENT UNDERSTANDING,
 UNCONFIRMED. Claude Code, Copilot CLI (added in a later session,
-§1.6/§2.5/§3.5/§4.6), OpenCode, and (added in a still later session,
-§1.5/§2.4/§3.4/§4.5) pi are four separate products from four separate
-organizations; a mechanism confirmed for one is never assumed for
-another without its own citation. Copilot CLI ships as a closed-source
-binary -- unlike OpenCode's and pi's own real implementations, this
-page's Copilot CLI coverage is grounded entirely in GitHub's own
-published documentation surface, not a source read, per the `gh api
-repos/github/copilot-cli` check recorded in this page's own Sources
-block. Sources and fetch dates are listed in full at the bottom.
+§1.6/§2.5/§3.5/§4.6), OpenCode, pi (added in a still later session,
+§1.5/§2.4/§3.4/§4.5), and Hermes Agent (Nous Research; added in a still
+later session, §1.7/§2.6/§3.6/§4.7) are five separate products from
+five separate organizations; a mechanism confirmed for one is never
+assumed for another without its own citation. Copilot CLI ships as a
+closed-source binary -- unlike OpenCode's, pi's, and Hermes Agent's own
+real implementations, this page's Copilot CLI coverage is grounded
+entirely in GitHub's own published documentation surface, not a source
+read, per the `gh api repos/github/copilot-cli` check recorded in this
+page's own Sources block. Sources and fetch dates are listed in full at
+the bottom.
 
 ---
 
@@ -380,6 +382,90 @@ cross-referenced, not re-derived, from [built-in-tools.md](built-in-tools.md) §
 of the six permission *kinds* (`shell`/`write`/`read`/`url`/`memory`/`MCP-SERVER`) this command-line layer
 operates on.
 
+### 1.7 Hermes Agent: an OpenAI-function-calling wire shape, a schema-vs-registry description-precedence quirk, and model-family-conditioned schema variants read directly from source
+
+VERIFIED by direct source read this session, `github.com/NousResearch/hermes-agent`, `main` branch, fetched
+via `gh api`/`raw.githubusercontent.com` -- `tools/registry.py`, `tools/file_tools.py`, and
+`tools/fuzzy_match.py`, each read in full or in large excerpt -- cross-checked against
+`hermes-agent.nousresearch.com/docs/developer-guide/{adding-tools,tools-runtime}` (WebFetch, same session).
+Hermes is a fifth, independent, self-hosted product with no dependency on any harness covered elsewhere on
+this page -- see [Permissions & sandboxing architecture](permissions-and-sandboxing.md) §6 and
+[MCP integration](mcp-integration.md) §4 for this book's fuller architectural introduction, not repeated
+here. Unlike Copilot CLI (§1.6), Hermes' public repository ships its actual Python implementation, so the
+claims below are a source read, not a documentation-surface reconstruction.
+
+**Every built-in tool is a `name` + `description` + JSON-Schema `parameters` triple registered at import
+time via `registry.register()`, and the wire format the model actually receives is OpenAI's function-calling
+shape, not Anthropic's `input_schema` convention.** `tools/registry.py`'s own `get_definitions()` method
+builds each entry as `{"type": "function", "function": schema_with_name}` -- read directly from source --
+where `schema_with_name` is the tool's own `schema` dict (its `description` and `parameters` keys) with
+`name` merged in as a fallback if the schema itself omits it. This is a load-bearing implementation choice
+this page's other four harnesses' coverage does not state as explicitly for their own wire format: Hermes
+targets the OpenAI Chat-Completions-family tool-definition shape as its own canonical internal
+representation regardless of which of its many supported model providers a given session is actually
+running against, per the docs' own worked example (`WEATHER_SCHEMA = {"name": ..., "description": ...,
+"parameters": {"type": "object", "properties": {...}, "required": [...]}}`), a structurally identical shape
+to Anthropic's own three-required-fields description (§1.1) despite the different top-level wrapper key
+(`parameters` here, `input_schema` there) and the different provider-family convention it is named after.
+
+**A source-verified description-precedence quirk exists between the `schema` a tool registers and the
+separate, optional `description=` argument `registry.register()` also accepts -- one that Hermes' own
+developer docs state plainly rather than leaving implicit.** `registry.register()`'s signature carries both
+a required `schema` argument (whose own `description` key is, per the tools-runtime docs, "the authoritative
+model-facing description") and an optional `description=` keyword that populates a separate
+`ToolEntry.description` registry-metadata field. Read directly from the docs: "`get_definitions()` builds
+the OpenAI function definition from `entry.schema` and does not copy `entry.description` into a schema that
+lacks `description`. Therefore, `description=` alone does not describe the tool to the model, and when both
+values differ the model sees the schema value." This is a concrete instance of exactly the kind of
+authoring trap Anthropic's own `strict`-mode caveats (§1.2) and this page's own framing throughout warn
+against in the abstract -- two textually different descriptions can coexist for the same tool, only one of
+which the model ever reads, and Hermes' own maintainers evidently judged this worth calling out as a named
+gotcha in the project's own contributor-facing documentation rather than treating it as self-evident.
+
+**`dynamic_schema_overrides` is a genuinely new schema-authoring mechanism this page has not documented for
+any of its other four harnesses: a per-tool callback that rewrites a tool's own `description` and
+`parameters` at the moment `get_definitions()` builds the model-visible tool list, conditioned on runtime
+state the schema's own static definition cannot see.** Read directly from `tools/file_tools.py`'s own
+`PATCH_SCHEMA` and its paired `_patch_schema_overrides()` function: the `patch` tool's *base* schema is
+replace-only (`old_string`/`new_string`/`replace_all`), "what nearly every model family was trained on," per
+the source's own comment, but when `_is_openai_family_main()` -- itself a small, explicit
+provider/model-slug classifier reading the active session's own configured provider and model string --
+returns true, `dynamic_schema_overrides` layers on an additional `mode`/`patch` parameter pair advertising
+Hermes' own V4A multi-file patch dialect (OpenAI/Codex's native `apply_patch` format), because, per the same
+comment, "advertising it to everyone cost every other session ~148 tok/call." The handler itself accepts
+both shapes from any model regardless of which schema variant that session was shown, so the override is
+a pure token-budget/relevance optimization on the *description text and parameter surface the model sees*,
+not a behavioral gate. This is a mechanism-level parallel worth naming precisely against Copilot CLI's own
+model-family-conditioned *tool-name* vocabulary (§2.5's `str_replace_editor`/`apply_patch`-normalize-to-`Edit`
+finding): both harnesses conclude a model's own native tool-calling convention should shape what that model
+is shown, but Copilot CLI's variation is documented as operating at the *name*-normalization layer for hook
+matching, while Hermes' `dynamic_schema_overrides` operates at the *schema content* layer itself, rewriting
+the actual `description` and `parameters` JSON a given session's model reads, gated by the same
+provider-family logic. The same callback field is documented as also driving purely-informational,
+non-provider-conditioned rewrites -- `delegate_task`'s description is regenerated per session from the
+active `delegation.max_concurrent_children`/`max_spawn_depth` config values, and `read_file`'s description
+substitutes "PDF (scanned or text)" for "PDF (text layer)" when a trusted hosted-OCR route is configured --
+so the mechanism is a general schema-templating hook, of which model-family conditioning is one documented
+use, not the only one.
+
+**`check_fn`-gated tool availability removes a tool's schema from the model-visible list entirely rather
+than exposing it in a disabled or error-returning state, and a second, distinct mechanism patches *other*
+tools' schemas after that filtering runs specifically to prevent the model from referencing a tool it can no
+longer see.** `get_definitions()`, read directly from source, evaluates each entry's optional `check_fn` (an
+availability probe such as an API-key-present check) before building that tool's OpenAI-format entry, and
+skips the entry outright on failure -- consistent with the tools-runtime docs' own account ("if it returns
+`False`, the tool is silently excluded"). Separately, per those same docs, "after filtering, `execute_code`
+and `browser_navigate` schemas are dynamically adjusted to only reference tools that actually passed
+filtering (prevents model hallucination of unavailable tools)" -- i.e. a tool whose own schema *names* other
+tools by identifier (`execute_code`'s Python-callable surface, `browser_navigate`'s tool-chaining guidance)
+has that reference list actively pruned to match whichever sibling tools `check_fn` filtering actually
+admitted for the session, rather than leaving a stale reference to a tool the model cannot in fact call.
+This is a second, distinct instance of the same schema-content-tracks-actual-runtime-state discipline pi's
+own template-literal descriptions demonstrate (§1.5, sourcing a description's stated numeric limits from the
+same constants that enforce them) -- here applied to a schema's own *cross-tool references* rather than its
+own numeric limits, and, unlike pi's compile-time template literals, evaluated fresh on every `get_definitions()`
+call against that session's actual `check_fn` results.
+
 ---
 
 ## 2. Naming and description conventions that measurably affect tool-selection accuracy
@@ -589,6 +675,79 @@ one layer higher (the *agent*, not the *tool*). No source fetched this session n
 guidance field on Copilot CLI's own built-in tool definitions comparable to pi's `promptSnippet`/
 `promptGuidelines`; treat the apparent absence as unconfirmed-as-absent for Copilot CLI specifically, same
 as §2.4 already states for the other three harnesses, not as newly proven.
+
+### 2.6 Hermes Agent: imperative tool-redirection sentences as a lived negative-boundary convention, a hybrid namespacing scheme, and a corrected MCP-naming finding
+
+VERIFIED by direct source read this session (`tools/file_tools.py`, `tools/mcp_tool.py`, `toolsets.py`,
+`github.com/NousResearch/hermes-agent`, `main` branch) cross-checked against
+`hermes-agent.nousresearch.com/docs/reference/tools-reference` (WebFetch, same session).
+
+**Hermes' own built-in tool descriptions state negative boundaries not as an abstract "what this tool will
+not do" sentence (§2.2's `get_stock_price` example) but as a literal, named redirect to the specific sibling
+tool the model should call instead.** Read directly from `PATCH_SCHEMA`'s own `description`: "Use this
+instead of sed/awk in terminal." `SEARCH_FILES_SCHEMA`'s own `description`: "Use this instead of
+grep/rg/find/ls in terminal. Ripgrep-backed, faster than shell equivalents... Also use this instead of ls."
+And the `terminal` tool's own description, read from source, closes the loop from the opposite direction:
+"Do NOT use cat/head/tail -- use read_file. Do NOT use grep/rg/find -- use search_files." This is a
+three-way, mutually-reinforcing negative-boundary convention distinct in kind from anything this page's
+other four harnesses' coverage documents: rather than one tool's description stating what it alone will not
+do, Hermes authors a closed loop across an entire *toolset* -- the general-purpose `terminal` tool's own
+description actively steers the model away from four different shell idioms toward four specific
+purpose-built tools, and each of those tools' own descriptions independently states the same redirect from
+its own side. Read against §2.1's namespacing/negative-boundary guidance and §2.2's BFCL Function Relevance
+Detection category (the failure mode of a model reaching for an irrelevant or suboptimal tool when a better
+match exists), this is a concrete, source-verified authoring response to exactly that failure mode, applied
+at toolset-design scale rather than single-tool scale.
+
+**Namespacing is hybrid rather than uniform: general-purpose tools are flat and unprefixed, while
+platform-and-service-integration tools are prefixed by the service they front -- consistent with, not a
+violation of, Anthropic's own stated *condition* for namespacing (§2.1).** `terminal`, `patch`, `read_file`,
+`write_file`, `search_files`, `todo`, `memory`, `clarify`, `execute_code`, `delegate_task`,
+`session_search` -- Hermes' own core, always-loaded tools, per the tools-reference page's own `_HERMES_CORE_TOOLS`
+framing -- carry no service prefix, because none of them proxies a distinct external service the way
+Anthropic's own `github_list_prs`/`slack_send_message` example does. Tools that *do* front a distinct
+external service are prefixed by it: `ha_call_service`/`ha_get_state`/`ha_list_entities`/`ha_list_services`
+(Home Assistant), `spotify_playback`/`spotify_devices`/`spotify_queue`/`spotify_search`/`spotify_playlists`/
+`spotify_albums`/`spotify_library` (Spotify, registered by a bundled plugin), `yb_query_group_info`/
+`yb_query_group_members`/`yb_send_dm`/`yb_search_sticker`/`yb_send_sticker` (Yuanbao), `feishu_doc_read`/
+`feishu_drive_add_comment`/`feishu_drive_list_comments`/`feishu_drive_list_comment_replies`/
+`feishu_drive_reply_comment` (Feishu/Lark), and `xai_video_edit`/`xai_video_extend` (xAI, kept
+provider-specific and separate from the generic, backend-routed `video_generate` tool). Read across the
+full built-in-tools reference, this reads as an empirically-applied version of Anthropic's own stated rule
+("when your tools span multiple services or resources, prefix names with the service") rather than either
+a uniformly flat or uniformly namespaced scheme -- the prefix appears exactly where a tool's own identity is
+tied to one external product, and is absent exactly where it is not.
+
+**A corrected finding, resolved directly from source rather than left as an open discrepancy: Hermes' own
+MCP tool-naming convention is `mcp__<server>__<tool>` (double underscore) as of this session's source read,
+not the single-underscore `mcp_<server_name>_<tool_name>` this book's own
+[mcp-integration.md](mcp-integration.md) §4.2 previously documented from a WebFetch of Hermes'
+`user-guide/features/mcp` page on 24 August 2026.** `tools/mcp_tool.py`'s own source, read this session,
+defines `MCP_TOOL_NAME_PREFIX = "mcp__"` and `_MCP_NAME_DELIM = "__"`, with a code comment stating the
+convention directly: "Hermes uses the `mcp__<server>__<tool>` convention shared by Claude Code, Codex, and
+OpenCode... The double-underscore delimiter disambiguates the server/tool boundary even when either
+component contains underscores, and matches the naming models are trained on. It also aligns native
+registration with the Anthropic-OAuth wire form... removing the single->double rewrite that path previously
+had to perform." Read plainly, this is a source-confirmed convention *change* on Hermes' own side between
+this book's two research sessions, not a documentation error in either fetch: the comment's own past tense
+("previously had to perform") states that Hermes' native MCP-tool registration path once produced
+single-underscore names distinct from its Anthropic-OAuth wire path's double-underscore names, and has since
+been unified onto the double-underscore form -- the same form this page's own §2.1 and
+[built-in-tools.md](built-in-tools.md) §1.1 already document Claude Code using, and
+[mcp-integration.md](mcp-integration.md) §4.2 already documents Codex/OpenCode's `#33533` issue converging
+on. This page flags the discrepancy and resolves it from a fresh, dated source read rather than silently
+picking one account, consistent with this book's own cross-reference discipline; it does not edit
+[mcp-integration.md](mcp-integration.md) itself, whose own 24-August finding was accurate as of its own
+fetch date.
+
+**A silent-degradation naming-robustness layer exists for toolset names specifically, structurally similar
+to, but narrower than, Copilot CLI's own case-insensitive, unrecognized-names-ignored tool-alias layer
+(§2.5).** `toolsets.py`'s own `_LEGACY_TOOLSET_MAP`, per the tools-runtime docs, maps old toolset names
+carrying a now-dropped `_tools` suffix (`web_tools`, `terminal_tools`) onto their modern equivalents for
+backward compatibility -- a config-file-facing naming migration rather than a tool-name alias a model itself
+ever sees, narrower in scope than Copilot CLI's own model-facing alias table but the same underlying design
+instinct: a renamed identifier degrades to its current form rather than erroring, so an old configuration
+file or a model's own out-of-date assumption about a name does not hard-fail.
 
 ---
 
@@ -860,6 +1019,87 @@ agent is trying to do against each tool's name, its description, and its paramet
 which makes description quality under Copilot CLI's own deferred-loading regime a *retrieval* concern, not
 merely a *selection-among-visible-options* concern -- a framing distinction this page names once, fully, at
 §2.5.
+
+### 3.6 Hermes Agent: the largest built-in surface this page documents, an unevenly-applied consolidation practice, and a three-tier, three-bridge-tool deferred-loading mechanism
+
+VERIFIED, `hermes-agent.nousresearch.com/docs/reference/tools-reference` and
+`.../user-guide/features/tool-search` (WebFetch, this session), cross-checked against `toolsets.py` and
+`tools/file_tools.py`/`tools/cronjob_tools.py`-adjacent evidence read from source.
+
+**Hermes ships the largest built-in tool count this page documents for any harness -- roughly 86 tools by
+its own reference page's "Quick counts," against [built-in-tools.md](built-in-tools.md)'s own roughly thirty
+for Claude Code and roughly seventeen for OpenCode (§3.2).** The count is inflated relative to those two
+comparators partly by platform-conditional registration -- twelve desktop-GUI tools registered only for
+desktop-app sessions, five Feishu and five Yuanbao tools registered only on their own respective platform
+toolsets, two Discord tools gateway-only, seven Spotify tools plugin-registered -- so the ~86 figure is a
+*union* across every platform and integration Hermes supports, not the count any single session actually
+sees; a `hermes-cli` session's own always-loaded core set (`_HERMES_CORE_TOOLS`, named again below in this
+section's own Tool Search discussion) is materially smaller. This session's research did not additionally trace the exact `hermes-cli` preset's own tool count
+against Claude Code's and OpenCode's session-level counts, so no direct apples-to-apples total is asserted
+here -- only that Hermes' own *union* count is the largest this page names.
+
+**Consolidation via an `action` parameter is real and, in one case, almost a verbatim match for Anthropic's
+own worked `schedule_event` example (§3.1) -- but it is applied unevenly across Hermes' own toolsets, a
+genuine, source-documented internal inconsistency worth stating plainly rather than smoothing over.** The
+`cronjob` tool's own description, read from the tools-reference page, states directly: "Unified
+scheduled-task manager. Use `action=\"create\"`, `\"list\"`, `\"update\"`, `\"pause\"`, `\"resume\"`,
+`\"run\"`, or `\"remove\"` to manage jobs" -- seven distinct operations collapsed into one tool via exactly
+the `action`-parameter pattern Anthropic's own `writing-tools-for-agents` post recommends in the abstract.
+`discord`/`discord_admin` follow the identical pattern ("Actions include `search_members`, `fetch_messages`,
+`send_message`, `react`, `fetch_channel`, `list_channels`, and more"), as does `patch`'s own `mode`
+parameter (`replace`/`patch`, §1.7). The `kanban` toolset, by contrast, ships twelve semantically adjacent,
+individually-named tools -- `kanban_show`, `kanban_list`, `kanban_complete`, `kanban_block`,
+`kanban_request_review`, `kanban_request_changes`, `kanban_heartbeat`, `kanban_comment`, `kanban_create`,
+`kanban_link`, `kanban_unblock`, `kanban_attach`, `kanban_attach_url`, `kanban_attachments` -- rather than
+one `kanban(action=...)` tool of the same shape `cronjob` and `discord` already demonstrate elsewhere in
+the same codebase. Read against Anthropic's own stated rationale for consolidation ("fewer, more capable
+tools reduce selection ambiguity," §3.1), this is a real, same-codebase counterexample to uniform
+application of a principle the same project's own other tools already follow -- not evidence the principle
+is wrong, but evidence that even a single harness's own tool-authoring practice does not apply its own
+demonstrated consolidation pattern consistently across every toolset, echoing (from the opposite direction)
+§2.4's own finding that pi's built-in description-density discipline is likewise non-uniform across its own
+tool set.
+
+```mermaid
+flowchart TD
+    Model["Model turn begins"]
+    Model --> Check{"Any MCP/plugin\ntools attached?"}
+    Check -->|No| Eager["Tier 0: every tool\neager, no bridge"]
+    Check -->|Yes| Tier1{"Deferred catalog's\nlisting fits budget?"}
+    Tier1 -->|Yes| T1["Tier 1: bridge +\nname+description manifest\n(per-server degradation)"]
+    Tier1 -->|No| Tier2{"Even names-only\nexceeds budget?"}
+    Tier2 -->|Yes| T2["Tier 2: bare bridge +\none-line-per-server summary"]
+    T1 --> Bridge["tool_search / tool_describe / tool_call"]
+    T2 --> Bridge
+    Bridge -->|"tool_call unwraps"| Real["Real tool dispatched;\nhooks/approvals see real name"]
+```
+
+**Tool Search is Hermes' own deferred-schema-loading mechanism, independently named and implemented, and
+directly comparable in purpose to Claude Code's `ToolSearch`/`defer_loading` property (§3.3) and Copilot
+CLI's own tool search (§3.5) -- with two structural differences this page's other two instances do not
+exhibit.** Per the feature's own docs, when active, "MCP and plugin tools are replaced in the model-visible
+tools array by three bridge tools" -- `tool_search(queries, limit?)` (batched, per-query lexical search over
+the deferred catalog, stemmed so "issues" finds `create_issue`), `tool_describe(names)` (loads full schemas
+for named tools, reporting unresolvable names in a `not_found` list "without failing the rest of the
+batch"), and `tool_call(name, arguments)` (invokes a deferred tool by unwrapping the bridge -- "Pre-tool-call
+hooks, guardrails, approval prompts, and post-tool-call hooks all run against the real tool name -- not
+against `tool_call`"). First structural difference: unlike Claude Code's and Copilot CLI's own deferred-loading
+scope (§3.3/§3.5, which can defer some of a harness's own built-in tools once a count threshold is crossed),
+Hermes' own docs state the core set is categorically exempt -- "Built-in Hermes tools never defer" -- so only
+MCP-server tools and non-core plugin tools are ever eligible, regardless of how large that non-core catalog
+grows. Second structural difference: Hermes documents a three-tier, not binary, disclosure model gated on a
+configurable token budget (`threshold_pct` of the active model's context length, default 5%, and an absolute
+`listing_max_tokens` cap, default 4000) -- Tier 0 (no deferrable tools, full pass-through), Tier 1 (the
+deferred catalog's name+short-description manifest fits the budget, degrading *per server* so one
+oversized server collapses to a summary line while smaller servers keep full per-tool listings), and Tier 2
+(even a names-only listing exceeds budget for every server -- the docs' own named example is "Cloudflare's
+flat API surface alone: ~3,300 tools whose names are ~32K tokens" -- collapsing to a bare bridge plus a
+one-line-per-server tool-count summary). The docs state the tiered manifest's own rationale in exactly the
+terms this page's §3.1/§3.3 already establish for the underlying problem: "live benchmarking showed models
+substituting visible core tools... or declaring a capability nonexistent instead of calling `tool_search`,"
+i.e. deferring a schema *entirely invisibly* -- with no manifest at all -- produced worse model behavior than
+deferring the schema while keeping the tool's *existence* discoverable by name, a refinement neither this
+page's Claude Code nor Copilot CLI coverage documents as a distinct, separately-tuned failure mode.
 
 ---
 
@@ -1264,6 +1504,112 @@ destructiveness signal specifically -- no source fetched this session states tha
 that the partition is the closest documented analogue this session's research found, functioning as a
 permission gate rather than a declared risk annotation a model itself is shown.
 
+### 4.7 Hermes Agent: a fifth, independently-implemented nine-strategy fuzzy-match cascade with real overlap and real divergence from OpenCode's own, plus a dedicated error-text sanitization layer neither other harness's coverage documents
+
+VERIFIED by direct source read this session, `tools/fuzzy_match.py`, `tools/registry.py`, and
+`tools/file_tools.py`, `github.com/NousResearch/hermes-agent`, `main` branch, each read in full or large
+excerpt.
+
+**Every tool handler's result is normalized to a single JSON string via two canonical constructors,
+`tool_error(message, **extra)` and `tool_result(data=None, **kwargs)`, and the registry's own `dispatch()`
+wraps every handler call so no exception ever reaches the model unformatted.** Read directly from source,
+`tool_error()` returns `json.dumps({"error": _bound_error_text(str(message)), **extra})`; `dispatch()`
+catches any exception the handler itself raises and returns `tool_error(f"Tool execution failed:
+{type(e).__name__}: {e}")` after routing that raw text through a dedicated `_sanitize_tool_error()` step
+(imported from `model_tools.py`) specifically, per its own docstring reference, "so framing tokens / CDATA
+/ fences in exception strings don't reach the model as structural noise." This is a distinct, source-verified
+poka-yoke this page has not documented for any of its other four harnesses: an exception's own raw text --
+which may originate from a file's content, a subprocess's stderr, or any other data the model does not fully
+control -- is treated as untrusted with respect to the transcript's own structural formatting before it is
+handed back to the model, closing off a failure mode adjacent to, but distinct from, the ones §4.2's
+protocol-error/tool-execution-error split and this page's own naming/description-injection concerns
+elsewhere address: a *result string itself* containing text that could be misread as a framing delimiter,
+not a malicious tool description or a malformed argument. `dispatch()`'s own two-level design -- the
+registry's own `try`/`except` plus a documented secondary wrap in `handle_function_call()` -- is the same
+belt-and-suspenders shape the tools-runtime docs describe explicitly ("This ensures the model always
+receives a well-formed JSON string, never an unhandled exception"), and each tool additionally carries an
+optional per-entry `max_result_size_chars` cap (`patch`/`read_file`/`write_file`/`search_files` are all
+registered with `100_000`) enforced via a bounding helper on both success and error paths -- a tool's own
+failure text is held to the same context-budget discipline as its success output, not left unbounded on the
+theory that errors are rare.
+
+**Hermes' own `patch` tool implements a nine-strategy fuzzy-match cascade, source-verified strategy by
+strategy, that is a genuine, independent convergence with OpenCode's own nine-strategy cascade
+(§4.3) in overall shape and count -- and a genuine, source-verified divergence in exact composition, worth
+stating precisely rather than rounding off to "the same design."** `fuzzy_find_and_replace()`, read in full
+from `tools/fuzzy_match.py`, tries, in order: `exact`, `line_trimmed`, `whitespace_normalized`,
+`indentation_flexible`, `escape_normalized`, `trimmed_boundary`, `unicode_normalized`, `block_anchor`, and
+`context_aware` -- nine named strategies, matching the `patch` tool's own model-facing description ("Uses
+fuzzy matching (9 strategies)," §1.7/§3.6) exactly, strategy-count-to-docs-claim, by direct count of the
+source's own `strategies` list. §4.3 documents OpenCode's own `edit.ts` cascade as exact, line-trimmed,
+block-anchor (Levenshtein-thresholded), whitespace-normalized, indentation-flexible, escape-normalized,
+trimmed-boundary, context-aware, and multi-occurrence -- eight of Hermes' own nine names appear in
+OpenCode's own list verbatim or near-verbatim (allowing for underscore-vs-hyphen spelling), but Hermes'
+ninth strategy is `unicode_normalized` (matching Unicode-normalized text against ASCII-equivalent input,
+guarding a further Unicode-preservation rewrite step below), where OpenCode's own ninth is
+`multi-occurrence` (a distinct concern -- accepting more than one match under an explicit multi-edit
+request). Two independently-implemented, independently-open-sourced coding-agent harnesses converging on a
+nine-step, near-identically-named, progressively-looser string-matching cascade is a stronger data point for
+this design being a genuinely convergent engineering response to the same underlying problem (locating a
+model-supplied `oldString`/`old_string` against a file whose actual whitespace, indentation, or
+Unicode-normalization may not byte-match what the model typed) than either harness's cascade alone would be
+-- while the ninth-strategy divergence is equally real evidence that the two implementations were not
+copied from one another wholesale. One source comment inside `fuzzy_match.py`'s own "did you mean?"
+helper additionally names its own lineage directly rather than leaving it for a reader to guess: a
+whitespace-difference-diagnosis step is annotated "(pattern from crush's `diagnoseMismatch`)" -- an explicit,
+source-stated acknowledgment that at least one specific piece of this cascade's own design was adapted from
+a named third open-source coding-agent project (`crush`) neither previously documented on this page, a
+concrete instance of exactly the kind of pattern-propagation this page's own cross-harness convergences
+(§4.4's Claude Code/OpenCode `edit`-refusal convergence, above) infer indirectly, here stated as a fact by
+the implementers themselves.
+
+**The cascade's own failure modes are each a distinct, actionable, quoted message, matching the same
+refuse-with-a-specific-reason discipline §4.3/§4.4/§4.5 already document converging across Claude Code,
+OpenCode, and pi.** Read directly from source: an ambiguous match returns `"Found {N} matches for
+old_string. Provide more context to make it unique, or use replace_all=True. Matches:\n{locations}"` (with
+`locations` a formatted list of the actual matching line numbers and snippets, not just a bare count); a
+`replace_all` call that only an approximate strategy (`block_anchor`/`context_aware`) matched is refused
+rather than applied wholesale, with the reasoning stated inline ("`replace_all` only applies to exact
+matches. Provide the precise text... so an exact/line-trimmed match can be made"), guarding the same
+silently-overwrite-too-much failure mode §4.3's `isDisproportionateMatch` guard names for OpenCode; a
+byte-identical `old_string`/`new_string` pair is refused via a named constant, `IDENTICAL_STRINGS_ERROR`
+("No edit was applied because old_string and new_string are identical. Provide the existing text to replace
+in old_string and the changed replacement text in new_string"), the same no-op guard §4.3 documents
+OpenCode's own `"No changes to apply"` message providing and §4.5 documents pi's own `getNoChangeError`
+providing -- a third and fourth independently-implemented instance of the identical guard; and a genuine
+no-match falls through every strategy to `"Could not find a match for old_string in the file"`, which a
+separate `format_no_match_hint()` step then extends, specifically and only for that exact failure text (not
+for the ambiguous-match, escape-drift, or identical-strings failures, which the function explicitly excludes
+so a misleading suggestion is never appended to an unrelated failure), with a `"Did you mean one of these
+sections?"` snippet built from `SequenceMatcher`-scored candidate lines, including a dedicated
+whitespace-visualization branch (`→` for tab, `·` for space) when the closest candidate matches after
+stripping but not before -- a concrete, source-verified self-correction aid beyond a bare diagnosis, not
+named as an equivalent mechanism for Claude Code's, Copilot CLI's, OpenCode's, or pi's own edit-tool error
+designs elsewhere on this page. A distinct `_detect_escape_drift()` guard additionally refuses a
+non-exact-strategy match when `new_string` carries a literal backslash-escaped quote sequence the matched
+file region does not itself contain, worded to name the likely mechanical cause directly ("This is almost
+certainly a tool-call serialization artifact where an apostrophe or quote got prefixed with a spurious
+backslash") -- a failure-diagnosis sentence pointed at the *transport*, not the model's own reasoning, a
+framing this page's other harness coverage does not exhibit for an equivalent guard.
+
+**A separate, non-fuzzy-match example of the same actionable-error discipline: `write_file`'s own missing-
+argument guard names the likely root cause rather than only the missing field.** Read directly from
+`_handle_write_file()`: a call missing the required `content` field returns `"write_file: missing required
+field 'content'. The tool call included a path but no content argument -- this is almost always a
+dropped-arg bug under context pressure. Re-emit the tool call with the full content payload, or use
+execute_code with hermes_tools.write_file() for very large files."` -- naming both the probable cause (a
+dropped argument under context pressure, a failure mode this page has not seen named this specifically
+elsewhere) and two distinct recovery paths (a straightforward re-emit, or an escape hatch to a different
+tool entirely for the case where the dropped argument was itself a symptom of the payload being too large
+for a single tool-call argument). Two smaller, source-adjacent data points from the same tools-reference
+page round out this section: terminal commands killed by a signal return a human-readable cause ("terminated
+by signal 9: SIGKILL -- often the kernel OOM killer on memory exhaustion, or an explicit kill -9") rather than
+a bare negative exit code, and `read_file` transcodes detected UTF-16 input to UTF-8 rather than refusing it
+outright as a binary file, disclosing the conversion via an inline hint rather than silently altering the
+file's own encoding on a subsequent `patch`/`write_file` call -- both small, concrete instances of the same
+error-and-edge-case-as-information design principle this section documents at length for the fuzzy-match
+cascade.
+
 ---
 
 ## 5. Synthesis
@@ -1369,6 +1715,39 @@ silently *tolerates* a class of near-miss text (Unicode quote/dash/space variant
 harnesses' stricter exact-match designs would refuse outright, a genuine three-way design split this page
 would not have surfaced without reading pi's own source directly.
 
+**Hermes Agent, folded into this same picture as a fifth, independently-implemented data point read
+directly from a public source repository rather than reconstructed from documentation.** On schema
+authoring (§1.7), Hermes targets an OpenAI-function-calling wire shape (`{"type": "function", "function":
+{...}}`) as its own canonical internal representation regardless of the model provider actually in use,
+documents a source-verified schema-vs-registry description-precedence quirk its own contributor docs warn
+against directly, and introduces `dynamic_schema_overrides` -- a schema-templating hook this page has not
+documented for any of the other four harnesses, capable of rewriting a tool's own `description` and
+`parameters` per session based on the active model's provider family (the `patch` tool's OpenAI-only V4A
+layer) or on live config state (`delegate_task`'s concurrency-limit-dependent description), and of pruning a
+schema's own cross-tool references to match whichever sibling tools a session's `check_fn` filtering
+actually admitted. On naming (§2.6), Hermes adds a three-way, toolset-wide negative-boundary convention (a
+general-purpose tool's own description naming the specific narrower tool to use instead, and that narrower
+tool's own description stating the same redirect back) neither this page's other four harnesses' coverage
+exhibits at this scale, a hybrid namespacing scheme applied exactly where Anthropic's own stated condition
+for it holds (service-integration tools prefixed, general-purpose tools flat), and a source-verified
+correction to this book's own prior [mcp-integration.md](mcp-integration.md) §4.2 finding: Hermes' own MCP
+tool-naming convention is now `mcp__<server>__<tool>` (double underscore, matching Claude Code, Codex, and
+OpenCode), not the single-underscore form documented from an earlier fetch, per a source comment confirming
+the harness migrated between this book's two research sessions. On granularity (§3.6), Hermes ships the
+largest built-in tool union this page names (~86, platform-conditional) alongside a real, same-codebase
+inconsistency in applying its own `action`-parameter consolidation pattern (`cronjob`/`discord` consolidated,
+`kanban`'s twelve tools not), and its own "Tool Search" is a fourth independently-implemented deferred-
+loading mechanism (after Claude Code's, Copilot CLI's, and this book's own general awareness of the pattern)
+-- the first on this page documented as three tiers rather than binary, and the first documented as
+categorically exempting a harness's own built-in tools from ever deferring. On idempotency and errors (§4.7),
+Hermes' own `patch` tool implements a nine-strategy fuzzy-match cascade that is simultaneously the strongest
+convergence data point this page has for the fuzzy-replacement-cascade design (eight of nine strategy names
+match OpenCode's own cascade, §4.3) and a genuine divergence in its exact ninth strategy, converges a fourth
+time (after Claude Code, OpenCode, and pi) on refuse-with-a-specific-actionable-reason for the identical
+no-op and ambiguous-match failure modes, and adds a dedicated error-text sanitization step
+(`_sanitize_tool_error`) stripping transcript-structural characters from raw exception text before it
+reaches the model -- a poka-yoke this page's other four harnesses' coverage does not name an equivalent for.
+
 ---
 
 ## Sources
@@ -1377,7 +1756,10 @@ All fetched fresh this session (2026-08-17) unless noted otherwise. The GitHub C
 (§1.6, §2.5, §3.5, §4.6, and this page's synthesis paragraph on Copilot CLI) were added in a later session,
 fetched fresh 1 September 2026, and are dated separately in their own Sources entry below. The pi sections
 (§1.5, §2.4, §3.4, §4.5, and this page's synthesis paragraph on pi) were added in a still later session,
-also fetched fresh 1 September 2026, and are dated separately in their own Sources entry further below.
+also fetched fresh 1 September 2026, and are dated separately in their own Sources entry further below. The
+Hermes Agent sections (§1.7, §2.6, §3.6, §4.7, and this page's synthesis paragraph on Hermes Agent) were
+added in a still later session, also fetched/read fresh 1 September 2026, and are dated separately in their
+own Sources entry further below.
 
 **Anthropic (authoritative for Claude's documented tool-definition
 behavior and Anthropic's own recommended tool-design technique; not
@@ -1520,6 +1902,48 @@ not a stable release tag):**
   `packages/ai/README.md`-sourced multi-provider wire-protocol findings) only to establish the
   two-package-name distinction in §1.5 -- not re-fetched or re-verified here.
 
+**Hermes Agent (Nous Research) (authoritative for its own real implementation, read directly from source,
+AND its own documented behavior; fetched/read fresh 1 September 2026 from
+`github.com/NousResearch/hermes-agent`, `main` branch, via `gh api`/`raw.githubusercontent.com`, and from
+`hermes-agent.nousresearch.com/docs/` via WebFetch):**
+- `tools/registry.py` (read in full) -- the `ToolEntry`/`registry.register()` signature, `get_definitions()`'s
+  `{"type": "function", "function": schema_with_name}` OpenAI-format construction and its `check_fn`-gated
+  filtering and `dynamic_schema_overrides` application (§1.7), `dispatch()`'s two-level exception wrapping
+  and its `_sanitize_tool_error`-routed sanitization (§4.7), and the `tool_error()`/`tool_result()` canonical
+  JSON-error/-result constructors (§4.7).
+- `tools/file_tools.py` (read in large excerpt, patch/read_file/write_file/search_files sections in full)
+  -- `PATCH_SCHEMA`, `_PATCH_V4A_DESCRIPTION`/`_PATCH_V4A_PARAMS`, `_is_openai_family_main()`, and
+  `_patch_schema_overrides()`'s model-family-conditioned schema layering (§1.7); `SEARCH_FILES_SCHEMA`'s and
+  `terminal`'s own negative-boundary/tool-redirection description text (§2.6); `_handle_write_file()`'s
+  dropped-arg-bug error message (§4.7); `_read_file_schema_overrides()`'s config-conditioned description
+  rewrite (§1.7).
+- `tools/fuzzy_match.py` (read in full) -- the nine-strategy `fuzzy_find_and_replace()` cascade
+  (`exact`/`line_trimmed`/`whitespace_normalized`/`indentation_flexible`/`escape_normalized`/
+  `trimmed_boundary`/`unicode_normalized`/`block_anchor`/`context_aware`), the ambiguous-match/
+  approximate-replace_all/`IDENTICAL_STRINGS_ERROR`/escape-drift quoted error messages, and
+  `format_no_match_hint()`/`find_closest_lines()`'s "did you mean?" mechanism including its own
+  "(pattern from crush's `diagnoseMismatch`)" source-comment attribution -- all cited in §4.7.
+- `tools/mcp_tool.py` (grepped for naming logic) -- `MCP_TOOL_NAME_PREFIX = "mcp__"`,
+  `mcp_prefixed_tool_name()`, and the source comment confirming the double-underscore convention and its own
+  migration from a prior single-underscore form, resolving §2.6's corrected finding against
+  [mcp-integration.md](mcp-integration.md) §4.2's earlier, differently-dated fetch.
+- `hermes-agent.nousresearch.com/docs/developer-guide/adding-tools` (WebFetch) -- the two-file
+  (`tools/your_tool.py` + `toolsets.py`) tool-authoring recipe, the `WEATHER_SCHEMA` worked example, and the
+  handler-must-return-JSON-string/errors-as-`{"error":...}` key rules cited in §1.7.
+- `hermes-agent.nousresearch.com/docs/developer-guide/tools-runtime` (WebFetch) -- the
+  `registry.register()`/`discover_builtin_tools()` mechanics, the schema-vs-`description=`
+  precedence quote cited verbatim in §1.7, `check_fn` caching/fail-safe behavior, `get_tool_definitions()`'s
+  toolset-resolution and dynamic-schema-patching-for-`execute_code`/`browser_navigate` behavior (§1.7),
+  `_LEGACY_TOOLSET_MAP` (§2.6), and the two-level dispatch/error-wrapping flow diagram (§4.7).
+- `hermes-agent.nousresearch.com/docs/reference/tools-reference` (WebFetch) -- the ~86-tool "Quick counts"
+  figure and full per-toolset tool/description/requires-environment tables underlying §2.6's
+  namespacing survey and §3.6's consolidation-vs-`kanban` inconsistency finding, the `mcp__<server>__`
+  naming example, the signal-death-explained and UTF-16-transcoded-not-refused notes cited in §4.7.
+- `hermes-agent.nousresearch.com/docs/user-guide/features/tool-search` (WebFetch) -- the three-bridge-tool
+  (`tool_search`/`tool_describe`/`tool_call`) mechanism, the Tier 0/1/2 disclosure model and its
+  `threshold_pct`/`listing_max_tokens` configuration keys, the "Built-in Hermes tools never defer" rule, and
+  the live-benchmarking rationale for the embedded listing manifest, all cited in §3.6.
+
 **This book's own prior, cross-referenced findings (not re-fetched or
 re-verified in this session; cited as already-established per this
 project's own cross-reference discipline):**
@@ -1538,7 +1962,10 @@ project's own cross-reference discipline):**
 - [mcp-integration.md](mcp-integration.md) and
   [instruction-context-budget.md](instruction-context-budget.md) --
   the discovery/registration and lazy-loading mechanics underlying
-  §3.3's deferred-schema-loading discussion.
+  §3.3's deferred-schema-loading discussion; [mcp-integration.md](mcp-integration.md)
+  §4.2 specifically for its own, earlier (24 August 2026), now-superseded
+  single-underscore Hermes MCP-naming finding, corrected directly from
+  a fresh source read in §2.6.
 - [permissions-and-sandboxing.md](permissions-and-sandboxing.md) --
   cited in §4.1 only to state the boundary that a tool annotation is
   never a substitute for that page's own documented enforcement

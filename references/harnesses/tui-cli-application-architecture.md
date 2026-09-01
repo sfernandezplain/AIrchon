@@ -1008,22 +1008,371 @@ CLI's first-run folder-trust dialog does (§2.3) or serves some other purpose
 
 ---
 
-## 5. Synthesis
+## 5. Hermes Agent (Nous Research)
 
-| Concern | Claude Code | Copilot CLI | OpenCode | pi |
-|---|---|---|---|---|
-| Rendering engine | Ink-adjacent (BEST CURRENT UNDERSTANDING, corroborated by Ink's own adopters list + a community reverse-engineering claim of substantial custom rewrite); Yoga-based Flexbox layout, later a pure-TS reimplementation (VERIFIED via changelog, cross-ref streaming-and-incremental-rendering.md §1.1); two distinct rendering paths (classic scrollback vs. alt-screen "fullscreen") | Ink, directly confirmed (VERIFIED via Ink's own README adopters list AND a first-party GitHub engineering blog naming Ink components/hooks explicitly); a later, separately-named "cell-based renderer" layered on top | OpenTUI: a native Zig core exposed over a C ABI, Flexbox layout, consumed via the Solid reconciler specifically (not the also-available React one) -- fully source/docs-verified, the most precisely documented of the three | `@earendil-works/pi-tui`: a wholly from-scratch, dependency-free framework (no Ink/OpenTUI/blessed) -- fully source-verified. Line-level (not cell-level) differential rendering, CSI 2026 synchronized output, two swappable renderers (`TuiMainScreen`/`TuiAltScreen`) behind one shared interface, its own Flexbox-vocabulary (`basis`/`grow`/`shrink`) alt-screen layout engine, and native compiled (darwin/win32) modifier-key detection with no confirmed equivalent elsewhere in this page |
-| Component model | Reconstructed only indirectly, via a 19-context keybindings taxonomy documented for input-scoping purposes, not as an explicit UI-architecture description | Reconstructed indirectly from changelog behavior; a distinct split-view Sessions sidebar shown to be independently focusable from the main chat surface | Fully source-verified three-tier hierarchy: primitive intrinsics (`box`/`text`/`textarea`/`scrollbox`/`diff`) -> composite widgets (a reusable parametrized `Prompt<T>` dialog component instantiated three ways for one feature) -> feature-scoped dialog/route files, plus a shared generic dialog toolkit | Fully source-verified: a plain `Component` interface (`render(width): string[]`, no virtual DOM/JSX/reconciler at all) composed imperatively via `addChild`/`removeChild`; ~18 built-in primitives/composites plus an explicit `OverlayHandle` focus-arbitration API for dialogs; roughly forty feature-scoped app components built on top in the coding-agent package |
-| Modal-state architecture | Per-context keybinding scoping (`Confirmation`, `DiffDialog`, `Select`, etc.), each context independently defining its own actions; fullscreen mode gives open dialogs explicit auto-follow display priority | A cycled `mode` list (interactive/plan/autopilot, shell demoted out of the cycle in a later release) whose current value is read by the same dialog-invocation logic that decides whether to surface permission/elicitation/`ask_user` dialogs at all, rather than being a separate code path | A genuine mode**-stack** (push/pop, shadowing rather than toggling), architecturally closer to a modal text editor's own mode machinery than either other harness's flatter scoping mechanism | Two independent layers, structurally unlike the other three: mutually exclusive **CLI-invocation-time** entry points (interactive/print/print-json/rpc, chosen once at startup, never cycled or pushed mid-session) plus, inside interactive mode, one flat merged keybinding registry (extended via TypeScript declaration merging) dispatched to whichever component the overlay-focus mechanism currently targets |
-| Multi-line input mechanism | `Ctrl+J`/backslash-Enter always work; `Shift+Enter` requires either native terminal support or a one-time `/terminal-setup` write into the *outer* terminal's own config | `Shift+Enter` requires Kitty-keyboard-protocol support or the same `/terminal-setup`-into-outer-terminal pattern; two open GitHub Issues confirm the terminal-coverage gap is still live | A dedicated, densely-populated `input_*` keybinding family (36 actions) covering cursor movement, selection, word/line/buffer-scoped deletion, undo/redo, and both logical- and "visual"-line home/end variants -- editor-grade granularity, source-confirmed rather than inferred | `Shift+Enter`/`Ctrl+Enter`/`Alt+Enter` all insert a newline in the `Editor` component, docs stating "Alt+Enter most reliable" across terminals; a documented Emacs-style kill-ring (yank/yank-pop) with no confirmed equivalent in the other three |
-| Leader-key / chord support | Chords supported in the keybindings file (space-separated sequences, e.g. `ctrl+x ctrl+e`) with documented prefix-reservation semantics, but no single default "leader" concept | A narrower single chord (`Ctrl+X` then `/` for slash-command insertion); no broader leader-key system documented | A first-class `<leader>` placeholder (default `ctrl+x`) used across dozens of bindings, paired with a dedicated which-key discoverability panel -- a Vim-plugin-derived pattern with no confirmed equivalent in either other harness | No leader-key or chord system found in the base `Keybindings` registry read this session (`Ctrl+]`/`Ctrl+Alt+]` jump-to-character is the closest analogue, a two-step but not chorded action) |
-| Permission-prompt modal design | A single generic `Confirmation` context reused for yes/no/explain-toggle, with `Shift+Tab` permission-mode cycling available from inside the open dialog | Three-option dialog combining accept-once/accept-for-session/reject-with-redirection-text in one prompt; suppressed entirely under autopilot mode rather than auto-answered by a separate path | A three-stage `Switch`/`Match` state machine (`permission` -> `always` -> `reject`) built from one reusable `Prompt<T>` component instantiated per stage, with a permission-kind-specific body dispatch table (edit/bash/task/webfetch/etc.) and its own local, component-scoped keybindings | None exists -- pi ships no permission-rule engine at all (VERIFIED, cross-ref [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5.1), so no accept/reject confirmation component is named anywhere in its interactive-mode component listing, a structural consequence of that design choice rather than a coverage gap |
-| Cross-harness interop found | -- | Reads Claude Code's `.claude/settings.json` directly (already documented in [configuration.md](configuration.md)) | Reads Claude Code's `~/.claude/ide/*.lock` file protocol directly to discover a connected IDE for editor-selection sync (§3.4, newly documented here) | None found this session |
+Hermes Agent is open source (`github.com/NousResearch/hermes-agent`, MIT
+license, primarily Python -- VERIFIED, `gh api repos/NousResearch/hermes-agent`,
+fetched fresh this session), and this page joins
+[streaming-and-incremental-rendering.md](streaming-and-incremental-rendering.md)
+§5 (fetched the same day, a separate research pass, per that section's own
+dateline) as one of only two places in this book that source Hermes' own
+repository directly rather than its hosted docs; the book's other Hermes
+Agent sections -- including
+[memory-management.md](memory-management.md) §5,
+[permissions-and-sandboxing.md](permissions-and-sandboxing.md) §6, and
+[hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §6 --
+remain sourced from `hermes-agent.nousresearch.com/docs/` (WebFetch), never
+from the repository itself. Where streaming-and-incremental-rendering.md's
+own §5 already establishes a fact from source -- that `@hermes/ink`
+(`ui-tui/packages/hermes-ink`) is a private, in-repo fork of `ink` rather
+than a dependency on the public package, vendoring the same dependency
+family (`react-reconciler`, `@alcalzone/ansi-tokenize`, `wrap-ansi`,
+`cli-boxes`) upstream Ink itself ships -- this section names it once for
+context below and points back to that page's own citations rather than
+re-deriving it. This page instead applies the same
+source-over-docs standard it already applies to OpenCode (§3) and pi (§4)
+to a different layer of the same repository: not streaming/reassembly
+mechanics (already that page's subject), but the **application architecture**
+question this page asks of every harness -- rendering framework choice,
+component/widget structure, and keybinding/input handling -- located via the
+GitHub API tree endpoint and fetched via `gh api`'s base64 `contents`
+endpoint this session (joining the API's own line-wrapped base64 payload
+before decoding, the same `raw.githubusercontent.com`-adjacent workaround
+this book's other source-inspectable-harness sections already document
+needing). The finding this direct source access surfaces, and that no docs
+page states anywhere, is architecturally the richest one this section has to
+offer, and one streaming-and-incremental-rendering.md's own narrower focus
+on `ui-tui/` never surfaces either: **Hermes ships two independent,
+differently-implemented terminal front ends over one shared Python agent
+core**, not one -- a shape with no analogue anywhere else on this page.
 
-**The design lesson.** All four harnesses converge on the same underlying
+```mermaid
+flowchart LR
+    subgraph Core["Python agent core"]
+        Agent["agent/* package\n(model calls, tools, memory)"]
+    end
+    subgraph BaseCLI["Base CLI -- cli.py"]
+        PT["prompt_toolkit Application\nHSplit of stacked\nConditionalContainer widgets"]
+        Rich["Rich Console\n(markup/color rendering)"]
+        Curses["stdlib curses\n(hermes tools / hermes skills\nchecklists only)"]
+        Rich -->|ChatConsole buffer bridge\nvia patch_stdout| PT
+    end
+    subgraph TUIProc["hermes-tui (Node/TS process)"]
+        Ink["@hermes/ink\nforked, in-repo Ink\n(react-reconciler + native-ts Yoga)"]
+    end
+    subgraph Gateway["tui_gateway (Python)"]
+        GW["JSON dispatch over\nTeeTransport (stdio)"]
+        WS["optional WS mirror\nHERMES_TUI_SIDECAR_URL"]
+    end
+    Agent --> PT
+    Agent --> GW
+    GW <--> Ink
+    GW --> WS
+    WS -.-> Dash["browser dashboard\n/api/pty sidebar"]
+```
+
+### 5.1 Rendering engine: a prompt_toolkit REPL and a forked, in-repo Ink client, bridged to one Python core
+
+The default entry point, `cli.py` (read in full this session, 1,040,649
+bytes decoded), builds its interactive loop directly on **prompt_toolkit**
+(`prompt_toolkit==3.0.52`, VERIFIED from `pyproject.toml`'s own dependency
+list, which annotates it "Interactive CLI (`prompt_toolkit` is used directly
+by `cli.py`)"), not Ink, not a custom cell-diffing engine, and not curses for
+the main chat loop. `HermesCLI`'s own `run()` method constructs a
+`prompt_toolkit.application.Application` with `layout=Layout(HSplit(...))`,
+`full_screen=False`, and `mouse_support=False` -- explicit, source-read
+constructor arguments confirming Hermes' primary CLI deliberately opts out of
+both the alternate-screen buffer every one of §1's, §2's, and §3's own
+fullscreen/alt-screen modes uses, and of native mouse handling entirely.
+Instead, `run()` prints `shutil.get_terminal_size().lines - 1` blank lines
+before rendering anything, an explicit, source-commented trick "to push the
+entire TUI to the bottom of the terminal so the banner, responses, and
+prompt all appear pinned to the bottom" while conversation output prints
+into the terminal's ordinary scrollback above it -- architecturally a third
+distinct answer to the "classic scrollback vs. alt-screen" question this
+page has now traced across four other harnesses, neither a real alt-screen
+mode nor an un-anchored classic renderer, but a classic renderer whose fixed
+chrome is pinned to the visible bottom edge by a one-time cursor-position
+trick rather than by an alternate buffer. `erase_when_done=True` on the same
+`Application` constructor call is stated, in a source comment, to exist
+specifically so that on exit "the live bottom chrome (status bar, input box,
+separator rules)" is erased rather than frozen into scrollback, "so a dead
+status bar + empty prompt" does not "sit between the conversation transcript
+and the \"Resume this session\" block" and "stack with the next session's UI
+on resume" (a named, dated regression, `#38252`) -- the conversation
+transcript itself is unaffected, since it was already printed through
+`patch_stdout` into real scrollback and only the managed chrome is erased.
+
+Rich markup is used for color and panel rendering, but its rendered ANSI
+never touches the terminal directly: a `ChatConsole` adapter class
+(read in full, `cli.py` lines ~9286-9371) wraps a genuine `rich.console.Console`
+instance pointed at an in-memory `io.StringIO` buffer
+(`force_terminal=True, color_system="truecolor"`), and its own `print()`
+method re-reads the live terminal width on every call (`shutil.get_terminal_size()`,
+"so panels adapt to current size"), strips OSC escape sequences (the same
+class of hyperlink escape prompt_toolkit's own ANSI parser does not handle),
+and routes the result line-by-line through a `_cprint()` helper that calls
+prompt_toolkit's own `print_formatted_text(ANSI(...))` -- explicitly, per a
+source comment, because "raw ANSI escapes written via `print()` are swallowed
+by `patch_stdout`'s `StdoutProxy`." `_cprint()` itself is thread-aware:
+emissions from the same thread the `Application`'s event loop runs on print
+directly, but emissions from a background thread (named examples in the
+source: the self-improvement background review's summary, curator summaries)
+are rescheduled via `run_in_terminal()` through `loop.call_soon_threadsafe()`,
+which the source comment states "pauses the input area, prints the line
+above it, and redraws the prompt cleanly" -- an explicit, source-documented
+answer to the same cross-thread-emission-vs.-fixed-input-area race every
+fixed-bottom-chrome TUI on this page must solve somehow, here solved by
+prompt_toolkit's own primitive rather than a bespoke queue. A third, entirely
+separate rendering technology exists for a narrower surface: `hermes_cli/curses_ui.py`
+(read in full, 45,106 bytes) implements "a curses multi-select with keyboard
+navigation, plus a text-based numbered fallback for terminals without curses
+support," used specifically by the `hermes tools` and `hermes skills`
+checklist commands -- i.e. Hermes' base CLI runs **three** distinct rendering
+technologies (prompt_toolkit for the main REPL, Rich for markup piped through
+it, stdlib `curses` with its own numbered-fallback for two narrow auxiliary
+commands), a wider spread than any other harness on this page names for a
+single product.
+
+The second front end is structurally unrelated: `ui-tui/` is a separate
+npm-managed TypeScript workspace (`package.json` name `hermes-tui`, entry
+`src/entry.tsx`, VERIFIED, fetched and read this session) built on
+`@hermes/ink`, an in-repo fork of `ink` rather than a dependency on the
+public package -- the fork's existence and its vendored, upstream-Ink-shaped
+dependency list are already established from source in
+[streaming-and-incremental-rendering.md](streaming-and-incremental-rendering.md)
+§5's own intro and not re-derived here. What that page's narrower streaming
+focus does not cover, and this session confirmed independently by reading
+`ui-tui/packages/hermes-ink/package.json` and its layout sources in full, is
+the fork's own from-scratch reconciler (`src/ink/reconciler.ts`), its own
+render pipeline (`render-to-screen.ts`, `render-node-to-output.ts`,
+`renderer.ts`, `log-update.ts`), and, most notably, its own **pure-TypeScript
+port of the Yoga layout algorithm** at `src/native-ts/yoga-layout/` (`enums.ts`
+plus a single `index.ts`, imported by `layout/yoga.ts` as
+`'../../native-ts/yoga-layout/index.js'`) -- the same WASM-Yoga-to-pure-TS
+substitution §1.1 documents Claude Code's own changelog making independently
+in v2.1.85, here arrived at by a different team building a different, forked
+Ink rather than by patching an existing dependency. The root `ui-tui/package.json`
+confirms the substitution is total, not partial: its own `overrides` block
+reads `"ink-text-input": {"ink": "npm:@hermes/ink@0.0.1"}` -- an npm alias
+that makes the third-party `ink-text-input` component (a real, unmodified
+upstream package) resolve its own `ink` peer dependency to Hermes' in-repo
+fork instead, letting the ecosystem's existing Ink-based components run
+against the fork unmodified. A low-level `termio/` subdirectory
+(`csi.ts`, `dec.ts`, `esc.ts`, `osc.ts`, `sgr.ts`, `parser.ts`, `tokenize.ts`)
+implements Hermes' own ANSI/DEC-escape tokenizer and parser from scratch,
+underneath the reconciler layer, rather than delegating that parsing to a
+third-party terminfo/ANSI library.
+
+This TypeScript front end does not talk to a model directly: it is a client
+of `tui_gateway`, a separate Python package (`tui_gateway/entry.py`, `server.py`,
+`transport.py`, `event_publisher.py`, `event_replay.py`, and roughly twenty
+`methods_*.py` RPC-handler modules, all enumerated via a recursive tree
+listing this session). `entry.py`'s own imports -- `from tui_gateway.server
+import _CRASH_LOG, dispatch, resolve_skin, write_json` and `from tui_gateway.transport
+import TeeTransport` -- confirm the primary channel is a JSON dispatch
+protocol carried over a `TeeTransport`, i.e. stdio between the Node process
+that owns `hermes-tui`/`@hermes/ink` and the Python process that owns the
+agent loop, with `event_replay.py`'s `replay_epoch` supporting reconnect/replay
+semantics for a client that disconnects and reattaches mid-session (directly
+corroborated by a `tests/tui_gateway/test_attach_does_not_wait_for_agent.py`
+test file name read from the tree listing). A documented secondary channel
+exists purely for observability: `entry.py`'s own `_install_sidecar_publisher()`
+function, read in full, "mirror[s] every dispatcher emit to the dashboard
+sidebar via WS," activated only when `HERMES_TUI_SIDECAR_URL` is set --
+stated in its own docstring to be set "by the dashboard's `/api/pty` endpoint
+when a chat tab passes a `channel` query param" -- and is explicitly
+best-effort: "connect failure or runtime drop falls back to stdio-only." A
+shared module, `agent/pet/render.py` (read in full this session), states
+this split in its own docstring in the clearest terms available anywhere in
+this codebase: it is "shared by the base CLI (writes the escape bytes to its
+own stdout) and the TUI (`tui_gateway` ships the encoded bytes to Ink, which
+writes them) so the decode + capability-detection + protocol-encoding logic
+exists exactly once" -- direct, source-quoted confirmation, independent of
+everything inferred from the package structure above, that "the TUI" and "the
+base CLI" are two distinct, separately-maintained rendering surfaces sharing
+exactly the logic that must not diverge (image-protocol decoding) and
+nothing else about how they draw to a terminal.
+
+### 5.2 Component model: stacked always-mounted widgets in the base CLI, a real overlay system in the Ink client
+
+The two front ends solve "how many independently interactive surfaces can be
+on screen at once" in genuinely different ways, and both are fully
+source-confirmed rather than inferred. In `cli.py`, `HermesCLI._build_tui_layout_children()`
+(read in full) assembles the root `HSplit`'s children as one fixed,
+ordered Python list -- `sudo_widget`, `secret_widget`, `approval_widget`,
+`slash_confirm_widget`, `clarify_widget`, `model_picker_widget`,
+`command_palette_widget`, `spinner_widget`, `spacer`, extra
+wrapper-CLI-registered widgets, a `_pet_widget`, a `_stash_panel_widget`,
+`status_bar`, `input_rule_top`, `image_bar`, `input_area`, `input_rule_bot`,
+`voice_status_bar`, and `completions_menu`, filtered to drop any entry that
+is `None` -- and every one of the named dialog widgets (sudo password entry,
+dangerous-command approval, a slash-command confirmation, a `clarify`
+question panel, model picker, command palette, spinner) is a
+`ConditionalContainer` gated by a `Condition` filter evaluated on every
+redraw, not a pushed/popped screen or a floated dialog. This is a **fifth**
+distinct answer to the "how does a terminal UI scope many modal surfaces"
+question this page has now traced across five harnesses: not Claude Code's
+per-context keybindings taxonomy (§1.2), not Copilot CLI's cycled `mode` list
+(§2.2), not OpenCode's push/pop mode-stack (§3.3), not pi's overlay-focus-handle
+API (§4.2/§4.3), but a single, always-mounted, vertically stacked list of
+conditionally-visible rows in one `HSplit`, with mutual exclusivity (only one
+modal widget realistically visible at a time in practice) enforced by
+convention in the surrounding Python logic rather than by the layout
+mechanism itself. The style dictionary passed to that same `Application`
+(`self._tui_style_base`, read in full) names distinct style keys for every
+one of those widgets -- `sudo-border`/`sudo-title`/`sudo-text`,
+`approval-border`/`approval-title`/`approval-desc`/`approval-cmd`/`approval-choice`/`approval-selected`,
+`clarify-border`/`clarify-title`/`clarify-question`/`clarify-choice`/`clarify-selected`/`clarify-active-other`/`clarify-answer`/`clarify-countdown`,
+and a `voice-*` family (`voice-prompt`, `voice-recording`, `voice-processing`,
+`voice-status`, `voice-status-recording`) confirming a live voice-recording
+mode is a first-class piece of this same stacked-widget chrome, not a
+separate surface.
+
+The Ink-based `hermes-tui` client answers the same question with a
+structurally different, source-confirmed mechanism: `ui-tui/src/components/overlayPrimitives.tsx`,
+`overlay.tsx`, `overlayControls.tsx`, and `overlayScrollbar.tsx`, backed by a
+dedicated `ui-tui/src/app/overlayStore.ts` (all enumerated via a directory
+listing this session), implement a genuine floating-overlay system -- a
+component family this page's OpenCode section (§3.3, `<Portal>`) and pi
+section (§4.2, `OverlayHandle`) each independently document their own
+versions of, here confirmed as a fourth, independently-engineered instance
+rather than re-derived from either. Concrete overlay-consuming components
+enumerated directly from the file listing include `billingOverlay.tsx`,
+`subscriptionOverlay.tsx`, `agentsOverlay.tsx`, `modelPicker.tsx`,
+`petPicker.tsx`, `pluginsHub.tsx`, and `skillsHub.tsx`, composed under
+`appOverlays.tsx`/`appChrome.tsx`/`appLayout.tsx` -- a real, feature-scoped
+dialog family in the same architectural role as OpenCode's `dialog-*.tsx`
+files (§3.2) and pi's ~forty interactive-mode components (§4.2), here
+confirmed for a fifth harness at comparable source precision. A `petSprite.tsx`/`petPicker.tsx`
+pair renders the same ASCII/graphics-protocol pet mascot `agent/pet/render.py`
+(§5.1) decodes -- an animated companion feature with no documented analogue
+anywhere else on this page, closer in spirit to Copilot CLI's own animated
+startup banner (§2.1) than to a functional UI element, but persistent across
+the session rather than a one-time startup animation.
+
+### 5.3 A widget SDK: third-party interactive mini-apps registered into the same Ink tree
+
+This is worth its own subsection because no comparable, source-confirmed
+mechanism exists anywhere else on this page. `ui-tui/src/sdk/` (a full
+directory listing read this session) contains `host.tsx`, `index.ts`,
+`registry.ts`, `types.ts`, `userWidgets.ts`, and an `apps/` subdirectory with
+four concrete example widgets -- `weather.tsx`, `ticker.tsx`, `gridTest.tsx`,
+and `dialogTest.tsx` -- registered through `apps/index.ts`. `widgetGrid.tsx`
+(a component) and `widgetSdk.test.ts`/`widgetGrid.test.ts`/`widgetGridComponent.test.tsx`
+(test files confirming the SDK is exercised, not merely scaffolded) together
+describe a grid-based surface onto which independently-authored interactive
+components -- built from the same `@hermes/ink` primitives §5.1 and §5.2
+document -- can be registered and rendered alongside the chat transcript,
+under a name (`userWidgets.ts`) that reads as intentionally public-facing
+rather than internal-only. Nothing fetched this session confirms whether
+third-party widget authorship is currently documented or supported outside
+this repository's own test/example apps, so the *existence* of a working
+registry-plus-example-apps mechanism is VERIFIED, source-read fact, while
+whether it is an externally usable extension point today is held to BEST
+CURRENT UNDERSTANDING, UNCONFIRMED.
+
+### 5.4 Input handling: `Condition`-filtered keybindings, terminal-quirk shims, and a deliberately mouse-free base CLI
+
+`cli.py`'s keybinding registration is built entirely on prompt_toolkit's own
+native mechanism -- `@kb.add(key, filter=Condition(lambda: ...))` decorators,
+hundreds of them read across the file (`c-g`, `c-s`, `c-p`, `c-q`, `c-d`,
+`c-z`, `tab`, `escape`, arrow keys, each scoped by its own `Condition`
+predicate function such as `_editor_filter`, `_stash_panel_filter`,
+`_palette_active`, `_normal_input...`) -- rather than a separate mode-enum,
+mode-stack, or overlay-focus-handle abstraction of its own; the filter
+predicate itself *is* the scoping mechanism, evaluated fresh on every
+keypress. Multi-line input is handled by three independent bindings, each
+with a documented, terminal-specific rationale in its own source comment:
+plain `Enter` submits; `Alt+Enter` (`escape enter`) inserts a newline and
+"works on mac/Linux/WSL," but is intercepted by Windows Terminal itself
+(which uses that chord to toggle its own fullscreen mode) so Windows users
+get `Ctrl+Enter`/`Ctrl+J` instead, which the source comment states explicitly
+is "enabled by default to match Claude Code / Codex / OpenCode behavior" --
+a rare, directly-quoted instance of one harness's own source citing three
+named competitors' conventions as the reason for a design choice, distinct
+in kind from this book's other documented cross-harness file-format
+readership (§3.4) but the same underlying pattern of one harness explicitly
+orienting a design decision around its rivals' documented behavior. Large
+pastes collapse to a `[Pasted text #N: <n> lines -> <path>]` placeholder
+once either a 5-line or a 2,000-character threshold is crossed (both
+configurable via `paste_collapse_threshold`/`paste_collapse_char_threshold`
+in `config.yaml`), with the full pasted text written to a permanent,
+human-readable file under `~/.hermes/pastes/` rather than an opaque cache --
+materially different from Claude Code's ephemeral, retention-swept
+`~/.claude/paste-cache/` (§1.3) and pi's own 10-line threshold (§4.3), and,
+per a source comment naming a real GitHub issue (`#16263`, "macOS Tahoe 26 +
+iTerm2/Ghostty"), instrumented with a diagnostic canary that logs a warning
+if the paste handler blocks the prompt_toolkit event loop for more than
+500ms. `mouse_support=False` is passed explicitly to the `Application`
+constructor (§5.1) -- the base CLI is the only harness's primary interactive
+surface on this page with mouse handling deliberately, unconditionally
+disabled rather than opt-in, absent, or lighter-weight. A dedicated,
+non-trivial terminal-compatibility shim layer, `hermes_cli/pt_input_extras.py`
+(named via its own imports at the top of `cli.py`: `install_shift_enter_alias`,
+`install_ctrl_enter_alias`, `install_cmd_backspace_alias`,
+`install_modify_other_keys_aliases`, `install_keypress_data_normalization`,
+`install_ignored_terminal_sequences`), installed unconditionally at import
+time, is Hermes' own answer to the same terminal-emulator-capability-parity
+problem every harness on this page names somewhere (§1.3's `/terminal-setup`,
+§2.3's Kitty-protocol gating, §3.3's alternative-chord redundancy, §4.3's
+"Alt+Enter most reliable") -- solved here by patching prompt_toolkit's own
+input layer with named compatibility aliases at startup rather than by
+documenting a per-terminal support matrix or writing into the host
+terminal's own config file. A real historical failure mode is documented
+directly in `pyproject.toml`'s own dependency comments: Pillow was promoted
+from an optional, lazily-installed extra into Hermes' base install
+specifically because a mid-session lazy install of it once "deadlocked the
+CLI under prompt_toolkit" (`#40490`) -- concrete, source-dated evidence that
+prompt_toolkit's own event loop is fragile to a blocking synchronous import
+triggered mid-session, a constraint this book has not previously needed to
+name for any Ink-, OpenTUI-, or pi-tui-based renderer.
+
+The `hermes-tui`/`@hermes/ink` client's own input-handling surface is
+comparatively mouse-friendly and editor-grade, per its own test-file names
+read this session (no full keybinding source was read for this client
+beyond `use-input.ts`'s existence): `AlternateScreen.tsx` (§5.1) accepts a
+`mouseTracking` prop selecting between named DEC mouse-tracking presets --
+its own doc comment states the default `'all'` preset enables "wheel + click
++ drag + hover (1000 + 1002 + 1003 + 1006)," with a narrower `'wheel'` preset
+(1000 + 1006 only) specifically to "silence the noisy hover events that tmux
+turns into \"No image in clipboard\" spam over the prompt row" -- a named,
+source-documented terminal-multiplexer-specific workaround in the same
+family as §1.1's tmux-`-CC`/pre-3.6-tmux caveats and §3.4's Zed-specific
+selection-sync branch, here for mouse-hover noise rather than flicker or
+IDE sync. Test-file names alone (`textInputKillLine.test.ts`,
+`textInputLineKill.test.ts`, `textInputWordDelete.test.ts`,
+`textInputLineNav.test.ts`) indicate an Emacs-kill-ring-adjacent editing
+vocabulary comparable in shape, though not confirmed identical in mechanism,
+to pi-tui's own documented kill-ring (§4.1); `imeVietnameseTelex.test.tsx`
+indicates IME composition support comparable in problem-space to pi-tui's
+own `Focusable`/`CURSOR_MARKER` IME mechanism (§4.2), though this session did
+not open either test file to confirm the underlying implementation, so both
+comparisons are held to BEST CURRENT UNDERSTANDING, UNCONFIRMED beyond the
+bare fact that dedicated test coverage for each behavior exists under those
+names. `termux.test.ts`/`termuxComposerLayout.test.ts` name a third
+terminal-compatibility target (Termux, Android) with no confirmed analogue
+named elsewhere on this page.
+
+---
+
+## 6. Synthesis
+
+| Concern | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
+|---|---|---|---|---|---|
+| Rendering engine | Ink-adjacent (BEST CURRENT UNDERSTANDING, corroborated by Ink's own adopters list + a community reverse-engineering claim of substantial custom rewrite); Yoga-based Flexbox layout, later a pure-TS reimplementation (VERIFIED via changelog, cross-ref streaming-and-incremental-rendering.md §1.1); two distinct rendering paths (classic scrollback vs. alt-screen "fullscreen") | Ink, directly confirmed (VERIFIED via Ink's own README adopters list AND a first-party GitHub engineering blog naming Ink components/hooks explicitly); a later, separately-named "cell-based renderer" layered on top | OpenTUI: a native Zig core exposed over a C ABI, Flexbox layout, consumed via the Solid reconciler specifically (not the also-available React one) -- fully source/docs-verified, the most precisely documented of the three | `@earendil-works/pi-tui`: a wholly from-scratch, dependency-free framework (no Ink/OpenTUI/blessed) -- fully source-verified. Line-level (not cell-level) differential rendering, CSI 2026 synchronized output, two swappable renderers (`TuiMainScreen`/`TuiAltScreen`) behind one shared interface, its own Flexbox-vocabulary (`basis`/`grow`/`shrink`) alt-screen layout engine, and native compiled (darwin/win32) modifier-key detection with no confirmed equivalent elsewhere in this page | **Two**, fully source-verified: a `prompt_toolkit` `Application` (non-fullscreen, `mouse_support=False`, bottom-pinned via a blank-line-push trick rather than an alt screen) for the default `cli.py` CLI, plus a wholly separate, in-repo *fork* of Ink (`@hermes/ink`, no dependency on the public `ink` package) with its own reconciler and its own pure-TS Yoga port, driving a second client (`hermes-tui`) that talks to the same Python agent core over a JSON-RPC-over-stdio bridge (`tui_gateway`) -- a client/server split with no analogue elsewhere on this page |
+| Component model | Reconstructed only indirectly, via a 19-context keybindings taxonomy documented for input-scoping purposes, not as an explicit UI-architecture description | Reconstructed indirectly from changelog behavior; a distinct split-view Sessions sidebar shown to be independently focusable from the main chat surface | Fully source-verified three-tier hierarchy: primitive intrinsics (`box`/`text`/`textarea`/`scrollbox`/`diff`) -> composite widgets (a reusable parametrized `Prompt<T>` dialog component instantiated three ways for one feature) -> feature-scoped dialog/route files, plus a shared generic dialog toolkit | Fully source-verified: a plain `Component` interface (`render(width): string[]`, no virtual DOM/JSX/reconciler at all) composed imperatively via `addChild`/`removeChild`; ~18 built-in primitives/composites plus an explicit `OverlayHandle` focus-arbitration API for dialogs; roughly forty feature-scoped app components built on top in the coding-agent package | Fully source-verified, and split by front end: the `cli.py` REPL stacks every dialog widget (sudo, approval, clarify, model picker, command palette, spinner) as always-mounted `ConditionalContainer` rows in one `HSplit`, gated by filter predicates rather than floated or pushed/popped; the Ink-based `hermes-tui` client instead implements a genuine floating-overlay system (`overlayStore.ts`/`overlayPrimitives.tsx`) plus a documented widget-registry SDK (`ui-tui/src/sdk/`) letting independently-authored mini-apps render inside the same tree, unique on this page |
+| Modal-state architecture | Per-context keybinding scoping (`Confirmation`, `DiffDialog`, `Select`, etc.), each context independently defining its own actions; fullscreen mode gives open dialogs explicit auto-follow display priority | A cycled `mode` list (interactive/plan/autopilot, shell demoted out of the cycle in a later release) whose current value is read by the same dialog-invocation logic that decides whether to surface permission/elicitation/`ask_user` dialogs at all, rather than being a separate code path | A genuine mode**-stack** (push/pop, shadowing rather than toggling), architecturally closer to a modal text editor's own mode machinery than either other harness's flatter scoping mechanism | Two independent layers, structurally unlike the other three: mutually exclusive **CLI-invocation-time** entry points (interactive/print/print-json/rpc, chosen once at startup, never cycled or pushed mid-session) plus, inside interactive mode, one flat merged keybinding registry (extended via TypeScript declaration merging) dispatched to whichever component the overlay-focus mechanism currently targets | A **fifth** distinct shape in `cli.py`: no context enum, mode list, mode-stack, or focus-handle API at all -- every modal widget is always mounted and visibility-gated by a per-widget `Condition` filter evaluated on every redraw, with mutual exclusivity a convention in the surrounding Python rather than a property the layout mechanism enforces |
+| Multi-line input mechanism | `Ctrl+J`/backslash-Enter always work; `Shift+Enter` requires either native terminal support or a one-time `/terminal-setup` write into the *outer* terminal's own config | `Shift+Enter` requires Kitty-keyboard-protocol support or the same `/terminal-setup`-into-outer-terminal pattern; two open GitHub Issues confirm the terminal-coverage gap is still live | A dedicated, densely-populated `input_*` keybinding family (36 actions) covering cursor movement, selection, word/line/buffer-scoped deletion, undo/redo, and both logical- and "visual"-line home/end variants -- editor-grade granularity, source-confirmed rather than inferred | `Shift+Enter`/`Ctrl+Enter`/`Alt+Enter` all insert a newline in the `Editor` component, docs stating "Alt+Enter most reliable" across terminals; a documented Emacs-style kill-ring (yank/yank-pop) with no confirmed equivalent in the other three | `Enter` submits; `Alt+Enter` inserts a newline on mac/Linux/WSL; `Ctrl+Enter`/`Ctrl+J` on Windows (where Windows Terminal itself intercepts Alt+Enter) -- its own source comment states this is "enabled by default to match Claude Code / Codex / OpenCode behavior," a rare instance of one harness's source citing named rivals as the reason for a default |
+| Leader-key / chord support | Chords supported in the keybindings file (space-separated sequences, e.g. `ctrl+x ctrl+e`) with documented prefix-reservation semantics, but no single default "leader" concept | A narrower single chord (`Ctrl+X` then `/` for slash-command insertion); no broader leader-key system documented | A first-class `<leader>` placeholder (default `ctrl+x`) used across dozens of bindings, paired with a dedicated which-key discoverability panel -- a Vim-plugin-derived pattern with no confirmed equivalent in either other harness | No leader-key or chord system found in the base `Keybindings` registry read this session (`Ctrl+]`/`Ctrl+Alt+]` jump-to-character is the closest analogue, a two-step but not chorded action) | No leader-key or chord system found in `cli.py`'s `Condition`-filtered bindings; scoping is per-filter-predicate rather than per-prefix |
+| Permission-prompt modal design | A single generic `Confirmation` context reused for yes/no/explain-toggle, with `Shift+Tab` permission-mode cycling available from inside the open dialog | Three-option dialog combining accept-once/accept-for-session/reject-with-redirection-text in one prompt; suppressed entirely under autopilot mode rather than auto-answered by a separate path | A three-stage `Switch`/`Match` state machine (`permission` -> `always` -> `reject`) built from one reusable `Prompt<T>` component instantiated per stage, with a permission-kind-specific body dispatch table (edit/bash/task/webfetch/etc.) and its own local, component-scoped keybindings | None exists -- pi ships no permission-rule engine at all (VERIFIED, cross-ref [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §5.1), so no accept/reject confirmation component is named anywhere in its interactive-mode component listing, a structural consequence of that design choice rather than a coverage gap | An `approval_widget` `ConditionalContainer` styled distinctly from the `sudo_widget`/`clarify_widget` rows it shares an `HSplit` with; cross-ref [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §6 for the underlying Smart/Manual/Off approval-mode policy this widget surfaces, not re-derived here |
+| Cross-harness interop found | -- | Reads Claude Code's `.claude/settings.json` directly (already documented in [configuration.md](configuration.md)) | Reads Claude Code's `~/.claude/ide/*.lock` file protocol directly to discover a connected IDE for editor-selection sync (§3.4, newly documented here) | None found this session | None found this session, beyond a source comment naming Claude Code/Codex/OpenCode as the reason for a keybinding default (§5.4) -- a rhetorical rather than file-format-level interop instance |
+
+**The design lesson.** All five harnesses converge on the same underlying
 layout paradigm (Flexbox, whether via Yoga proper, an Ink-inherited Yoga
-binding, OpenTUI's own native implementation of the same model, or pi-tui's
-own from-scratch `basis`/`grow`/`shrink` alt-screen layout engine) and on
+binding, OpenTUI's own native implementation of the same model, pi-tui's own
+from-scratch `basis`/`grow`/`shrink` alt-screen layout engine, or Hermes'
+own from-scratch pure-TS Yoga port inside its forked Ink) and on
 the same broad shape of problem (a terminal UI needs many independently
 interactive surfaces -- a chat prompt, a permission dialog, a diff viewer, a
 session picker -- each with its own keybinding vocabulary and focus state),
@@ -1032,30 +1381,41 @@ Claude Code's documented context taxonomy and Copilot CLI's cycled-mode list
 both read as flatter, single-active-scope-at-a-time designs; OpenCode's
 source-verified mode**-stack** is a strictly more general mechanism (nested,
 shadowing, disposal-scoped) borrowed conceptually from modal text editors
-rather than invented fresh for a coding-agent CLI; and pi splits the problem
+rather than invented fresh for a coding-agent CLI; pi splits the problem
 along a different seam entirely, separating a **process-level** mode choice
 (interactive/print/print-json/rpc, fixed for the lifetime of one invocation)
 from a **single flat keybinding registry** governing everything inside
 interactive mode, with an explicit overlay-focus-handle API doing the work
-Claude Code's context enum and OpenCode's mode-stack each do differently.
-None of this is presented here as one harness having "solved" terminal-UI
-architecture better than another -- the underlying problem (numerous modal
-surfaces, imperfect terminal-emulator capability parity, a permission system
-that must interrupt the main loop safely, where one exists at all) is
-genuinely table-stakes engineering common to any mature terminal agent, and
-each harness's own solution shows real, independently-earned engineering
-effort rather than one copying another. The one place a direct dependency
-*is* real rather than merely analogous is the rendering framework itself:
-Ink is independently confirmed, by name, underneath both Claude Code and
-Copilot CLI, which makes OpenCode's from-scratch native-Zig renderer
-(OpenTUI) and pi's own from-scratch, dependency-free `pi-tui` package the
-two architecturally distinct choices of the four, each independently
-engineered rather than adopted, and pi's own case additionally notable for
-solving a terminal-input-fidelity problem (reliable modifier-key detection)
-via compiled native code rather than protocol negotiation alone -- a genuine
-fourth path on the rendering-stack question this page opened with, and the
-only one of the four with no permission-approval dialog to render at all,
-by its own documented design.
+Claude Code's context enum and OpenCode's mode-stack each do differently;
+and Hermes Agent, uniquely, does not pick one answer at all -- its default
+CLI stacks every modal surface as an always-mounted, `Condition`-filtered
+row in one persistent `HSplit`, while its separate Ink-based client
+implements a conventional floating-overlay system instead, because the two
+front ends are genuinely different codebases sharing only a Python agent
+core underneath. None of this is presented here as one harness having
+"solved" terminal-UI architecture better than another -- the underlying
+problem (numerous modal surfaces, imperfect terminal-emulator capability
+parity, a permission system that must interrupt the main loop safely, where
+one exists at all) is genuinely table-stakes engineering common to any
+mature terminal agent, and each harness's own solution shows real,
+independently-earned engineering effort rather than one copying another.
+The one place a direct dependency *is* real rather than merely analogous is
+the rendering framework itself: Ink is independently confirmed, by name,
+underneath both Claude Code and Copilot CLI, and Hermes Agent's own
+`hermes-tui` client is a third, source-confirmed Ink lineage -- not a
+dependency on the upstream package, but an in-repo fork carrying forward its
+reconciler-and-Yoga-layout shape -- which makes OpenCode's from-scratch
+native-Zig renderer (OpenTUI) and pi's own from-scratch, dependency-free
+`pi-tui` package the two genuinely independent rendering stacks among the
+five, with Claude Code, Copilot CLI, and Hermes Agent's second front end all
+sharing one Ink-descended lineage to varying degrees of fidelity to the
+original. pi's own case remains additionally notable for solving a
+terminal-input-fidelity problem (reliable modifier-key detection) via
+compiled native code rather than protocol negotiation alone, and pi remains
+the only one of the five with no permission-approval dialog to render at
+all, by its own documented design -- while Hermes Agent is the only one of
+the five to ship two independent rendering stacks for two independent
+front ends over a single shared agent core in the first place.
 
 ---
 
@@ -1064,7 +1424,9 @@ by its own documented design.
 All fetched or read fresh in the session that added them -- 2026-08-17 for
 §1-§3 and the Synthesis table's original three-harness content, 1 September
 2026 for §4's pi coverage and the Synthesis table's/design-lesson's pi
-additions -- unless noted otherwise inline.
+additions, and 1 September 2026 for §5's Hermes Agent coverage and the
+Synthesis table's/design-lesson's Hermes Agent additions -- unless noted
+otherwise inline.
 
 **Claude Code (authoritative for its own documented behavior; no
 implementation source exists in this repo):**
@@ -1174,3 +1536,78 @@ against `github.com/earendil-works/pi`):**
   no-permission-system, no-sandbox finding, itself sourced from pi's own
   `security.md`) for §4.3's permission-modal-absence finding, not re-fetched
   this session.
+
+**Hermes Agent (fetched 1 September 2026; authoritative for its own real
+implementation, `main` branch, `github.com/NousResearch/hermes-agent`, via
+`gh api` against the GitHub Contents API, base64 payloads joined before
+decoding to avoid the API's own line-wrapping artifact -- one of only two
+Hermes Agent sections in this book sourced from the repository itself
+rather than `hermes-agent.nousresearch.com/docs/`, the other being
+[streaming-and-incremental-rendering.md](streaming-and-incremental-rendering.md)
+§5; see §5's own opening paragraph for that distinction stated in full):**
+- `repos/NousResearch/hermes-agent` (repo metadata via `gh api`) -- MIT
+  license, primary language Python, public repository; grounds §5's own
+  opening open-source claim.
+- `pyproject.toml` (in full) -- the `prompt_toolkit==3.0.52`/`rich==14.x`
+  direct-dependency declarations and the "used directly by `cli.py`"
+  annotation (§5.1), and the Pillow-lazy-install/`#40490` prompt_toolkit
+  event-loop-deadlock comment (§5.4).
+- `cli.py` (in full, 1,040,649 bytes decoded) -- the `Application(layout=...,
+  full_screen=False, mouse_support=False, erase_when_done=True, ...)`
+  constructor call and its surrounding comments (§5.1); the
+  blank-line-push-to-bottom startup trick in `HermesCLI.run()` (§5.1); the
+  `ChatConsole` Rich-to-`patch_stdout` bridge and `_cprint()`'s
+  same-thread/cross-thread `run_in_terminal` branching (§5.1);
+  `_build_tui_layout_children()` and `self._tui_style_base` (§5.2); the
+  `@kb.add(key, filter=Condition(...))` keybinding pattern, the
+  `handle_enter`/`handle_alt_enter`/`handle_ctrl_enter_newline` multi-line-input
+  bindings and their "match Claude Code / Codex / OpenCode behavior" comment,
+  and the `handle_paste` bracketed-paste handler with its
+  `paste_collapse_threshold`/`paste_collapse_char_threshold` config keys and
+  `#16263` diagnostic-canary comment (§5.4).
+- `hermes_cli/curses_ui.py` (in full, 45,106 bytes) -- the stdlib-`curses`
+  multi-select-plus-numbered-fallback UI backing `hermes tools`/`hermes
+  skills`, a third rendering technology alongside prompt_toolkit and Rich
+  (§5.1).
+- `agent/pet/render.py` (in full) -- the module docstring stating it is
+  "shared by the base CLI (writes the escape bytes to its own stdout) and
+  the TUI (`tui_gateway` ships the encoded bytes to Ink, which writes
+  them)," the single most direct confirmation of the two-front-end
+  architecture this section documents (§5.1), plus the kitty/iTerm/sixel/
+  unicode terminal-graphics-protocol cascade (§5.2).
+- `tui_gateway/entry.py` (in full) -- the `TeeTransport`/`dispatch`/
+  `write_json` JSON-dispatch-over-stdio primary channel and the
+  `_install_sidecar_publisher()` WebSocket-mirror-to-dashboard secondary
+  channel gated on `HERMES_TUI_SIDECAR_URL` (§5.1).
+- A recursive tree listing of the repository root, `tui_gateway/`, and
+  `tests/tui_gateway/` -- the `tui_gateway` package's own module inventory
+  (`server.py`, `transport.py`, `event_publisher.py`, `event_replay.py`,
+  ~20 `methods_*.py` RPC handlers) and the `test_attach_does_not_wait_for_agent.py`
+  test-file name corroborating reconnect/replay semantics (§5.1).
+- `ui-tui/package.json` and `ui-tui/packages/hermes-ink/package.json` (both
+  in full) -- the `hermes-tui`/`@hermes/ink` package names, the absence of
+  any dependency on the public `ink` package, the vendored Ink-shaped
+  dependency list (`react-reconciler@0.33.0`, `react@19.2.7`, and others),
+  and the `"ink-text-input": {"ink": "npm:@hermes/ink@0.0.1"}` `overrides`
+  alias (§5.1).
+- `ui-tui/packages/hermes-ink/src/ink/layout/yoga.ts` (opening import block)
+  and a directory listing of `ui-tui/packages/hermes-ink/src/native-ts/yoga-layout/`
+  -- the in-repo pure-TypeScript Yoga port (§5.1).
+- `ui-tui/packages/hermes-ink/src/ink/components/AlternateScreen.tsx` (in
+  full) -- the alt-screen-buffer component and its configurable
+  `mouseTracking` prop (`'all'` = DEC 1000+1002+1003+1006, `'wheel'` =
+  1000+1006, named specifically to silence tmux hover-event noise) (§5.4).
+- Full recursive directory listings of `ui-tui/src/` and
+  `ui-tui/packages/hermes-ink/src/` (via the GitHub API tree endpoint) --
+  the `overlayStore.ts`/`overlayPrimitives.tsx`/`overlay*.tsx` component
+  family (§5.2); the `billingOverlay.tsx`/`subscriptionOverlay.tsx`/
+  `agentsOverlay.tsx`/`modelPicker.tsx`/`petPicker.tsx`/`pluginsHub.tsx`/
+  `skillsHub.tsx` feature-scoped dialog files (§5.2); the `src/sdk/`
+  widget-registry directory (`host.tsx`, `registry.ts`, `userWidgets.ts`,
+  `apps/weather.tsx`, `apps/ticker.tsx`, `apps/gridTest.tsx`,
+  `apps/dialogTest.tsx`) and its accompanying test files (§5.3); and the
+  `textInputKillLine.test.ts`/`textInputWordDelete.test.ts`/
+  `imeVietnameseTelex.test.tsx`/`termux.test.ts`/`termuxComposerLayout.test.ts`
+  test-file names cited, by name only and not by their contents, as
+  BEST-CURRENT-UNDERSTANDING evidence of editor-grade input handling and
+  IME/Termux compatibility coverage (§5.4).

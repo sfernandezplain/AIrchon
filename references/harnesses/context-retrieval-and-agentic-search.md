@@ -19,8 +19,8 @@ than a settled question.
 
 Every claim below is tagged VERIFIED (fetched this session from a
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code,
-Copilot CLI, OpenCode, and pi are four separate products from four
-separate organizations (or, for pi, an independent individual
+Copilot CLI, OpenCode, pi, and Hermes Agent are five separate products
+from five separate organizations (or, for pi, an independent individual
 maintainer rather than an organization at all) -- nothing confirmed for
 one is assumed for another. A prior pass through this book noticed,
 only in passing, that all three harnesses covered at the time rely on
@@ -28,7 +28,10 @@ agentic search rather than embeddings; this page re-verifies that
 finding fresh (docs, changelogs, and OpenCode's own source and issue
 tracker, all re-checked this session) and gives it the dedicated
 treatment it didn't get the first time, then extends the same
-re-verification to pi (§5), added to this page in a later pass.
+re-verification to pi (§5), added to this page in a later pass, and
+now to Hermes Agent (§6), added in this update from Hermes' own hosted
+documentation and a direct read of its public, MIT-licensed
+`NousResearch/hermes-agent` source repository.
 
 ---
 
@@ -943,7 +946,7 @@ this session): "It intentionally does not include built-in MCP,
 sub-agents, permission popups, plan mode, to-dos, or background bash.
 You can build or install those workflows as extensions or packages, or
 use external tools such as containers and tmux." So the specific
-hybrid-extension-point this page's §6.2 examines for the other three
+hybrid-extension-point this page's §7.2 examines for the other three
 harnesses -- an MCP server exposing a pre-built retrieval index as a
 callable tool -- has no ready-made seam in pi at all; the only
 documented path to a pi-side embeddings-based retrieval capability
@@ -959,7 +962,7 @@ exactly such an attempt, not merely silence.
 ### 5.5 The maintainer's own on-record rejection of an embeddings/RAG contribution
 
 Unlike any of the other three harnesses, where this page found silence
-rather than a stated argument against the specific hybrid shape (§6.2's
+rather than a stated argument against the specific hybrid shape (§7.2's
 point 4), pi's public issue tracker contains a direct, first-party,
 on-record instance of its own creator rejecting exactly this kind of
 contribution -- worth reporting precisely rather than folding
@@ -1041,21 +1044,267 @@ rather than a standalone extension.
 
 ---
 
-## 6. Synthesis and the hybrid-as-ceiling question
+## 6. Hermes Agent (Nous Research)
 
-### 6.1 Convergence, restated precisely
+Sources for this section, all fetched fresh this session (1 September
+2026): `hermes-agent.nousresearch.com`'s own hosted docs --
+`/docs/user-guide/features/overview`, `/features/context-files`,
+`/features/tool-search`, `/features/lsp`, and `/features/memory-providers`
+(all WebFetch); and, via direct raw fetch against
+`github.com/NousResearch/hermes-agent` (confirmed VERIFIED, via `gh api`,
+to be a real, public, MIT-licensed, actively-pushed Python monorepo, not
+merely a marketing site -- 239,264 stargazers, 48,834 forks, `pushed_at`
+timestamped hours before this session), the raw source of
+`tools/file_tools.py`, `tools/file_operations.py`, `tools/tool_search.py`,
+`agent/coding_context.py`,
+`agent/context_references.py`, and `agent/subdirectory_hints.py` (all
+`main` branch). Hermes Agent is a fifth, independent, self-hosted product
+-- see [Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§6 for this book's fuller architectural introduction to the harness
+itself, not repeated here.
 
-| Dimension | Claude Code | Copilot CLI | OpenCode | pi |
-|---|---|---|---|---|
-| Primary code-discovery mechanism | Agentic: `Grep`/`Glob`/`Read`, optional LSP plugin, Explore subagent | Agentic: grep/glob-equivalent "search tools," `view` | Agentic: `grep`/`glob`, optional experimental `lsp` | Agentic: `grep`/`find`, `ls`, `read` |
-| Ever shipped embeddings/vector code search? | Yes, early versions, per a secondary-sourced but credible attributed quote -- deliberately removed | No confirmed instance in any doc/changelog fetched | No -- never shipped, repeatedly requested, never landed | No confirmed instance anywhere in its full changelog history |
-| Any embeddings-based retrieval mechanism at all? | None found for code; none found for anything else either, in sources fetched this session | Yes -- `dynamicRetrieval`, scoped to skill/MCP **instruction text**, not source code | None found anywhere in docs or source | None found anywhere in source, dependency graph, or changelog |
-| Stated rationale against embeddings-for-code | Explicit, in Claude Code's own blog: staleness ("reflects the codebase as it previously existed... hours before"), maintenance burden of a "centralised index" | Not stated (no changelog entry frames a decision either way) | Not stated by any maintainer found in this session's issue search | Not named specifically, but subsumed under a stated harness-wide minimalism philosophy ("if I don't need it, it won't be built") |
-| Documented hybrid extension point | Yes -- bring-your-own RAG/code-search index exposed as an MCP tool (`large-codebases` guide) | Not found | Not found in official docs; exists only as third-party plugins outside the core project | None -- pi ships no MCP support at all by explicit design choice, so not even Claude Code's seam exists; a hybrid would require a from-scratch custom extension |
+```mermaid
+flowchart TB
+    Start["Session start"] --> WS["build_coding_workspace_block():\nbounded git status + ProjectFacts\n(manifests, package managers, verify\ncommands) -- NOT a full tree walk"]
+    Start --> CF["Context-file chain:\ngit-root to cwd AGENTS.md/.hermes.md,\nfirst-match-wins, loaded into\nsystem prompt"]
+    WS --> Prompt["System prompt assembled"]
+    CF --> Prompt
+    Prompt --> Loop["Agent loop"]
+    Loop -->|"search_files(pattern, target)"| SF["ripgrep-backed content/file\nsearch -- replaces grep/rg/find/ls"]
+    Loop -->|"read_file / terminal touches a path"| SH["SubdirectoryHintTracker:\nwalks up to 5 parent dirs,\ninjects newly-found AGENTS.md\ninto the TOOL RESULT"]
+    Loop -->|"user types @folder:path"| FR["_build_folder_listing():\nripgrep --files recursive tree,\ncapped at 200 entries"]
+    SF --> Loop
+    SH --> Loop
+    FR --> Loop
+```
+
+### 6.1 The core code-discovery primitive: one ripgrep-backed tool fusing grep, glob, and `ls`
+
+Hermes' agentic-search tool surface is deliberately consolidated rather
+than split across separate grep/glob/read tools the way Claude Code's,
+Copilot CLI's, OpenCode's, and pi's own tool surfaces are (per §2-5
+above). VERIFIED, directly from `tools/file_tools.py`'s own
+`SEARCH_FILES_SCHEMA` (raw source, fetched this session): a single
+`search_files` tool exposes both content search and file-name search
+behind one `target` parameter (`content` or `files`), and its own
+description tells the model exactly what it is displacing: "Search file
+contents or find files by name. Use this instead of grep/rg/find/ls in
+terminal. Ripgrep-backed, faster than shell equivalents... Also use this
+instead of ls -- results sorted by modification time." VERIFIED, from
+`tools/file_operations.py`'s own implementation (raw source, fetched
+this session): the backend "prefer[s] ripgrep: respects `.gitignore`,
+excludes hidden dirs by default," falling back to plain `find`/`grep`
+only when `rg` is unavailable on `PATH`, and returns an explicit error
+-- "File search requires 'rg' (ripgrep) or 'find'... Install ripgrep for
+best results" -- rather than silently degrading to a slower or less
+gitignore-aware strategy without telling the model. Content search
+supports regex patterns, a `file_glob` filter, `output_mode`
+(`content`/`files_only`/`count`), configurable context lines, and
+offset/limit pagination, with a repeated-identical-search guard that
+blocks a fourth consecutive identical call ("BLOCKED: You have run this
+exact search 4 times in a row... STOP re-searching and proceed with your
+task"). No embedding model, vector index, or ranking step appears
+anywhere in either file -- the mechanism is agentic keyword/pattern
+search exactly in the sense §1.1 defines it, architecturally closest to
+OpenCode's own single `grep`+`glob` pairing (§4.1 above) except fused
+into one tool rather than two, and with the repeated-search circuit
+breaker as a distinctive addition none of Claude Code, Copilot CLI,
+OpenCode, or pi's own documented tool surfaces (§2-5) are recorded as
+shipping.
+
+### 6.2 Progressive AGENTS.md discovery injected into tool *results*, not the system prompt -- a materially different mechanism from every other harness on this page
+
+Hermes' context-file loading is two-tiered, and the second tier's
+injection point is genuinely distinctive among every harness this page
+covers. VERIFIED, `hermes-agent.nousresearch.com/docs/user-guide/features/context-files`
+(fetched this session): at session start, `build_context_files_prompt()`
+in `agent/prompt_builder.py` loads a merged **directory chain** of
+`AGENTS.md` files from the git root down to the working directory
+(first-match priority order ".hermes.md → AGENTS.override.md → AGENTS.md
+→ CLAUDE.md → .cursorrules") directly into the system prompt --
+structurally the closest of any harness on this page to Claude Code's
+own nested-`CLAUDE.md` layering (§2.2 above) and OpenCode's own
+tier-1 `AGENTS.md` tier (§4.1 above). What happens *after* startup is
+where Hermes diverges: "As the agent navigates into subdirectories
+during the session (via `read_file`, `terminal`, `search_files`, etc.),
+it progressively discovers context files in those directories and
+injects them into the conversation at the moment they become relevant."
+VERIFIED, directly from `agent/subdirectory_hints.py`'s own source
+(raw fetch, this session): a `SubdirectoryHintTracker` inspects every
+tool call's arguments for file paths after the call returns, walks "the
+directory and up to 5 parent directories... stopping at already-visited
+directories," loads the first `AGENTS.md`/`CLAUDE.md`/`.cursorrules`
+match per newly-visited directory (each capped at 8,000 characters and
+run through the same prompt-injection scanner as startup files), and --
+this is the load-bearing detail -- is "appended to the tool result, so
+the model sees it in context naturally," rather than inserted into the
+system prompt at all. That is a materially different injection point
+than any of §2-5's own documented mechanisms: Claude Code's nested
+`CLAUDE.md` files (per this book's [memory-management.md](memory-management.md)
+§1.2) and OpenCode's own `AGENTS.md` discovery are both system-prompt-
+or system-message-tier constructs assembled before the model's first
+turn or re-assembled at defined boundaries, never appended onto an
+individual tool call's own return value the way Hermes' subdirectory
+hints are. The stated rationale is explicit and dual: "No system prompt
+bloat -- subdirectory hints only appear when needed" and "Prompt cache
+preservation -- the system prompt stays stable across turns," directly
+paralleling the prefix-cache-preservation discipline this book's
+[caching.md](caching.md) documents Claude Code, Copilot CLI, and
+OpenCode converging on for their own always-loaded instruction files,
+but achieved here by moving the growing, non-cacheable part of context
+discovery *out* of the system prompt entirely rather than by freezing
+the system prompt and accepting a larger frozen payload.
+
+### 6.3 On-demand recursive directory traversal via `@folder:`, sitting beside `@file:`/`@diff:`/`@staged:`/`@url:` as explicit, user-typed context injection
+
+Distinct again from both §6.1's model-invoked `search_files` tool and
+§6.2's tool-call-triggered subdirectory hints, Hermes exposes a third,
+user-driven context-injection channel. VERIFIED,
+`hermes-agent.nousresearch.com/docs/user-guide/features/overview`
+(fetched this session): "Type `@` followed by a reference to inject
+files, folders, git diffs, and URLs directly into your messages. Hermes
+expands the reference inline and appends the content automatically."
+VERIFIED, directly from `agent/context_references.py`'s own source (raw
+fetch, this session): the parser recognizes a fixed, closed set of
+prefixes -- `BUILTIN_PREFIXES = frozenset({"diff", "staged", "file",
+"folder", "git", "url"})` -- and `@folder:path` specifically resolves
+through `_build_folder_listing()`, which performs a genuine recursive
+file-tree traversal: it calls `_iter_visible_entries()`, which itself
+prefers a ripgrep `--files`-mode listing (respecting `.gitignore`,
+consistent with §6.1's own backend preference) and falls back to
+`os.walk()` only when `rg` is unavailable, builds the listing bottom-up
+by walking every matched file's parent directories back to the
+reference root, sorts directories before files, and hard-caps the
+result at `limit=200` entries with an explicit "- ..." truncation
+marker when the cap is hit. `@diff:`/`@staged:` shell out to `git diff`
+/`git diff --staged` directly (30-second subprocess timeout); `@url:`
+fetches remote content through a pluggable `url_fetcher`. This channel
+is the one place in Hermes' own architecture where a full, recursive,
+depth-unbounded-except-by-count directory tree materializes as
+context -- but it is opt-in and user-typed, never something the model
+decides to invoke autonomously the way `search_files` (§6.1) is a
+model-callable tool; nothing in the sources fetched this session
+documents an equivalent agent-autonomous "dump the whole tree" tool in
+Hermes' own core toolset.
+
+### 6.4 A deliberately bounded, non-exhaustive workspace snapshot at session start
+
+Separately from context-file loading, Hermes builds a small "workspace
+snapshot" block for the system prompt, and its own source is explicit
+that this is a cheap heuristic, not a codebase-wide scan. VERIFIED,
+directly from `agent/coding_context.py`'s own source and its own
+docstrings (raw fetch, this session): `_has_code_files()` -- the check
+that decides whether a directory even counts as a "coding" workspace --
+is documented as "a handful of readdirs at session start, not a full
+walk," bounded to the workspace root and its immediate subdirectories
+only and hard-capped at 500 total directory-entry stats
+(`_CODE_SCAN_MAX_ENTRIES`) before giving up and returning `False`.
+`build_coding_workspace_block()` then assembles, once per session and
+built to be "byte-stable to preserve the prompt cache": git branch,
+ahead/behind counts, dirty-file counts, and worktree status when the
+root is a git repository, plus a structured `ProjectFacts` record
+(`manifests`, `package_managers`, `verify_commands`, `context_files`)
+detected via a bounded set of `stat()` calls and small-file reads (a
+`package.json`'s own `scripts` block, a `Makefile`'s own targets, a
+`pytest.ini`/`pyproject.toml` marker) -- explicitly framed in the
+source's own comments as "hand[ing] the model its *verify loop* up
+front... instead of making it rediscover [test/lint/build commands]
+every session." None of this constitutes a retrieval index or a
+file-content search of any kind; it is a fixed, small, git-and-manifest-
+level fact sheet, deliberately kept cheap and stable rather than
+exhaustive, standing in the same design-philosophy family as Claude
+Code's own per-directory `CLAUDE.md` layering (§2.2) and OpenCode's own
+scoping-not-ranking toolkit (§4.1) -- narrow and cache-stable rather
+than broad and re-computed.
+
+### 6.5 Two embeddings-based retrieval mechanisms that exist in Hermes today -- and are, on inspection, scoped away from source-code search, the same pattern Copilot CLI's `dynamicRetrieval` already established for this page
+
+Hermes is not embeddings-free everywhere; it is embeddings-free
+specifically for *source-code* discovery, and distinguishing the two
+matters exactly as much here as it did for Copilot CLI in §3.1. First:
+VERIFIED, `hermes-agent.nousresearch.com/docs/user-guide/features/tool-search`
+and `tools/tool_search.py`'s own source (both fetched this session):
+Tool Search is an opt-in, tiered-disclosure layer that, when a session
+carries many MCP or plugin tools, replaces their schemas in the
+model-visible tools array with three bridge tools -- `tool_search`,
+`tool_describe`, `tool_call` -- and its own docs state the retrieval
+mechanism precisely: "BM25 over tokenized tool name, source name...
+description, and parameter names, with Snowball stemming (English)
+applied to both the index and the query," falling back to a literal
+substring match when no token matches. This is lexical (BM25), not
+embeddings-based, and -- the load-bearing scope point -- its corpus is
+the session's own MCP/plugin **tool catalog**, never the user's source
+files; Hermes' own core tools (`terminal`, `read_file`, `search_files`,
+`memory`, and the rest of `_HERMES_CORE_TOOLS`) "never defer" and are
+always loaded directly, so Tool Search cannot be mistaken for a
+code-search mechanism under any reading of its own documentation.
+Hermes' own docs additionally cite, without this session independently
+verifying it from Anthropic's own primary source, "published Anthropic
+numbers (49% → 74% on Opus 4 with vs. without tool search)" as
+motivating evidence for tiered tool disclosure generally -- flagged here
+as a secondary attribution inside Hermes' own docs, not a claim this
+page independently confirms about Anthropic's product. Second: VERIFIED,
+`hermes-agent.nousresearch.com/docs/user-guide/features/memory-providers`
+(fetched this session): Hermes' pluggable memory-provider architecture
+(`memory.provider: openviking`, or `honcho`, `mem0`, `hindsight`,
+`holographic`, `retaindb`, `byterover`, `supermemory`) includes at least
+two providers documented as offering genuine embeddings-based semantic
+search -- Honcho ("semantic search" over cross-session user modeling)
+and Mem0 ("Server-side LLM fact extraction with semantic search,
+reranking, and automatic deduplication," with an OSS mode running
+"in-process with your own LLM + vector store") -- but the corpus in both
+cases is conversational/user memory (facts, peer cards, prior
+conclusions), the same channel this book's [memory-management.md](memory-management.md)
+§5 documents from a different angle (`MEMORY.md`/`USER.md`, FTS5 session
+search), never the codebase files `search_files` (§6.1) and the
+`@folder:` traversal (§6.3) operate over. Two independently-sourced
+instances of the identical pattern this page's §3.1 already established
+for Copilot CLI's `dynamicRetrieval`: a real, shipped, embeddings-or-
+lexical-retrieval feature exists, scoped to a bounded, non-code corpus,
+never to the user's own source tree.
+
+### 6.6 The LSP tier is a post-write diagnostics gate, not a code-navigation or discovery tool -- a real point of divergence from Claude Code's and OpenCode's own LSP mechanisms
+
+VERIFIED, `hermes-agent.nousresearch.com/docs/user-guide/features/lsp`
+(fetched this session): Hermes "runs full language servers -- pyright,
+gopls, rust-analyzer, typescript-language-server, clangd, and ~20 more
+-- as background subprocesses and feeds their semantic diagnostics into
+the post-write lint check used by `write_file` and `patch`," gated on
+git-workspace detection, with diagnostics baselined before a write and
+re-queried after it so the model sees only the errors that specific
+edit introduced. Every mechanism this page's own sources describe for
+this feature is write-time verification -- there is no documented
+go-to-definition, find-references, or symbol-search tool exposed to the
+model anywhere in the fetched page, and none of this section's own
+source-code fetches (§6.1-§6.4) surfaced one either. That is a real,
+sourced point of divergence from this page's own findings elsewhere:
+Claude Code's own optional LSP code-intelligence plugin (cross-referenced
+via [Built-in tools](built-in-tools.md) §1.5 and named directly in §2.2
+above) and OpenCode's own experimental, opt-in `lsp` tool (§4.1 above,
+gated behind `OPENCODE_EXPERIMENTAL_LSP_TOOL=true`) are both discovery-
+and-navigation mechanisms substituting for a grep-then-read round trip
+-- exactly the kind of precision tool §1.1's agentic-search definition
+already includes. Hermes' own LSP tier, per every source fetched this
+session, plays no role in how the model *finds* code at all; it only
+checks code the model has already decided to write.
+
+---
+
+## 7. Synthesis and the hybrid-as-ceiling question
+
+### 7.1 Convergence, restated precisely
+
+| Dimension | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
+|---|---|---|---|---|---|
+| Primary code-discovery mechanism | Agentic: `Grep`/`Glob`/`Read`, optional LSP plugin, Explore subagent | Agentic: grep/glob-equivalent "search tools," `view` | Agentic: `grep`/`glob`, optional experimental `lsp` | Agentic: `grep`/`find`, `ls`, `read` | Agentic: single ripgrep-backed `search_files` tool fusing grep+glob+`ls` |
+| Ever shipped embeddings/vector code search? | Yes, early versions, per a secondary-sourced but credible attributed quote -- deliberately removed | No confirmed instance in any doc/changelog fetched | No -- never shipped, repeatedly requested, never landed | No confirmed instance anywhere in its full changelog history | No confirmed instance in any doc/source fetched this session |
+| Any embeddings-based retrieval mechanism at all? | None found for code; none found for anything else either, in sources fetched this session | Yes -- `dynamicRetrieval`, scoped to skill/MCP **instruction text**, not source code | None found anywhere in docs or source | None found anywhere in source, dependency graph, or changelog | Yes, twice over, both scoped away from code -- BM25 Tool Search over the **MCP/plugin tool catalog**, and optional embeddings-based memory providers (Honcho, Mem0) over **conversational/user memory**, never source files |
+| Stated rationale against embeddings-for-code | Explicit, in Claude Code's own blog: staleness ("reflects the codebase as it previously existed... hours before"), maintenance burden of a "centralised index" | Not stated (no changelog entry frames a decision either way) | Not stated by any maintainer found in this session's issue search | Not named specifically, but subsumed under a stated harness-wide minimalism philosophy ("if I don't need it, it won't be built") | Not stated by name; `search_files`'s own schema frames the tool as a faster, gitignore-aware replacement for shell grep/glob/find/ls, not as a rejection of embeddings specifically |
+| Documented hybrid extension point | Yes -- bring-your-own RAG/code-search index exposed as an MCP tool (`large-codebases` guide) | Not found | Not found in official docs; exists only as third-party plugins outside the core project | None -- pi ships no MCP support at all by explicit design choice, so not even Claude Code's seam exists; a hybrid would require a from-scratch custom extension | Yes, two seams -- Hermes' own MCP integration (bring-your-own code-search server, same shape as Claude Code's) and its pluggable "context engines"/memory-provider plugin architecture, though neither is documented as shipping a code-embeddings index by default |
 
 The finding this page was asked to re-verify holds, precisely stated:
-**none of the four harnesses ships embeddings-based retrieval as its
-primary or default code-discovery strategy today.** All four converge
+**none of the five harnesses ships embeddings-based retrieval as its
+primary or default code-discovery strategy today.** All five converge
 on agentic, tool-driven, iterative search as the mechanism the model
 itself drives turn by turn. That convergence is not superficial or
 coincidental for at least one harness -- Claude Code's own product blog
@@ -1063,13 +1312,23 @@ names the failure mode (index staleness under active development) it
 is a deliberate reaction against, and its early-version history (per
 the Cherny attribution in §2.1) shows this was a reversal from a real,
 shipped alternative, not a path never tried. pi's is the most
-categorical convergence of the four: not merely undocumented or
+categorical convergence of the five: not merely undocumented or
 silently absent, but ruled out by a named, general design philosophy
 that also excludes the one integration seam (MCP) the other harnesses
-either ship (Claude Code) or lack only by omission rather than by
-stated principle (Copilot CLI, OpenCode).
+either ship (Claude Code, Hermes Agent) or lack only by omission rather
+than by stated principle (Copilot CLI, OpenCode). Hermes Agent's own
+convergence is the most *textured* of the five, not the most
+categorical: it is the only harness on this page that ships two
+independently-confirmed, real, shipped embeddings-or-lexical-retrieval
+mechanisms (§6.5) at all, and the finding here rests entirely on both
+being scoped, by their own respective corpora, away from the codebase
+files `search_files` and `@folder:` operate over -- the same
+scoped-elsewhere pattern §3.1 already established for Copilot CLI's
+`dynamicRetrieval`, now confirmed a second time by an independent
+harness and, within that one harness, in two separate subsystems at
+once.
 
-### 6.2 Is embeddings-for-candidates + agentic-search-for-verification the ceiling nobody built?
+### 7.2 Is embeddings-for-candidates + agentic-search-for-verification the ceiling nobody built?
 
 ```mermaid
 sequenceDiagram
@@ -1102,7 +1361,7 @@ function names and import paths" -- addressed by combining vector
 similarity with FTS5/BM25-style exact matching), and it is close in
 spirit, though not identical in implementation, to what
 `sourcegraph.com`'s Cody product is reported to do in production:
-BEST CURRENT UNDERSTANDING, UNCONFIRMED (not one of this book's four
+BEST CURRENT UNDERSTANDING, UNCONFIRMED (not one of this book's five
 harnesses, not independently fetched from Sourcegraph's own
 documentation this session, only from secondary search-result
 summaries) -- Cody's context retrieval is described as combining code
@@ -1111,10 +1370,10 @@ parallel strategies dispatched per query type, rather than picking one
 philosophy exclusively. Cited here strictly as an external comparator
 establishing that a multi-strategy hybrid is a real, shipped pattern
 somewhere in the broader coding-agent market -- never as evidence about
-what Claude Code, Copilot CLI, OpenCode, or pi themselves do, per this
-page's own AUTHORITY OVERREACH discipline.
+what Claude Code, Copilot CLI, OpenCode, pi, or Hermes Agent themselves
+do, per this page's own AUTHORITY OVERREACH discipline.
 
-Given that, is the hybrid a genuine technical ceiling none of the four
+Given that, is the hybrid a genuine technical ceiling none of the five
 examined harnesses has reached, or a deliberate simplicity choice they
 declined to spend engineering effort on? The evidence gathered this
 session points more toward the latter, argued as follows (BEST CURRENT
@@ -1158,7 +1417,7 @@ rejection rather than pure silence:
    right now. Declining to build that is a legible product-scoping
    decision under this reading, distinguishable from a claim that the
    hybrid wouldn't work.
-4. **Three of the four harnesses' own docs, changelogs, or (for
+4. **Four of the five harnesses' own docs, changelogs, or (for
    OpenCode) source and issue tracker contain no stated engineering
    reason the hybrid specifically -- as opposed to embeddings alone --
    was rejected; pi's case is the one partial exception, and it is
@@ -1170,8 +1429,14 @@ rejection rather than pure silence:
    worth flagging precisely, not smoothing over: the strongest
    documented critique found this session targets
    embeddings-as-sole-strategy, and this page found no source, from
-   Claude Code, Copilot CLI, or OpenCode, that directly argues against
-   embeddings-as-a-narrowing-step-before-agentic-verification. pi
+   Claude Code, Copilot CLI, OpenCode, or Hermes Agent, that directly
+   argues against embeddings-as-a-narrowing-step-before-agentic-verification
+   -- Hermes' own case is the most concrete instance of this silence,
+   since it is the one harness on this page that already ships two
+   embeddings-or-lexical retrieval mechanisms elsewhere in its own
+   architecture (§6.5) yet documents no stated reason those mechanisms
+   stop at the tool catalog and conversational memory rather than
+   extending to source files. pi
    supplies something adjacent but not identical to the missing
    argument: §5.5's issue #1255 is a directly on-record instance of
    pi's own creator rejecting a fully-implemented embeddings/vector
@@ -1185,9 +1450,9 @@ rejection rather than pure silence:
    actively, personally absent, which is a different and stronger
    claim than silence but not the same claim as "the hybrid was
    considered and found technically wanting." The absence of a written
-   technical argument, across all four harnesses, is consistent with
+   technical argument, across all five harnesses, is consistent with
    the hybrid being an unexamined option that fell outside each team's
-   chosen scope, but it is not itself proof that any of the four teams
+   chosen scope, but it is not itself proof that any of the five teams
    considered and rejected it for a stated technical reason -- treat
    "nobody has built this because nobody decided it's not worth it, as
    opposed to nobody having thought about it," as the honest,
@@ -1195,19 +1460,25 @@ rejection rather than pure silence:
 
 The most defensible summary, holding the tags apart rather than
 blending them: it is VERIFIED that none of Claude Code, Copilot CLI,
-OpenCode, or pi ships an embeddings-based hybrid for code discovery
-today, and VERIFIED that a structurally similar hybrid is both
+OpenCode, pi, or Hermes Agent ships an embeddings-based hybrid for
+*code* discovery today -- Hermes' own case requires the qualifier
+precisely, since unlike the other four it does ship real
+embeddings-or-lexical retrieval mechanisms in production (§6.5), just
+never pointed at the codebase -- and VERIFIED that a structurally
+similar hybrid is both
 requested by real users (OpenCode's issue tracker, and pi's own
 community extensions for the adjacent memory-recall case) and
 buildable with existing techniques (the community plugins, and Cody's
 reported multi-strategy architecture as an external, non-harness
 comparator). It is BEST CURRENT UNDERSTANDING, UNCONFIRMED that this
 specific hybrid represents an actual engineering ceiling any of the
-four harnesses has hit and failed to clear, versus a scope boundary
+five harnesses has hit and failed to clear, versus a scope boundary
 each team drew around "own and operate a retrieval index" that a
-bring-your-own-index MCP integration (Claude Code), a third-party
-plugin ecosystem (OpenCode), or an explicit, personally-enforced
-core-minimalism boundary (pi) was judged to satisfy well enough not to
+bring-your-own-index MCP integration (Claude Code, and, per §6.5,
+Hermes Agent's own MCP support plus its pluggable memory-provider/
+context-engine architecture), a third-party plugin ecosystem
+(OpenCode), or an explicit, personally-enforced core-minimalism
+boundary (pi) was judged to satisfy well enough not to
 justify building in-house. A from-scratch harness attempting to
 "surpass existing implementations" on this specific axis would be
 building in a space where the demand is documented, the components
@@ -1253,11 +1524,22 @@ to retrieval rather than planning.
 | `github.com/earendil-works/pi`'s `packages/coding-agent/docs/usage.md` and `docs/index.md` (raw fetch) | This session (1 Sept 2026) | Confirms pi's own stated design scope explicitly excludes built-in MCP support ("It intentionally does not include built-in MCP, sub-agents, permission popups, plan mode, to-dos, or background bash"), removing even Claude Code's bring-your-own-RAG-via-MCP seam as an option for pi |
 | `mariozechner.at/posts/2025-11-30-pi-coding-agent/` (re-fetched and quote-checked against raw HTML) | This session (1 Sept 2026) | Pi creator Mario Zechner's own stated minimalism design philosophy ("if I don't need it, it won't be built") and tool-count rationale ("these four tools are all you need for an effective coding agent") |
 | `github.com/earendil-works/pi` issues #1255, #2787, #1182 and their comments, plus `gh api users/badlogic` (via `gh api`) | This session (1 Sept 2026) | Confirms a directly on-record instance of pi's own creator (GitHub user `badlogic`, independently confirmed as Mario Zechner) rejecting a fully-implemented embeddings/vector/hybrid-search memory contribution to the core repository, and documents a calmer, OpenCode-like pattern of the same capability existing only as standalone third-party extensions |
+| `https://hermes-agent.nousresearch.com/docs/user-guide/features/overview` | This session (1 Sept 2026) | Confirms Hermes' Context References (`@file`/`@folder`/`@diff`/`@staged`/`@url`) and Context Files discovery as named, documented features |
+| `https://hermes-agent.nousresearch.com/docs/user-guide/features/context-files` | This session (1 Sept 2026) | Confirms the `.hermes.md`→`AGENTS.override.md`→`AGENTS.md`→`CLAUDE.md`→`.cursorrules` priority chain, the git-root-to-cwd directory chain, and the progressive subdirectory-discovery mechanism (including that hints are injected into the tool result, not the system prompt) |
+| `https://hermes-agent.nousresearch.com/docs/user-guide/features/tool-search` | This session (1 Sept 2026) | Confirms Tool Search's BM25-over-tool-catalog retrieval mechanism, its three bridge tools (`tool_search`/`tool_describe`/`tool_call`), its tiered-disclosure activation logic, and its own secondary citation of a published Anthropic tool-search benchmark figure |
+| `https://hermes-agent.nousresearch.com/docs/user-guide/features/lsp` | This session (1 Sept 2026) | Confirms Hermes' LSP integration is a post-write semantic-diagnostics gate for `write_file`/`patch` only, with no documented code-navigation or definition/reference tool |
+| `https://hermes-agent.nousresearch.com/docs/user-guide/features/memory-providers` | This session (1 Sept 2026) | Confirms the pluggable memory-provider architecture and that at least two providers (Honcho, Mem0) offer embeddings-based semantic search scoped to conversational/user memory, not source code |
+| `github.com/NousResearch/hermes-agent` repository metadata (via `gh api`) | This session (1 Sept 2026) | Confirms Hermes Agent's source is a real, public, MIT-licensed, actively-maintained Python monorepo (not merely a hosted product with closed internals) |
+| `github.com/NousResearch/hermes-agent`'s `tools/file_tools.py` and `tools/file_operations.py` (raw fetch, `main` branch) | This session (1 Sept 2026) | Confirms the `search_files` tool's ripgrep-backed implementation, its schema's own "use this instead of grep/rg/find/ls" framing, its `.gitignore`-respecting backend preference, and the absence of any embedding/vector code in either file |
+| `github.com/NousResearch/hermes-agent`'s `agent/subdirectory_hints.py` (raw fetch, `main` branch) | This session (1 Sept 2026) | Confirms the `SubdirectoryHintTracker` mechanism: post-tool-call path extraction, a bounded 5-parent-directory ancestor walk, and injection into the tool result rather than the system prompt |
+| `github.com/NousResearch/hermes-agent`'s `agent/context_references.py` (raw fetch, `main` branch) | This session (1 Sept 2026) | Confirms the closed `BUILTIN_PREFIXES` set for `@`-references and the ripgrep-`--files`-backed, 200-entry-capped `_build_folder_listing()` implementation behind `@folder:` |
+| `github.com/NousResearch/hermes-agent`'s `agent/coding_context.py` (raw fetch, `main` branch) | This session (1 Sept 2026) | Confirms the bounded, non-exhaustive `_has_code_files()` workspace check (500-entry cap, top two directory levels only) and the `ProjectFacts`/`build_coding_workspace_block()` session-start snapshot mechanism |
+| `github.com/NousResearch/hermes-agent`'s `tools/tool_search.py` (raw fetch, `main` branch) | This session (1 Sept 2026) | Confirms the BM25 implementation (tokenization, Snowball stemming, corpus statistics) underlying Tool Search, scoped to the tool/MCP catalog |
 
 Not consulted this session, and therefore not cited above as a
 harness-specific source: `sourcegraph.com`'s own documentation for
 Cody's multi-strategy retrieval architecture (used only as an
-externally-reported, non-fetched comparator in §6.2, explicitly flagged
+externally-reported, non-fetched comparator in §7.2, explicitly flagged
 as such); the underlying Hacker News thread or X/Twitter post
 attributed to Boris Cherny (the X URL returned an HTTP 402 response
 when fetched directly this session); any of the three community
@@ -1265,6 +1547,14 @@ plugins named in §4.2 (OpenCodeRAG, VectorCode, `chunkhound`) beyond
 what their names and one-line descriptions state in the GitHub issue
 comments citing them; for pi, the `@mariozechner/pi-memory` package
 referenced in issue #1255 (its name and description only, not its own
-source, since the contribution was rejected before any merge); and
+source, since the contribution was rejected before any merge);
 `pi.dev`'s own marketing site, beyond the `docs/index.md` install
-instructions it mirrors.
+instructions it mirrors; and, for Hermes Agent, Anthropic's own primary
+source for the "49% → 74% on Opus 4" tool-search figure Hermes' own
+docs cite secondhand (§6.5), Honcho's and Mem0's own respective
+documentation beyond what Hermes' Memory Providers page states about
+them, and the dedicated Skills System / Curator / Honcho Memory pages
+this book's other Hermes sections (`built-in-skills.md`,
+`memory-management.md`) already draw on, not re-fetched here since they
+bear on this page's own narrower code-discovery scope only through the
+two mechanisms §6.5 already isolates.

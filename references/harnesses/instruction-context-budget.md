@@ -8,13 +8,18 @@ loading, on-demand skills, exclusion, and the surfaces that let you
 
 Every claim below is tagged VERIFIED (fetched this session from the
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Sources and
-fetch dates at the bottom. Claude Code, Copilot CLI, OpenCode, and pi
-are separate products from separate organizations -- nothing confirmed
-for one is assumed for another. Section 3 (OpenCode) was added
-2026-08-24, closing a real gap: this page originally covered only two
-of the book's three target harnesses. Section 4 (pi) was added
-2026-09-01, extending the same tiered analysis to the fourth harness
-this book documents.
+fetch dates at the bottom. Claude Code, Copilot CLI, OpenCode, pi, and
+Hermes Agent are separate products from separate organizations --
+nothing confirmed for one is assumed for another. Section 3 (OpenCode)
+was added 2026-08-24, closing a real gap: this page originally covered
+only two of the book's three target harnesses. Section 4 (pi) was
+added 2026-09-01, extending the same tiered analysis to the fourth
+harness this book documents. Section 5 (Hermes Agent) was added the
+same day, extending the analysis to a fifth harness this book
+documents as a harness of general interest (not one of this project's
+own three deploy targets, see [index.md](index.md)) -- unlike this
+page's other four sections, §5 is source-verified directly from
+Hermes' own repository code rather than from its public docs site.
 
 **Companion page:** [memory-management.md](memory-management.md) covers
 the same file hierarchies from the *persistence* angle (load order,
@@ -788,24 +793,376 @@ there.
 
 ---
 
-## 5. Synthesis
+## 5. Hermes Agent (Nous Research)
 
-| Concern | Claude Code | Copilot CLI | OpenCode | pi |
+Sources for this section: VERIFIED, fetched 1 September 2026 directly
+from `github.com/NousResearch/hermes-agent`, `main` branch, via `gh
+api`/`raw.githubusercontent.com` -- `agent/system_prompt.py`,
+`agent/prompt_builder.py`, `agent/context_breakdown.py`,
+`agent/context_engine.py`, `agent/context_compressor.py`,
+`agent/native_compaction.py`, `agent/iteration_budget.py`,
+`docs/micro-compaction.md`, and `cli-config.yaml.example`. Unlike this
+book's other Hermes Agent sections (e.g.
+[memory-management.md](memory-management.md) §5,
+[built-in-skills.md](built-in-skills.md) §5), which are docs-only
+(fetched from `hermes-agent.nousresearch.com/docs/`), this section is
+source-verified in the same sense this page's own §3 (OpenCode) and §4
+(pi) sections are: every claim below is read directly off Hermes' own
+implementation, not inferred from documentation or marketing prose.
+
+One grounding note worth stating plainly, since it bears on where this
+section's primary source actually is: this section's research request
+named the repository as `github.com/hrathod88/hermesagent`. That
+repository returns HTTP 404 (`gh api repos/hrathod88/hermesagent`,
+checked live this session) and does not exist under that owner. The
+actual, canonical, MIT-licensed repository for the harness this book
+already documents under the name "Hermes Agent" is
+`github.com/NousResearch/hermes-agent` (confirmed live via `gh api
+repos/NousResearch/hermes-agent`; its own `homepage` field points at
+`hermes-agent.nousresearch.com`, matching the docs domain this book's
+other Hermes sections already cite) -- the same product covered
+docs-only elsewhere in this book, not a different or unrelated
+project. This section treats that repository as the primary source and
+does not use the nonexistent one named in the original request.
+
+### 5.1 Three system-prompt cache tiers -- a cache-stability axis, not the lazy-load axis this page's tier-1/2/3 vocabulary otherwise asks about
+
+VERIFIED directly from `agent/system_prompt.py`'s own module docstring
+and its `build_system_prompt_parts()` function: Hermes assembles its
+system prompt as three ordered string tiers, joined with a blank line,
+and rebuilds that string **at most once per session** -- "built once
+per session and reused across all turns — only context compression
+triggers a rebuild... Hermes never re-renders parts of this string
+mid-session — that's the only way to keep upstream prompt caches warm
+across turns." The three tiers, quoted from the same docstring, are:
+
+- **`stable`** -- identity (`SOUL.md` or a built-in default identity,
+  per this book's own [memory-management.md](memory-management.md)
+  §5.4), tool guidance, computer-use guidance, tool-use-enforcement and
+  per-model operational guidance, environment hints, and coding
+  guidance.
+- **`context`** -- the caller-supplied `system_message` plus the
+  Context Files this book's own memory-management.md §5.5 names
+  (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.hermes.md`) discovered
+  under the working directory, plus a coding-workspace snapshot.
+- **`volatile`** -- the skills index, `MEMORY.md`/`USER.md` snapshots,
+  an external memory-provider block, and a timestamp/session/model/
+  provider line.
+
+```mermaid
+flowchart TD
+    subgraph Stable["stable tier -- rebuilt only on compression"]
+        S1["SOUL.md identity"]
+        S2["Tool / operational guidance"]
+        S3["Environment + coding guidance"]
+    end
+    subgraph ContextTier["context tier -- this page's tier-1 analog"]
+        C1["Caller system_message"]
+        C2["Context Files: AGENTS.md / CLAUDE.md /\n.cursorrules / .hermes.md"]
+        C3["Coding-workspace snapshot"]
+    end
+    subgraph Volatile["volatile tier -- most likely to change turn to turn"]
+        V1["Skills index"]
+        V2["MEMORY.md / USER.md snapshots"]
+        V3["Timestamp / session / model line"]
+    end
+    Stable --> ContextTier --> Volatile
+    Volatile -.->|"cache prefix stays warm\nuntil a compaction rebuild"| Stable
+```
+
+This answers a genuinely different question from the one this page's
+tier-1/tier-2/tier-3 vocabulary asks of the other four harnesses.
+Claude Code's, Copilot CLI's, OpenCode's, and pi's own tiers (§§1-4)
+are about **when a piece of instruction text is loaded at all**
+(session start vs. on-touch vs. on-invoke). Hermes' `stable`/`context`/
+`volatile` split is instead about **how often a piece of already-loaded
+text is allowed to change**, in service of provider prompt-cache
+stability specifically -- the same cache-prefix concern this book's own
+[caching.md](caching.md) documents each harness converging on in its
+own way. Context Files -- the tier this page's own Claude Code and
+Copilot CLI sections would call "tier 1" -- sit in the *middle* band on
+Hermes' own axis, not the first (`stable`) or last (`volatile`) one,
+because their content can legitimately change between sessions (a
+project's `AGENTS.md` gets edited) but must not be treated as
+turn-volatile the way a live memory snapshot is.
+
+### 5.2 Context Files carry a source-verified, dynamically-scaled truncation cap, with the reconstruction instruction delivered directly into the model's own context
+
+This is the sharpest, most literal answer this page has found anywhere
+to its own opening question -- "how to stop a single instruction file
+from growing without bound" -- because on Hermes it is not editorial
+guidance at all, it is enforced in code. VERIFIED from
+`agent/prompt_builder.py`'s own `CONTEXT_FILE_MAX_CHARS`,
+`_dynamic_context_file_max_chars()`, `_get_context_file_max_chars()`,
+and `_truncate_content()`:
+
+```mermaid
+flowchart TD
+    Start["Load a Context File\n(AGENTS.md / CLAUDE.md / .cursorrules / .hermes.md)"]
+    Explicit{"config.yaml sets\ncontext_file_max_chars?"}
+    Dynamic["Dynamic cap =\ncontext_length x 4 chars/token x 0.06,\nclamped to [20,000, 500,000]"]
+    Floor["Flat 20,000-char default\n(context_length unknown)"]
+    Cap["Resolved max_chars"]
+    Check{"content length\n<= max_chars?"}
+    Keep["Return content unchanged"]
+    Trunc["Head 70% + tail 20% kept;\nmiddle ~10% dropped;\nin-band marker inserted"]
+    Start --> Explicit
+    Explicit -->|"yes -- always wins"| Cap
+    Explicit -->|"no"| Dynamic
+    Dynamic --> Cap
+    Dynamic -.->|"context_length missing/invalid"| Floor
+    Floor --> Cap
+    Cap --> Check
+    Check -->|"yes"| Keep
+    Check -->|"no"| Trunc
+```
+
+- **The cap floor is a flat 20,000 characters** (`CONTEXT_FILE_MAX_CHARS
+  = 20_000`), used whenever the model's `context_length` is unknown or
+  invalid -- "the historical 20K floor," per the source's own comment.
+- **The cap scales with the model's context window when a length is
+  known**: `budget = context_length * 4 chars/token * 0.06 window
+  fraction`, clamped between the 20K floor and a 500,000-character
+  ceiling (`_CONTEXT_FILE_DYNAMIC_CEILING`). The source's own rationale,
+  quoted directly: "The cap scales with the model's context window so
+  large-context models rarely truncate a project doc, while
+  small-context models stay at the historical 20K floor... we spend a
+  small slice of the window on context files since they share the
+  cached prefix with the system prompt, tools, memory, and the whole
+  conversation."
+- **An explicit `context_file_max_chars` in config.yaml always wins**
+  over the dynamic cap, per `_get_context_file_max_chars()`'s own
+  documented resolution order (explicit config, then the dynamic cap,
+  then the flat 20K fallback).
+- **Truncation keeps the head and the tail, not the middle**: `head =
+  content[:head_chars]` at 70% of the cap
+  (`CONTEXT_TRUNCATE_HEAD_RATIO`) and `tail = content[-tail_chars:]` at
+  20% of the cap (`CONTEXT_TRUNCATE_TAIL_RATIO`) -- the remaining ~10%
+  of budget is spent on the marker itself. The marker text is inserted
+  **directly into the content that becomes part of the model's own
+  prompt**, not merely logged for a human operator: `"\n\n[...truncated
+  {filename}: kept {head_chars}+{tail_chars} of {len(content)} chars.
+  The middle is omitted — if you need the full instructions, read the
+  complete file with the read_file tool: {target}]\n\n"`. This is a
+  materially different communication channel from anything this page
+  has found for the other four harnesses: Claude Code's own equivalent
+  event (a `CLAUDE.md` over 200 lines) is a documentation
+  recommendation with no stated hard cap and no in-band model-facing
+  notice (§1.1); Copilot CLI states no per-file truncation cap on the
+  pages fetched (§2.1). Hermes both enforces a hard ceiling *and* tells
+  the model, inline, exactly how to recover the omitted middle via its
+  own `read_file` tool -- the truncation event is self-describing to the
+  agent that will act on it, not just to whoever reads a log file.
+- **A second, host-facing channel exists in parallel.** The same
+  `_truncate_content()` call also invokes `_record_truncation_warning()`,
+  which appends the warning string to a `contextvars.ContextVar`-scoped
+  accumulator (isolated per build, so concurrent gateway sessions cannot
+  leak warnings into one another) that a `drain_truncation_warnings()`
+  call later empties. The module's own comment states the intended
+  purpose directly: "Collect truncation warnings so the caller
+  (`run_agent`) can surface them." This session did not fetch
+  `run_agent.py` to confirm the exact user-facing rendering (CLI
+  stderr line, log entry, or both), so *how* that second channel
+  ultimately reaches a human is held to **BEST CURRENT UNDERSTANDING,
+  UNCONFIRMED** -- but the existence of two independent channels for one
+  truncation event (one written into the model's own prompt, one
+  collected for the host) is itself a directly source-verified finding.
+
+### 5.3 The compression threshold governing when the wider conversation (not the Context File tier specifically) gets summarized -- source-verified, with three independent override layers
+
+This is adjacent territory to §5.2 -- it governs the *conversation*
+budget rather than a single instruction file's own cap -- but it is the
+mechanism that answers the task's own "does this harness track token
+counts and act on an explicit budget limit" question most directly, so
+it is worth stating here rather than only in this book's
+[context-compression.md](context-compression.md) (which does not yet
+have a Hermes Agent section of its own to point to). VERIFIED from
+`agent/context_engine.py`'s `ContextEngine` base class and
+`agent/context_compressor.py`'s `ContextCompressor` subclass, cross-checked
+against `cli-config.yaml.example`'s own `compression:` block:
+
+- **Default trigger: 50% of the model's context window**
+  (`threshold_percent: float = 0.50` in `ContextCompressor.__init__`,
+  matching `compression.threshold: 0.50` in the shipped config
+  example) -- a materially more conservative default than Copilot CLI's
+  own fixed 95% (this page's §2.4, sourced from
+  [memory-management.md](memory-management.md) §2.4), and more
+  conservative than Claude Code's own undocumented percentage (§1).
+- **A small-context floor overrides the ratio, upward only.** Per the
+  shipped config's own comment: "Models with context windows below 512K
+  are floored at 0.75 (raise-only) so compaction doesn't fire with half
+  the window still free; set above 0.75 to override." So a small-window
+  model does not compress at 50% of its (already small) window; it
+  compresses later, at 75%, unless explicitly configured past that.
+- **Per-model substring overrides** (`model_thresholds`, resolved by
+  `resolve_model_threshold()`): the longest matching substring key wins
+  (`"glm-5.2-1M"` beats `"glm-5.2"` for a model literally named
+  `glm-5.2-1M`), letting a 1M-context model compress later (a lower
+  fraction) while a 128K model compresses earlier -- with the
+  small-context floor above still applied on top of whichever override
+  matches.
+- **An optional absolute `threshold_tokens` cap** clamps the
+  ratio-based trigger downward (never upward): compression fires at the
+  *lower* of the percentage-based threshold and this absolute count, so
+  switching between models with very different context windows does
+  not silently push the trigger point out to an unexpectedly large
+  absolute token count.
+- **`protect_first_n` (default 3) and `protect_last_n` (default 20)**
+  bound what a compression pass is allowed to touch: the system prompt
+  plus the first 3 non-system messages are never summarized, and the
+  most recent 20 messages are always spared -- the base `ContextEngine`
+  class documents `protect_first_n`/`protect_last_n` as "read by
+  run_agent.py for preflight," i.e. checked before a request is even
+  sent, not only after the fact.
+- **A `checkpoint_required` gate can refuse to compact at all rather
+  than compact silently.** When set, and no active memory provider
+  confirms a durable pre-compress checkpoint, "the compaction attempt
+  errors with `BLOCKED_MISSING_PREREQUISITE` and the uncompressed
+  transcript is preserved for a later retry" -- and per the config
+  comment, this single gate binds to **every** compaction authority at
+  once: server-side native compaction, post-turn micro-compaction (§
+  below), and the Codex app-server's own thread-compaction path are all
+  suppressed together when the gate is armed and no checkpoint is
+  confirmed, rather than each mechanism needing its own separate opt-out.
+- **A native, provider-side compaction path exists for one model family
+  on direct routes only.** VERIFIED from `agent/native_compaction.py`'s
+  own module docstring: OpenAI's Responses API supports
+  `context_management=[{"type": "compaction", "compact_threshold": N}]`,
+  and Hermes' support for it is "deliberately narrow": gpt-5.6-family
+  models only (a hard-coded substring gate, because sending the field
+  to gpt-5.1/gpt-5.2 "reliably fails server-side"), and only on
+  `api.openai.com` or the ChatGPT Codex OAuth backend -- never through a
+  relay, xAI, GitHub/Copilot, or a local server. The native threshold is
+  clamped 8,192 tokens below Hermes' own local compressor's trigger
+  (`LOCAL_TRIGGER_SAFETY_MARGIN`) specifically so "the server compacts
+  first" and Hermes' own local summarizer remains, in the module's own
+  words, "the fallback owner" if the native path is unavailable
+  mid-session.
+- **An opt-in, off-by-default "micro-compaction" mode amortizes the same
+  bill differently rather than avoiding it.** Per `docs/micro-compaction.md`
+  (`compression.micro_compact: true`, default `false`): instead of one
+  large stall when the threshold is crossed, "after each completed turn,
+  Hermes folds the single oldest un-absorbed exchange into a running
+  summary" -- one exchange per turn, bounded per-turn cost. Two regions
+  are named as permanently protected: the head (system prompt and
+  opening messages) and a token-budgeted tail of the most recent
+  messages; and, distinctly, **user messages are never summarized at
+  all**, on the stated reasoning that "your prompts stay verbatim...
+  they're the intent everything else is derived from, and they cannot
+  be reconstructed from the work that followed." The documented cost is
+  explicit and is not hidden in the feature's favor: "A micro-compaction
+  pass rewrites already-sent history," breaking the provider's cached
+  prompt-prefix on every turn instead of once per batch compaction --
+  the doc's own comparison table states plainly that this trades one
+  cost (a stall) for another (per-turn cache invalidation), not a net
+  saving.
+- **A separate, cheaper, deterministic lever exists below the
+  full-compression trigger.** `proactive_prune_tokens` (default 0,
+  disabled) fires a no-LLM-call prune of old tool-result payloads
+  (dedup identical results, summarize oversized ones, truncate large
+  tool-call arguments) independently of the ratio-based threshold above
+  -- aimed specifically at large-window models where the ratio threshold
+  "rarely fires" while bulky tool output still re-bills every turn. Its
+  own commit is gated by `proactive_prune_min_reclaim_tokens` (default
+  4,096) precisely so this cheaper lever does not itself break the
+  prompt-cache prefix on every tool iteration -- the source's own
+  comment: "one big episodic break instead of a tiny break every tool
+  iteration."
+
+### 5.4 Measuring what actually loaded: `/context`, an explicitly "Claude Code-style" glyph grid across eight budget categories, plus a per-skill/per-toolset drill-down
+
+VERIFIED directly from `agent/context_breakdown.py`. Hermes'
+`compute_session_context_breakdown()` estimates the next provider
+request's composition across **eight categories** -- `system_prompt`,
+`tool_definitions`, `rules` (the `context` tier's Context Files),
+`skills` (the always-resident `<available_skills>` index this book's
+own [built-in-skills.md](built-in-skills.md) §5 documents),
+`mcp`, `subagent_definitions`, `memory` (`MEMORY.md`/`USER.md`), and
+`conversation` -- using the same rough chars/4 heuristic the
+compression threshold itself uses ("so numbers align with compression
+thresholds — not exact tokenizer counts," per the module's own
+docstring), with tool/MCP/subagent categories instead measured as
+JSON-encoded schema length. Separately, `context_used` prefers a
+provider-exact figure when one is available: an "anchored" token count
+derived from the last response's real usage data plus a delta estimate
+of anything appended since, falling back to the raw last-measured
+prompt-token count, and only falling back further to the heuristic
+total when neither real figure is available -- so the reported
+percentage is not purely an estimate when recent usage data exists.
+
+The rendering layer is explicit about which other harness's own UI it
+is modeled on: `render_context_grid()`'s own docstring reads, verbatim,
+"Render the payload as a **Claude Code-style** glyph block grid. 100
+cells (5×20), each one percent of the model context window." Categories
+fill the grid in declaration order using per-category glyphs
+(`■`,`▣`,`▩`,`▤`,`▥`,`▦`,`▧`,`▨`), unfilled cells render as a `·`
+free-space glyph, and a category with a nonzero token count is never
+allowed to render as zero visible cells (`if tokens > 0 and n == 0: n =
+1`). A plain-text category table accompanies the grid, one line per
+category with its glyph, token count, and percentage of the
+`context_max` denominator, plus an explicit "Free space" row -- the
+same category-cost-itemization goal Copilot CLI's own `/context`
+serves by separating Custom Instructions from the system prompt (§2.4),
+here extended to eight named categories rather than two.
+
+**`/context all`** goes one level deeper via `compute_context_details()`,
+reusing what the source calls "the `hermes prompt-size` attribution
+mechanism (PR #66656)": a per-skill breakdown separating each skill's
+always-resident index-line cost from its on-demand `SKILL.md` body
+cost, and a per-toolset breakdown attributing JSON-schema token cost by
+toolset (tool count plus schema size), each table capped at 15 rows
+with an "… and N more" overflow line rather than an unbounded dump.
+This is, category-for-category, the most granular "what is actually
+costing me tokens right now" surface this page has found for any of its
+five harnesses: Claude Code's own `/context` names one line item
+("Memory files"), Copilot CLI's own `/context` names Custom
+Instructions as one separated line plus per-MCP-server costs cross-
+referenced from `/mcp` (§2.4), and OpenCode and pi have no dedicated
+inspection command at all on this axis (§§3.5, 4.8) -- Hermes' own
+`/context`/`/context all` pair is the one mechanism on this page that
+itemizes rules, skills, MCP, and subagent-definition costs as four
+independently reported categories in the same command.
+
+### 5.5 Iteration budget: a distinct, non-token axis, worth flagging as a false cognate rather than folding into the token-budget discussion above
+
+VERIFIED from `agent/iteration_budget.py`: `IterationBudget` is a
+thread-safe consume/refund counter, entirely separate from every token
+figure in §§5.2-5.4 above -- it bounds the *number of agent-loop
+iterations* (tool-call rounds), not the size of the prompt. Each
+`AIAgent` instance holds its own budget: the parent agent's cap comes
+from `max_iterations` (default 500), and each subagent spawned via
+delegation gets an *independent* budget capped at
+`delegation.max_iterations` (default 50) -- meaning total iterations
+across a parent plus its subagents can exceed the parent's own cap,
+by design, since each subagent's ceiling is tracked separately. Iterations
+spent on `execute_code` (programmatic tool calling) are explicitly
+`refund()`-ed so they "don't eat into the budget." Nothing here
+overlaps with §5.2's character cap or §5.3's token-percentage
+threshold; it is included specifically so the word "budget" is not
+read as referring to one single mechanism on Hermes when the source
+uses it for at least three genuinely distinct ceilings (a character
+count, a token percentage, and an iteration count).
+
+---
+
+## 6. Synthesis
+
+| Concern | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
 |---|---|---|---|---|
-| Tier-1 file(s) | `CLAUDE.md` hierarchy (managed → user → project → local), plus `.claude/rules/*.md` **without** `paths:` | `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md`, `~/.copilot/instructions/**` | `AGENTS.md` (project + global), `CLAUDE.md`/deprecated `CONTEXT.md` as Claude-compat fallbacks, plus config `instructions[]` (local globs + remote URLs) | `AGENTS.md`/`AGENTS.override.md`/`CLAUDE.md` ancestor walk (global `~/.pi/agent/AGENTS.md` + every directory from project root down to cwd), plus a full-replace `SYSTEM.md`/append-only `APPEND_SYSTEM.md` pair (project variant trust-gated) |
-| Tier-1 freshness | Session-start read; no documented hot-reload | Undocumented either way | **Re-read from disk every turn** -- source-verified, no caching in `Instruction.system()` | Session-start read (via `resource-loader.ts`'s `reload()` at bootstrap); re-read only on explicit `/reload` -- source-verified, same posture as Claude Code, the opposite of OpenCode |
-| Stated size guidance | "target under 200 lines per CLAUDE.md file"; loaded in full regardless of length | None found on the pages fetched | None found on the pages fetched | None found on the pages fetched |
-| Do `@` imports save context? | **No** -- stated twice in the docs | UNCONFIRMED; imports exist (v1.0.66), token effect not documented | Not applicable -- no `@`-import-expansion mechanism found in `AGENTS.md`/`instructions[]` loading (the docs instead show a manual, agent-authored "read this file on demand" convention, not a harness-parsed import syntax) | Not applicable -- no `@`-import-expansion mechanism for context files found in the source read this session |
-| Path-scoped tier | `.claude/rules/` + `paths:` glob list; triggers on reading a matching file, "not on every tool use" | `.github/instructions/*.instructions.md` + `applyTo:`; body no longer in system prompt every session (v1.0.35), consolidated to a table row (v1.0.26) | **None found** -- UNCONFIRMED-as-absent | **None found** -- source-verified absent this session |
-| Lazy-by-location tier | Nested `CLAUDE.md` and nested `.claude/skills/` below cwd load on first read/edit in that subdirectory | Discovery walks working dir → git root (v1.0.11); no documented "load on read of subdirectory file" behavior found | Source-verified nearby-file auto-attach: walking up from a `read`-tool target's directory for the nearest un-surfaced `AGENTS.md`/`CLAUDE.md`/`CONTEXT.md`, deduplicated per assistant message | **None** -- source-verified negative: `read` tool's own `COMPACT_RESOURCE_FILE_NAMES` handling is a TUI display label only, not a context-attach mechanism |
-| Tool-schema deferral | Not documented as a distinct mechanism from the skills tier | Experimental embedding-based per-turn retrieval (below) doubles as this | Not documented for OpenCode's own built-in tool set | **Native deferred loading** for Anthropic Sonnet/Opus/Fable 4.5+ (`defer_loading`/`tool_reference`) and OpenAI gpt-5.4+ (`tool_search_call`/`tool_search_output`) via `pi.registerTool()`+`pi.setActiveTools()`; additive-only, falls back to resending the full active tool list (cache-prefix risk) on other models or on non-additive changes |
-| Invoke-only tier | Skills: body loads on use; description always in context (1,536-char cap) unless `disable-model-invocation: true`; supports its own `paths:` | Skills: `SKILL.md` "injected in the agent's context" when used; always-on listing cost UNKNOWN | Skills: `name`+`description` (≤1,024 chars) always listed in `<available_skills>`; body loads via `skill({name})` call; a `deny`d skill is omitted from the listing entirely (zero index-entry cost) | Skills: `<available_skills>` XML index (name/description/location) always listed once any skills exist; body is **not** auto-injected on invocation -- the model must issue its own `read` tool call against the listed path; a `disable-model-invocation: true` skill is omitted from the index entirely |
-| Exclusion | `claudeMdExcludes` globs, any settings layer, arrays merge | `/instructions` toggle picker | Per-skill/per-agent-pattern `allow`/`ask`/`deny` permissions; no equivalent exclusion lever found for `AGENTS.md`/`instructions[]` itself | `--no-context-files`/`-nc` disables the whole tier-1 context-file mechanism at once; no partial-exclusion glob found |
-| Free maintainer notes | Block-level HTML comments stripped before injection | Not documented on pages fetched | Not documented on pages fetched | Not documented on pages fetched |
-| Automated trim advice | `/doctor` trim proposal (v2.1.206+) | Not documented on pages fetched | Not documented on pages fetched | Not documented on pages fetched |
-| Retrieval-based loading | Not documented | Experimental embedding-based per-turn retrieval of skill/MCP instructions; `dynamicRetrieval` setting | Not documented; remote `instructions[]` URLs are always fully fetched (5s timeout), not retrieved by relevance | Not documented for context files; the closest analog is the provider-capability-gated tool-schema deferral above, which is retrieval-*shaped* but triggered by an extension's own `setActiveTools()` call, not a background relevance search |
-| Verify what loaded | `/context` → **Memory files**; `InstructionsLoaded` hook | `/context` (Custom Instructions itemized separately), `/env`, `/instructions` | No dedicated command found in the docs fetched this session | No dedicated command found in the sources fetched this session; `/session` ("session info and stats") is the closest analog, per-file provenance UNCONFIRMED; TUI footer shows live token/cache/cost/context usage |
-| Survives compaction? | Tier 1 re-injected; path-scoped and nested lost until retriggered; skills capped 5K/25K | Skills survive; instruction-file re-injection **undocumented** | Not directly investigated here (see [context-compression.md](context-compression.md) §3 for OpenCode's own compaction mechanics); moot in one sense, since tier 1 is rebuilt fresh every turn regardless of compaction state | Not directly investigated here (see [context-compression.md](context-compression.md) §4 for pi's own compaction mechanics); tier 1 is loaded once at session start (§4.2), so it is not literally "re-read" by compaction the way OpenCode's per-turn rebuild makes the question moot, but nothing fetched this session states whether pi's summarization step re-includes or drops the standing context-file content specifically |
+| Tier-1 file(s) | `CLAUDE.md` hierarchy (managed → user → project → local), plus `.claude/rules/*.md` **without** `paths:` | `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md`, `~/.copilot/instructions/**` | `AGENTS.md` (project + global), `CLAUDE.md`/deprecated `CONTEXT.md` as Claude-compat fallbacks, plus config `instructions[]` (local globs + remote URLs) | `AGENTS.md`/`AGENTS.override.md`/`CLAUDE.md` ancestor walk (global `~/.pi/agent/AGENTS.md` + every directory from project root down to cwd), plus a full-replace `SYSTEM.md`/append-only `APPEND_SYSTEM.md` pair (project variant trust-gated) | Context Files (`AGENTS.md`/`CLAUDE.md`/`.cursorrules`/`.hermes.md`) discovered under cwd, occupying the `context` cache tier; `SOUL.md` (identity) occupies the separate `stable` tier instead (§5.1) |
+| Tier-1 freshness | Session-start read; no documented hot-reload | Undocumented either way | **Re-read from disk every turn** -- source-verified, no caching in `Instruction.system()` | Session-start read (via `resource-loader.ts`'s `reload()` at bootstrap); re-read only on explicit `/reload` -- source-verified, same posture as Claude Code, the opposite of OpenCode | Session-start build only; the whole `stable`/`context`/`volatile` prompt is rebuilt **only** when a context-compression pass fires, not per-turn and not on any `/reload`-equivalent found this session -- source-verified (§5.1) |
+| Stated size guidance | "target under 200 lines per CLAUDE.md file"; loaded in full regardless of length | None found on the pages fetched | None found on the pages fetched | None found on the pages fetched | **Enforced, not merely advised**: a dynamically-scaled character cap (20,000-char floor, 500,000-char ceiling, 6% of the model's context window), source-verified (§5.2) -- the only harness on this page whose size guidance is a hard, code-enforced ceiling with automatic truncation rather than a documentation recommendation |
+| Do `@` imports save context? | **No** -- stated twice in the docs | UNCONFIRMED; imports exist (v1.0.66), token effect not documented | Not applicable -- no `@`-import-expansion mechanism found in `AGENTS.md`/`instructions[]` loading (the docs instead show a manual, agent-authored "read this file on demand" convention, not a harness-parsed import syntax) | Not applicable -- no `@`-import-expansion mechanism for context files found in the source read this session | Not applicable -- no `@`-import-expansion mechanism for Context Files found in the source read this session; a distinct `@`-syntax exists for Context References (inline message injection), per [memory-management.md](memory-management.md) §5.5 |
+| Path-scoped tier | `.claude/rules/` + `paths:` glob list; triggers on reading a matching file, "not on every tool use" | `.github/instructions/*.instructions.md` + `applyTo:`; body no longer in system prompt every session (v1.0.35), consolidated to a table row (v1.0.26) | **None found** -- UNCONFIRMED-as-absent | **None found** -- source-verified absent this session | **None found** -- source-verified absent in the source read this session |
+| Lazy-by-location tier | Nested `CLAUDE.md` and nested `.claude/skills/` below cwd load on first read/edit in that subdirectory | Discovery walks working dir → git root (v1.0.11); no documented "load on read of subdirectory file" behavior found | Source-verified nearby-file auto-attach: walking up from a `read`-tool target's directory for the nearest un-surfaced `AGENTS.md`/`CLAUDE.md`/`CONTEXT.md`, deduplicated per assistant message | **None** -- source-verified negative: `read` tool's own `COMPACT_RESOURCE_FILE_NAMES` handling is a TUI display label only, not a context-attach mechanism | **None found** -- Context Files are discovered once under the working directory at prompt-build time; nothing found in the source read this session that re-surfaces a subdirectory's own file on a later touch |
+| Tool-schema deferral | Not documented as a distinct mechanism from the skills tier | Experimental embedding-based per-turn retrieval (below) doubles as this | Not documented for OpenCode's own built-in tool set | **Native deferred loading** for Anthropic Sonnet/Opus/Fable 4.5+ (`defer_loading`/`tool_reference`) and OpenAI gpt-5.4+ (`tool_search_call`/`tool_search_output`) via `pi.registerTool()`+`pi.setActiveTools()`; additive-only, falls back to resending the full active tool list (cache-prefix risk) on other models or on non-additive changes | Not found in the sources read this session; tool-definition JSON schema cost is measured and reported as its own `/context` category (§5.4) but nothing found gates it behind a deferred-loading mechanism the way pi's does |
+| Invoke-only tier | Skills: body loads on use; description always in context (1,536-char cap) unless `disable-model-invocation: true`; supports its own `paths:` | Skills: `SKILL.md` "injected in the agent's context" when used; always-on listing cost UNKNOWN | Skills: `name`+`description` (≤1,024 chars) always listed in `<available_skills>`; body loads via `skill({name})` call; a `deny`d skill is omitted from the listing entirely (zero index-entry cost) | Skills: `<available_skills>` XML index (name/description/location) always listed once any skills exist; body is **not** auto-injected on invocation -- the model must issue its own `read` tool call against the listed path; a `disable-model-invocation: true` skill is omitted from the index entirely | Skills: `<available_skills>` index always resident (per [built-in-skills.md](built-in-skills.md) §5's `agentskills.io`-conformant coverage, not re-derived here); index cost and per-skill `SKILL.md` body cost are itemized as separate figures in `/context all` (§5.4) |
+| Exclusion | `claudeMdExcludes` globs, any settings layer, arrays merge | `/instructions` toggle picker | Per-skill/per-agent-pattern `allow`/`ask`/`deny` permissions; no equivalent exclusion lever found for `AGENTS.md`/`instructions[]` itself | `--no-context-files`/`-nc` disables the whole tier-1 context-file mechanism at once; no partial-exclusion glob found | No per-file exclusion glob found; `context_file_max_chars` (§5.2) is a size-budget override, not an exclusion lever, and nothing found disables Context File discovery outright |
+| Free maintainer notes | Block-level HTML comments stripped before injection | Not documented on pages fetched | Not documented on pages fetched | Not documented on pages fetched | Not found in the sources read this session |
+| Automated trim advice | `/doctor` trim proposal (v2.1.206+) | Not documented on pages fetched | Not documented on pages fetched | Not documented on pages fetched | Not found in the sources read this session -- truncation is automatic and unconditional (§5.2) rather than advisory |
+| Retrieval-based loading | Not documented | Experimental embedding-based per-turn retrieval of skill/MCP instructions; `dynamicRetrieval` setting | Not documented; remote `instructions[]` URLs are always fully fetched (5s timeout), not retrieved by relevance | Not documented for context files; the closest analog is the provider-capability-gated tool-schema deferral above, which is retrieval-*shaped* but triggered by an extension's own `setActiveTools()` call, not a background relevance search | Not found in the sources read this session; Context File truncation (§5.2) discards a contiguous middle span rather than selecting by relevance |
+| Verify what loaded | `/context` → **Memory files**; `InstructionsLoaded` hook | `/context` (Custom Instructions itemized separately), `/env`, `/instructions` | No dedicated command found in the docs fetched this session | No dedicated command found in the sources fetched this session; `/session` ("session info and stats") is the closest analog, per-file provenance UNCONFIRMED; TUI footer shows live token/cache/cost/context usage | **`/context`**: an explicitly "Claude Code-style" glyph grid (source's own docstring) across **8** named categories (system prompt, tool definitions, rules, skills, MCP, subagent definitions, memory, conversation), plus a `/context all` per-skill/per-toolset drill-down -- source-verified, the most granular category breakdown of any harness on this page (§5.4) |
+| Survives compaction? | Tier 1 re-injected; path-scoped and nested lost until retriggered; skills capped 5K/25K | Skills survive; instruction-file re-injection **undocumented** | Not directly investigated here (see [context-compression.md](context-compression.md) §3 for OpenCode's own compaction mechanics); moot in one sense, since tier 1 is rebuilt fresh every turn regardless of compaction state | Not directly investigated here (see [context-compression.md](context-compression.md) §4 for pi's own compaction mechanics); tier 1 is loaded once at session start (§4.2), so it is not literally "re-read" by compaction the way OpenCode's per-turn rebuild makes the question moot, but nothing fetched this session states whether pi's summarization step re-includes or drops the standing context-file content specifically | Not really the applicable question on Hermes: Context Files are not part of the compressible message history at all -- they live in the cached `context` system-prompt tier, rebuilt only when a compression pass fires, from the same on-disk source each time (§5.1). So compaction changes *when the tier is next rebuilt*, not *whether the file survives* -- a third framing distinct from Claude Code's re-injected/lost split and OpenCode's/pi's own moot-by-construction findings |
 
 **The design lesson.** All four harnesses independently converged on
 some version of the same multi-tier answer, and all four make the
@@ -830,7 +1187,18 @@ provider-native deferred loading keyed off `pi.setActiveTools()` rather
 than a glob match or a skill name, which is a lazy-loading axis this
 page had not previously found evidence of on any harness for the tool
 layer specifically, as opposed to the instruction-file or skill-body
-layers all four harnesses share.
+layers all four harnesses share. Hermes Agent, not one of this
+project's own three deploy targets but documented here on the same
+footing as pi (§5), contributes a third genuinely new axis: none of
+the other four harnesses' own tier-1 files are shown, on any page this
+book has fetched, to carry a hard, code-enforced size ceiling with
+automatic truncation -- Claude Code's "200 lines" is a documentation
+recommendation with no stated cap (§1.1), and Copilot CLI states no
+cap at all on the pages fetched (§2.1). Hermes both enforces one and
+tells the model, inline, exactly how to recover what was cut (§5.2) --
+a "does this text have a trigger" question answered not by making the
+file lazy, but by making the file's own size self-limiting and
+self-describing when it is not.
 
 **A cross-harness recipe** (relevant to this project's requirement that
 everything work across targets):
@@ -881,6 +1249,19 @@ everything work across targets):
    for itself. Invariants that must never lapse still belong in tier 1
    on all three, even at token cost -- OpenCode just pays that cost with
    a freshness guarantee the other two do not offer.
+6. **Hermes is not a deploy target of this project** (see this book's
+   [index.md](index.md) framing), so nothing above changes this
+   project's own cross-harness requirement -- but its design is worth
+   citing as a reasoning aid on the specific question this page opened
+   with. A dynamically-scaled, code-enforced character cap with
+   head/tail truncation and an in-band, model-facing recovery
+   instruction (§5.2) is a stricter and more self-describing answer to
+   "stop a single instruction file from growing without bound" than any
+   of the four harnesses this project actually targets currently
+   documents for itself: none of Claude Code, Copilot CLI, OpenCode, or
+   pi is shown on the pages/sources this book has fetched to truncate an
+   oversized tier-1 file automatically and tell the model, in the same
+   breath, how to read the rest back in.
 
 ---
 
@@ -966,3 +1347,60 @@ section is source-verified, not docs-only -- see §4's own opening note):**
 - `packages/coding-agent/src/core/tools/tool-definition-wrapper.ts` and
   `defaults.ts` (via `gh api`, in full) -- confirmed no MCP-server integration or
   additional lazy-schema mechanism beyond §4.5's dynamic tool loading (§4.4).
+
+**Hermes Agent (fetched 1 September 2026 from `github.com/NousResearch/hermes-agent`,
+`main` branch, via `gh api`/`raw.githubusercontent.com`; this section is
+source-verified, not docs-only -- see §5's own opening note, including the
+live-checked repository-name discrepancy from the original research request):**
+- `gh api repos/hrathod88/hermesagent` -- HTTP 404, confirming this repository does
+  not exist; grounding the correction to `github.com/NousResearch/hermes-agent` in
+  §5's own opening note.
+- `gh api repos/NousResearch/hermes-agent` -- confirmed live: MIT license, `main`
+  default branch, `homepage: hermes-agent.nousresearch.com`, matching the docs domain
+  this book's other Hermes Agent sections (`memory-management.md` §5,
+  `built-in-skills.md` §5, `permissions-and-sandboxing.md` §6) already cite --
+  confirming one product, not two.
+- `agent/system_prompt.py` (via `raw.githubusercontent.com`, in full) --
+  `build_system_prompt_parts()`'s three-tier `stable`/`context`/`volatile` assembly
+  and its own module docstring's cache-stability rationale (§5.1).
+- `agent/prompt_builder.py` (via `raw.githubusercontent.com`, in full) --
+  `CONTEXT_FILE_MAX_CHARS`, `_dynamic_context_file_max_chars()`,
+  `_get_context_file_max_chars()`'s three-step resolution order, `_truncate_content()`'s
+  head/tail truncation ratios and in-band recovery-instruction marker text, and the
+  `_record_truncation_warning()`/`drain_truncation_warnings()` host-facing warning
+  channel (§5.2).
+- `agent/context_engine.py` (via `raw.githubusercontent.com`, in full) -- the abstract
+  `ContextEngine` base class's `threshold_percent`/`protect_first_n`/`protect_last_n`
+  defaults and `update_model()`'s per-model threshold-override recalculation (§5.3).
+- `agent/context_compressor.py` (via `raw.githubusercontent.com`, in full) -- the
+  concrete `ContextCompressor` subclass's own `__init__` defaults (`threshold_percent
+  = 0.50`, `protect_last_n = 20`, `proactive_prune_min_reclaim_tokens = 4096`),
+  `resolve_model_threshold()`'s longest-substring-match override resolution,
+  `should_compress()`/`should_compress_info()`'s threshold check and anti-thrashing
+  guard, and `prune_tool_results_only()`'s proactive-prune commit/reclaim gating logic
+  (§5.3).
+- `agent/native_compaction.py` (via `raw.githubusercontent.com`, in full) -- the
+  module's own docstring describing OpenAI Responses API server-side compaction,
+  the gpt-5.6-family model gate, the direct-OpenAI-route restriction, and
+  `resolve_compact_threshold()`'s 8,192-token safety-margin clamp below Hermes' own
+  local compressor trigger (§5.3).
+- `docs/micro-compaction.md` (via `raw.githubusercontent.com`, in full) -- the
+  opt-in, off-by-default micro-compaction feature: per-turn one-exchange absorption,
+  the protected head/tail/user-message regions, the rolling-summary defrag threshold,
+  and the documented prompt-cache-invalidation cost tradeoff (§5.3).
+- `agent/context_breakdown.py` (via `raw.githubusercontent.com`, in full) --
+  `compute_session_context_breakdown()`'s eight-category token estimate,
+  `anchored_context_tokens`-preferred usage figure, `render_context_grid()`'s own
+  docstring naming the "Claude Code-style" glyph-grid rendering, and
+  `compute_context_details()`'s per-skill/per-toolset `/context all` drill-down
+  citing "the `hermes prompt-size` attribution mechanism (PR #66656)" (§5.4).
+- `agent/iteration_budget.py` (via `raw.githubusercontent.com`, in full) -- the
+  `IterationBudget` class's parent/subagent iteration caps (500/50 default) and
+  `execute_code` refund behavior, flagged as a distinct, non-token budget axis (§5.5).
+- `cli-config.yaml.example` (via `raw.githubusercontent.com`, in full) -- the shipped
+  `compression:` block's own comments: `threshold: 0.50` default, the <512K
+  small-context 0.75 raise-only floor, `model_thresholds` override examples,
+  `threshold_tokens` absolute cap, `checkpoint_required`'s cross-authority
+  suppression of native/micro/Codex-app-server compaction, `codex_responses_native`
+  and `codex_responses_compact_threshold`, and `proactive_prune_tokens`/
+  `proactive_prune_min_reclaim_tokens` (§5.3).

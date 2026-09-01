@@ -221,7 +221,7 @@ command, retained up to 5 years per data-usage's own retention table, with a loc
 archive fallback under `~/.claude/feedback-bundles/` on third-party-provider or
 credential-less sessions where nothing leaves the machine automatically.
 
-This distinction matters for a from-scratch harness builder (§4 below): a mature
+This distinction matters for a from-scratch harness builder (§6 below): a mature
 harness's observability surface is not one pipe but (at minimum) three separable ones --
 customer-configured cost/usage export, customer-configured execution tracing, and the
 vendor's own default product-reliability telemetry -- each with its own opt-out, its own
@@ -629,9 +629,409 @@ shaped, phones home to nowhere by default), and (3) the local-file debug/crash l
 this section's §4.1 documents (`pi-debug.log`, `pi-crash.log`), which never leaves the
 machine at all.
 
-## 5. Synthesis: instrumenting a from-scratch harness for observability
+## 5. Hermes Agent (Nous Research)
 
-Read across all four harnesses, a from-scratch harness builder should treat
+VERIFIED (`hermes-agent.nousresearch.com/docs`, fetched this session via the docs
+site's own combined `llms-full.txt` export, which the site itself describes as
+"the entire Hermes Agent documentation concatenated for LLM context ingestion" --
+each excerpt below is cited by the specific page its own `<!-- source: ... -->`
+marker names, not the export file as an undifferentiated whole): Hermes Agent is
+a sixth, independent, self-hosted product with no dependency on any harness
+covered elsewhere on this page -- see
+[Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §6 and
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md) §6 for
+this book's fuller architectural introduction to the harness itself, not
+repeated here. Hermes' own observability surface is, by a wide margin, the
+most extensively documented of any harness on this page -- a `hermes doctor`
+command whose checks are populated by a plugin registry rather than
+hardcoded, five separate log files with a filtering DSL, a redaction
+guarantee stated as a structural default rather than an opt-in, an explicit
+"Failure Visibility" doctrine for subagent failures, and a bundled,
+fail-open third-party tracing plugin in place of either a built-in OTLP
+exporter or a vendor-neutral schema-only contract.
+
+### 5.1 `hermes doctor`: an extensible, plugin-populated health-check registry, not a fixed checklist
+
+VERIFIED (`website/docs/developer-guide/model-provider-plugin.md` and
+`website/docs/developer-guide/terminal-environment-plugin.md`, both fetched this
+session): unlike Claude Code's `/doctor`/`claude doctor` (§1.2 above), whose
+checks are a fixed, Anthropic-authored list ("installation health, unused
+skills/MCP servers/plugins, slow hooks, newer-version checks,
+`CLAUDE.md` deduplication"), Hermes' `hermes doctor [--fix]` is explicitly
+architected as a **registry that plugins populate themselves**. A model-provider
+plugin need only implement a `doctor_checks()`-shaped health probe (the
+documented example: "Health check for `ACME_API_KEY` + `{base_url}/models`
+probe") and it "auto-wires" into `hermes_cli/doctor.py` with no other edit to
+the doctor command itself; a terminal-backend plugin registers the same
+`doctor_checks()` hook and participates in both `hermes doctor` and `hermes
+status` identically to a built-in backend. The docs name the design goal
+directly: declaring these flags on a provider "closes the classic 'new backend
+missed classification site N' bug class -- the core consults the registry at
+each site instead of a hardcoded list of names." The concrete checks this
+produces span far outside anything Claude Code's or Copilot CLI's own
+installation-health commands document: a supply-chain **advisory scanner**
+(`hermes_cli/security_advisories.py`) flags known-compromised Python package
+versions in the active venv (the docs cite the "May 2026 `mistralai 2.4.6`
+poisoning" as a named, dated example) and is dismissible per-advisory via
+`hermes doctor --ack <advisory-id>`, persisted to
+`config.security.acked_advisories`; a hook-specific `doctor` check verifies
+"exec bit, allowlist, mtime drift, JSON validity, and synthetic run timing" for
+every configured shell hook; an Azure Entra ID check runs "a 10s probe against
+`DefaultAzureCredential`... reporting which inner credential won"; a stale-config
+check flags retired model references and orphaned NeMo Relay environment
+variables (`HERMES_NEMO_RELAY_ATOF_*`/`_ATIF_*`) "when no replacement
+`plugins.toml` is selected" (cross-referenced against §5.5 below). This is a
+structurally different design point than any doctor-equivalent this page
+documents elsewhere: not one team's fixed checklist, but a health-check
+*contract* every extension author can implement for their own subsystem, closer
+in shape to pi's telemetry-schema-as-contract design (§4.2) than to Claude
+Code's or Copilot CLI's own closed, vendor-authored diagnostic commands.
+
+VERIFIED (`website/docs/reference/cli-commands.md`, fetched this session):
+alongside `doctor`, three further commands round out the filesystem-first
+diagnostic surface, each with a distinct sharing posture. `hermes dump
+[--show-keys]` prints a compact, ANSI-free plain-text summary (version, git
+commit hash, OS/Python/OpenAI-SDK versions, active profile, model/provider,
+terminal backend, a presence check across 22 provider/tool API keys, enabled
+toolsets, MCP server count, gateway status, cron job counts, installed skill
+count, and any config values that differ from defaults) explicitly "designed to
+be copy-pasted into Discord, GitHub issues, or Telegram when asking for
+support" -- the closest Hermes analogue to Claude Code's `/feedback`/`/bug`
+bundle or Copilot CLI's `--print-debug-info`, except delivered as inert text a
+human pastes manually rather than an automated upload. `hermes debug share`
+goes one step further and performs the upload itself: it packages system info
+plus recent `agent`/`gateway`/`gui`/`desktop` logs (512KB per file, `--lines`
+configurable) and pushes the bundle to a public paste service (`paste.rs` then
+`dpaste.com`, tried in order), a private Nous-internal diagnostics store via
+`--nous` (auto-deleting after 14 days), or prints the report locally with
+`--local` instead of uploading at all -- three distinct sharing postures
+(public, vendor-private, none) that none of this page's other five harnesses'
+doctor-equivalent commands document choosing between explicitly. `hermes
+status [--all] [--deep]` gives the visual, in-terminal overview `hermes dump`
+intentionally leaves out ("For interactive diagnostics, use `hermes doctor`.
+For a visual overview, use `hermes status`," per the docs' own explicit
+division of labor across all three commands).
+
+```mermaid
+flowchart TD
+    A["Something isn't behaving\nas expected"] --> B{"Which surface?"}
+    B -->|"installation/dependency health,\nthis specific provider or backend"| C["hermes doctor [--fix]\n(plugin doctor_checks() registry,\nsupply-chain advisories, hook integrity)"]
+    B -->|"need to share state\nwith a human helper"| D["hermes dump --show-keys (paste-ready text)\nhermes debug share --nous/--local (log bundle)"]
+    B -->|"tail/filter live\nagent or gateway logs"| E["hermes logs [agent|errors|gateway|gui|desktop]\n--level/--since/--session/--component/-f"]
+    B -->|"token/cost/context,\nright now, this turn"| F["/usage, /context, /status\nCLI status bar, turn_summary footer"]
+    B -->|"a subagent or platform\nadapter silently failed"| G["Failure Visibility (delegate_task)\ngateway circuit breaker + stall watchdog"]
+    C --> H{"Still unresolved?"}
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+```
+
+VERIFIED (`website/docs/reference/cli-commands.md`, fetched this session):
+`hermes logs [log_name] [options]` is the flat-file logging layer beneath all
+of the above -- five named files (`agent.log`: all API-call/tool-dispatch/
+session-lifecycle activity at INFO+; `errors.log`: a filtered WARNING+ subset;
+`gateway.log`: messaging-platform connection/dispatch/webhook activity;
+`gui.log`: dashboard/TUI-gateway/PTY-bridge/websocket events; `desktop.log`:
+the Electron app's boot output and "recent Python tracebacks") stored under
+`~/.hermes/logs/` (or `<profile>/logs/` for a non-default profile), rotated
+automatically via Python's `RotatingFileHandler` (`agent.log.1`,
+`agent.log.2`, ...). The filter surface is a small combinable query language
+in its own right -- `--level` (`DEBUG`/`INFO`/`WARNING`/`ERROR`/`CRITICAL`),
+`--since` (relative durations: `30m`/`1h`/`2d`), `--session <ID-substring>`,
+and `--component` (`gateway`/`agent`/`tools`/`cli`/`cron`) all combine with AND
+semantics, and lines lacking a parseable timestamp or level are included
+rather than silently dropped when the corresponding filter is active, an
+explicit anti-false-negative design choice the docs state directly. `-f`/
+`--follow` streams the file like `tail -f`. The same five-file taxonomy and
+filter surface is reused verbatim by the web dashboard's own **Logs** page
+(VERIFIED, `website/docs/user-guide/features/web-dashboard.md`, fetched this
+session: file/level/component/lines selectors plus a 5-second auto-refresh
+poll and severity-based line coloring), so the CLI and the browser UI are two
+renderings of one underlying log surface rather than two independently
+maintained ones.
+
+### 5.2 Redaction as a structural default across every observability surface, not an opt-in
+
+VERIFIED (`website/docs/user-guide/security.md` and
+`website/docs/user-guide/configuration.md`, both fetched this session): where
+Claude Code documents redaction as a property of *specific* surfaces (the
+`/heapdump` docs, §1.2 above, warn a human explicitly that the raw
+`.heapsnapshot` "contains every string in the process, including your full
+conversation and credentials" and must not be shared, placing the redaction
+burden on the operator), Hermes states `security.redact_secrets: true` as a
+config-level, on-by-default guarantee that automatically detects and redacts
+"patterns that look like API keys, tokens, and passwords in tool output
+**before it enters the conversation context and logs**" -- redaction is
+upstream of both the model's own context window and the disk, not a
+downstream warning label on an artifact a human might forward. This same
+guarantee is threaded through every logging and export surface this section
+documents rather than restated per-surface as a separate feature: setting
+`display.tool_progress: log` (§5.3 below) routes every tool call to
+`~/.hermes/logs/tool_calls.log` "run through the same secret-redacting
+formatter as regular logs, so credentials never land on disk"; `hermes dump
+--show-keys` shows only the first-and-last-4-character prefix of an API key,
+never the value itself; `hermes sessions export --redact` and `hermes debug
+share`'s own default-on redaction (opted out of explicitly via `--no-redact`)
+both extend the same guarantee to anything meant to leave the machine; and the
+messaging-gateway logs apply an additional, platform-specific redaction pass
+("Phone numbers are automatically redacted in logs... This applies to both
+Hermes gateway logs and the global redaction system," per the WhatsApp/SMS
+messaging docs). VERIFIED (`website/docs/user-guide/features/hooks.md`,
+fetched this session, cross-referenced against this book's own prior citation
+of the same page in
+[hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md)): the
+`pre_approval_request` observer hook's own documented privacy note states
+plainly that "smart observer preparation force-redacts" a command payload
+"even when `security.redact_secrets` is disabled" -- redaction for the
+smart-approval reviewer path specifically cannot be turned off by the same
+switch that governs everything else, a narrower and stricter guarantee than
+the general-purpose toggle. This is a genuinely distinctive design emphasis
+among this page's six harnesses: none of Claude Code's, Copilot CLI's,
+OpenCode's, or pi's own documented logging/tracing surfaces state a
+comparable blanket "redact before it ever reaches a log file or a context
+window" guarantee as a named, load-bearing security property of the
+observability layer itself, as opposed to a content-gating opt-in (Claude
+Code's `OTEL_LOG_TOOL_CONTENT`, §1.3) that defaults to *not* capturing
+content at all rather than capturing and then redacting it.
+
+### 5.3 In-session accounting: the CLI status bar, `turn_summary`, the file-mutation verifier, and the gateway's `runtime_footer`
+
+VERIFIED (`website/docs/user-guide/cli.md` and
+`website/docs/user-guide/configuration.md`, both fetched this session): Hermes'
+interactive-session accounting surface is denser than any other harness this
+page documents, built from several independently-toggleable display layers
+rather than one fixed status line. The persistent CLI **status bar** --
+```
+ ⚕ claude-sonnet-4-20250514 │ 12.4K/200K │ [██████░░░░] 6% │ $0.06 │ 15m
+```
+-- shows model, context tokens used/max with a color-coded fill bar (green
+`<50%`, yellow `50-80%`, orange `80-95%`, red `≥95%` -- "consider
+`/compress`"), an estimated dollar cost (or `n/a` for zero-priced models), a
+compression-count badge that appears once the session has actually
+auto-compressed, an active-background-task counter, session duration, and an
+explicit `⚠ YOLO` badge whenever approvals are bypassed -- a persistent,
+impossible-to-miss warning of the harness's own current safety posture,
+mirrored in the startup banner too. `display.status_bar.fields` additionally
+exposes `cache_hit` (prompt-cache hit ratio), `latency` and `tps` (rolling
+mean over the last 10 API calls), and an explicitly opt-in `total_tokens`
+session total ("visibility only... never shown by default"). Two further,
+independently-configured display layers add per-turn and per-session
+accounting on top of the status bar: `display.turn_summary` (default `true`)
+prints one dim line after each interactive turn --
+`⋯ 12.4s · edited 2 files +18 -3 · read 4 files · ran 3 commands` -- tallied
+from the same tool-progress feed the CLI already receives ("costs nothing
+extra"), with failed tool calls explicitly excluded from the count so a denied
+write is never rendered as a successful edit; and `display.spinner_token_flow`
+(default `true`) appends the running turn's live cumulative output-token count
+to the CLI's busy spinner (`⚡ Reading cli.py (2.3s · ↓ 1.2k tok)`), suppressing
+the token figure entirely until the first usage report lands rather than
+showing a misleading `↓ 0 tok`.
+
+A third, more unusual accounting layer is the **file-mutation verifier**
+(`display.file_mutation_verifier`, default `true`): when a `write_file` or
+`patch` call fails during a turn and is never superseded by a later successful
+write to the same path, Hermes appends a standalone advisory to the
+assistant's own final reply naming each unmodified file and its failure
+reason (a patch string-match miss, a write denied by the credential
+denylist, a JSON/YAML/TOML syntax gate) --
+`⚠️ File-mutation verifier: 3 file(s) were NOT modified this turn despite any
+wording above that may suggest otherwise`. The docs state the design intent
+directly: "**Trust the verifier over the model's summary.**" This is a
+self-diagnostic mechanism aimed specifically at model over-claiming --
+catching the case where the assistant's own closing message says a task
+succeeded while the harness's own instrumentation shows otherwise -- a
+category of self-check this page has not sourced from any of Claude Code's,
+Copilot CLI's, OpenCode's, or pi's own documented observability surfaces
+(the closest analogue on this page is Claude Code's `/debug [issue]`
+prompting the model to diagnose *itself* using the log as evidence, §1.1,
+which relies on the model choosing to look rather than an unconditional
+harness-side check).
+
+For the messaging gateway specifically, `display.runtime_footer` (default
+`enabled: false`) appends a small provenance line to only the **final**
+message of a turn --
+`— claude-opus-4.7 · 12 tool calls · 2m 14s · $0.042` -- toggleable per-field
+(`model`, `context_pct`, `latency`, `cwd`) and at runtime via `/footer`. In-chat
+commands complete the accounting surface: `/usage` reports "token usage,
+estimated cost breakdown (input/output), context window state, session
+duration, and -- when available from the active provider -- an **Account
+limits** section with remaining quota/credits/plan usage pulled live from the
+provider's own API" (the OpenAI-Codex provider specifically surfaces banked
+ChatGPT usage-limit resets this way); `/context [all]` renders a "visual
+context-usage breakdown -- glyph block grid + per-category token table (system
+prompt / tools / skills / memory / conversation / free space)," with `/context
+all` adding a per-skill and per-toolset cost breakdown -- structurally the same
+job Claude Code's own `/context` command performs (§1.2), independently named
+identically by both harnesses. The web dashboard's own **Analytics** page
+(VERIFIED, `website/docs/user-guide/features/web-dashboard.md`) extends the
+same accounting data across a 7/30/90-day window as a stacked daily
+input/output token chart with per-day cache-hit-rate and cost, plus a
+per-model cost/session/token breakdown table -- the historical counterpart to
+the CLI's own per-turn and per-session figures, all computed, per the docs,
+from Hermes' own "canonical `agent.usage_pricing` numbers" rather than a
+separately-tracked estimate (cross-referenced against §5.5 below, where the
+same canonical numbers are shown feeding the Langfuse plugin's own cost
+attribution).
+
+### 5.4 Failure visibility as an explicit design principle: subagent failures, gateway circuit breakers, and the stall watchdog
+
+VERIFIED (`website/docs/user-guide/features/delegation.md`, fetched this
+session, section titled "Failure Visibility" in the docs' own words): Hermes
+states as an explicit design rule that "a subagent that fails -- non-retryable
+provider error (404/400), timeout, crash, or no usable output -- is never
+silent," and names three separate surfaces that each get told: the **CLI**
+prints a one-line reason directly in the delegation tree
+(`⚠️ Subagent failed — "your goal": HTTP 404: model not found (after 12s)`),
+**gateway platforms** (Telegram/Discord/Slack) receive the identical clean
+line as a standalone chat notice "even when `tool_progress` is off for that
+platform," and the **parent agent** itself receives a tool-result entry
+carrying `status: "failed"` plus the full `error` text so the model can react
+by retrying, re-routing, or reporting up. Error text is deliberately reduced
+to "the single most informative line (the exception message, not a traceback
+wall)" for all three surfaces -- a stated design trade-off toward
+readability over completeness that this page has not seen argued explicitly
+by any of the other five harnesses' own subagent-failure documentation. A
+sharper diagnostic is reserved for one specific pathological case: when a
+hard per-child timeout fires having made **zero** API calls (provider
+unreachable, auth failure, or tool-schema rejection), `delegate_task` writes a
+structured diagnostic to
+`~/.hermes/logs/subagent-timeout-<session>-<timestamp>.log` containing "the
+subagent's config snapshot, credential-resolution trace, any early error
+messages, and stack traces for **all** live threads (not just the child's
+own)" -- the docs' own stated reason is that "a child parked waiting on a
+nested helper thread is indistinguishable from a slow provider without the
+full picture," i.e. the terse one-line surfaces above are deliberately
+insufficient for this specific failure mode, so the harness escalates to a
+full multi-thread stack dump written to disk rather than surfaced in chat.
+
+VERIFIED (`website/docs/user-guide/messaging/index.md`, fetched this session):
+at the gateway level, each messaging-platform adapter is independently wrapped
+in its own **circuit breaker**. Repeated retryable failures (network blips,
+rate-limit replies, 5xx responses, websocket disconnects) trip it: the
+adapter auto-pauses, "an operator notification is sent to the home channel of
+another live platform when one is configured," and a structured log line is
+emitted. The breaker deliberately does **not** auto-resume -- "if a platform
+is in a sustained outage, you don't want the gateway thrashing reconnects" --
+requiring an explicit `/platform resume <name>` once the underlying platform
+is confirmed healthy. VERIFIED
+(`website/docs/user-guide/configuration.md`, fetched this session): a second,
+complementary mechanism, the **session stall watchdog**
+(`agent.session_stall_timeout`, default 300s), is explicitly notify-only rather
+than corrective -- "the watchdog never kills the turn" -- logging a WARNING
+and sending a one-shot chat notice
+(`⚠️ Agent session appears stalled (last activity N min ago). Try /new to
+reset.`) when a busy session has a pending inbound follow-up and the shared
+activity clock has gone idle past the threshold, contrasted explicitly in the
+same docs against `agent.gateway_timeout`, which *does* cancel a run after
+prolonged inactivity. A third mechanism, **reconnect attention escalation**
+(`agent.reconnect_attention_after`, default 7200s), distinguishes a
+permanently-broken platform connection from a transient one by exception
+*type* rather than by retry count alone -- "failures whose exception type
+proves they can never self-heal" (a revoked Telegram token, missing Discord
+privileged intents, missing sidecar dependencies) are classified fatal
+immediately rather than entered into the indefinite retry queue at all, while
+ambiguous errors keep retrying with capped exponential backoff until they
+either succeed or cross the attention threshold and set a `needs_attention:
+true` flag (visible in `hermes status`) plus a WARNING log -- "this is a
+signal, not a circuit breaker," the docs state explicitly, distinguishing it
+in kind from the per-adapter breaker above rather than treating the two as the
+same mechanism at different severities. Three independent, differently-scoped
+failure-visibility mechanisms -- terse chat-level subagent-failure lines, a
+per-adapter circuit breaker, and a notify-only stall watchdog -- covering three
+different failure surfaces (a delegated child agent, a messaging-platform
+connection, and a wedged-but-not-crashed session) is a more elaborated
+taxonomy of "tell a human something is wrong, without necessarily stopping
+anything" than this page has sourced from any other harness's own docs.
+
+### 5.5 No native OpenTelemetry; a bundled, fail-open, single-backend Langfuse plugin instead of a vendor-neutral contract
+
+VERIFIED (this session, checked directly against every doc page examined for
+this section): no OTLP endpoint flag, `OTEL_*` environment variable, or
+`opentelemetry`-named settings key surfaced anywhere in the pages fetched for
+this section -- an absence found this session, not proven absent outright,
+the same caveat this page already applies to OpenCode's comparable gap
+(§3.3) and to the honestly-flagged limits of pi's own OTel search (§4.2).
+Where Claude Code and Copilot CLI each ship a built-in, vendor-neutral OTLP
+exporter (§1.3, §2.2) and pi ships a schema-and-plumbing-only contract with no
+exporter at all (§4.2), Hermes' functional equivalent is a **bundled,
+first-party, single-named-backend plugin**: `observability/langfuse`, which
+VERIFIED (`website/docs/user-guide/features/built-in-plugins.md`, fetched in
+full this session) "traces Hermes turns, LLM calls, and tool invocations to
+Langfuse -- an open-source LLM observability platform," using Hermes' own
+existing hook system (§6 of
+[hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md)) rather
+than a separate instrumentation layer: `pre_api_request`/`pre_llm_call` opens
+or reuses a root "Hermes turn" span and starts a `generation` child
+observation with serialized recent messages as input; `post_api_request`/
+`post_llm_call` closes the generation and attaches `usage_details`,
+`cost_details`, and `finish_reason`; `pre_tool_call`/`post_tool_call` open and
+close a `tool` child observation with sanitized args/results, with large
+`read_file` payloads summarized (head + tail + omitted-line count) to respect
+`HERMES_LANGFUSE_MAX_CHARS`. Session grouping keys off Hermes' own session ID
+(or task ID for a subagent), so an entire `hermes chat` session lands under
+one Langfuse session rather than one trace per API call. The docs state the
+plugin is explicitly **fail-open**: "no SDK installed, no credentials, or a
+transient Langfuse error -- all turn into a silent no-op in the hook. The
+agent loop is never impacted" -- the same fail-open posture Copilot CLI's own
+hook-timeout design states for a different purpose (§2.3's "must not silently
+block tool calls"), applied here to the tracing layer itself rather than to a
+policy hook.
+
+```mermaid
+sequenceDiagram
+    participant U as User turn
+    participant Hook as pre/post_api_request,\npre/post_tool_call hooks
+    participant LF as Langfuse SDK client (cached, fail-open)
+    participant Cloud as Langfuse Cloud / self-hosted
+
+    U->>Hook: turn starts
+    Hook->>LF: open/reuse "Hermes turn" span
+    Hook->>LF: start "generation" observation (serialized messages)
+    Hook->>LF: start "tool" observation (sanitized args)
+    Hook-->>LF: close "tool" observation (sanitized result)
+    Hook-->>LF: close "generation" (usage_details, cost_details, finish_reason)
+    LF-->>Cloud: export trace, grouped by Hermes session id
+    Note over LF,Cloud: missing SDK / credentials / transient error ->\nsilent no-op; agent loop never blocked
+```
+
+VERIFIED (same source): a second, narrower integration exists for one named
+enterprise partner rather than a general-purpose exporter -- **NeMo Relay**,
+which the docs describe with a pointed migration note: "NeMo Relay is no
+longer a bundled Hermes plugin... Hermes core now owns the Relay session,
+turn, LLM, and tool lifecycles." Opting into Relay's own middleware or
+exporters requires authoring a standard Relay `plugins.toml` and pointing
+`HERMES_NEMO_RELAY_PLUGINS_TOML` at it (a process-wide policy applied to
+every profile the process hosts), at which point Relay's own documented
+"ATOF, ATIF, and OpenTelemetry options" become available -- i.e. an
+OpenTelemetry path exists, but only transitively through a third party's own
+plugin surface (`docs.nvidia.com/nemo/relay`, named in Hermes' own docs but
+not independently fetched and read this session, so its OTel semantics are
+held to BEST CURRENT UNDERSTANDING, UNCONFIRMED beyond what Hermes' own page
+states about the integration point). Hermes' own `hermes doctor` (§5.1)
+detects and flags the superseded `HERMES_NEMO_RELAY_ATOF_*`/`_ATIF_*`
+environment variables from the plugin's prior, now-retired incarnation,
+another concrete instance of the extensible doctor-check registry §5.1
+documents catching a stale-configuration class of problem specific to this
+one integration.
+
+Positioned against this page's other four harnesses, Hermes occupies a
+fourth, distinct point in observability-architecture space: not Claude
+Code's or Copilot CLI's built-in, vendor-neutral OTLP exporter (customer
+picks any OTLP-speaking backend); not pi's schema-only, exporter-free
+contract (an embedding application must supply its own adapter entirely);
+not OpenCode's total absence filled only by unverified community plugins
+(§3.2); but a **bundled, opinionated, single-named-backend** integration --
+Langfuse specifically, wired through the harness's own general-purpose hook
+system rather than a purpose-built tracing API -- that ships working
+out of the box for one particular observability vendor, at the cost of not
+offering the vendor-choice flexibility either Claude Code's/Copilot CLI's
+OTLP path or pi's adapter contract give a customer who already runs a
+different collector.
+
+## 6. Synthesis: instrumenting a from-scratch harness for observability
+
+Read across all five harnesses, a from-scratch harness builder should treat
 observability not as one feature but as (at least) four separable layers, each with a
 different question it answers, a different default posture, and a different consumer --
 conflating them, as an early design might, produces exactly the kind of ambiguity this
@@ -687,7 +1087,23 @@ know what's wrong (§1.1-1.2). A from-scratch harness's own `--debug` output sho
 the concrete behavior Claude Code documents, be structured enough that a support agent
 or an automated system (as Claude Code's own `/debug [issue]` does, feeding the debug
 log back to the model itself) can read *what was checked and why it did or didn't
-match*, not merely a firehose of internal state.
+match*, not merely a firehose of internal state. Hermes' own Layer 3 surface
+(§5.1-§5.3) pushes this lesson further in two directions Claude Code's own
+design does not: first, its `hermes doctor` command is a **plugin-populated
+registry** rather than a fixed checklist, so a from-scratch harness that
+expects third parties to add model providers, terminal backends, or other
+extensible subsystems should consider designing the health-check surface as a
+contract those extensions implement themselves, closing the "new backend
+missed classification site N" bug class Hermes' own docs name directly, rather
+than as a hardcoded list its own maintainers must remember to update per
+extension. Second, Hermes states secret redaction as a structural, on-by-default
+property of the observability layer itself -- upstream of both the model's
+context window and the disk, not a downstream warning label a human must
+remember to heed before sharing an artifact (contrast Claude Code's
+`/heapdump`, which generates an unredacted heap snapshot and instead warns the
+operator not to share it, §1.2) -- a stronger and more general guarantee worth
+building in from the start rather than retrofitting once a debug artifact has
+already leaked something once.
 
 **Layer 4 (vendor product telemetry)** is the layer most likely to be skipped by a
 from-scratch harness built for a single team's internal use, but Claude Code's own
@@ -733,7 +1149,30 @@ documented cost that the CLI binary run standalone has, as far as this session c
 verify, no path to seeing any of those spans exported anywhere without an embedder
 supplying the missing adapter.
 
-## 6. Sources
+Hermes (§5.5) supplies a fifth data point on this same axis, distinct from
+all three positions named above: rather than a built-in vendor-neutral OTLP
+exporter (Claude Code, Copilot CLI) or a schema-only, exporter-free contract
+(pi), it ships a **bundled, opinionated, single-named-backend** plugin
+(`observability/langfuse`) wired through its own general-purpose hook system
+rather than a purpose-built tracing API, and states that plugin's failure mode
+explicitly as fail-open -- a missing SDK, missing credentials, or a transient
+backend error degrades silently to a no-op rather than blocking the agent
+loop, the same fail-open discipline Copilot CLI's own hook-timeout design
+states for policy hooks (§2.3) applied here to the tracing layer itself. The
+trade this makes plain: a customer gets a working trace pipeline with zero
+integration work, for exactly one vendor, whereas Claude Code's/Copilot CLI's
+OTLP path and pi's adapter contract both cost more integration effort up
+front in exchange for not committing the harness to any particular backend by
+default. A from-scratch harness does not have to pick only one of these three
+shapes for its entire observability surface, either -- Hermes itself runs a
+bundled single-backend plugin for Layer 2 tracing alongside a Claude-Code-like
+Layer 3 debug surface (§5.1) and a Layer 4 supply-chain-advisory-plus-doctor-
+registry design with no equivalent named on this page for any other harness,
+demonstrating that the four-layer taxonomy above is a way to *reason about*
+an observability surface's separable concerns, not a prescription that one
+harness must pick one strategy per layer and apply it uniformly.
+
+## 7. Sources
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `code.claude.com/docs/en/cli-reference`, fetched this session -- `--debug`,
@@ -846,3 +1285,65 @@ session unless noted):**
   [configuration.md](configuration.md) (this book's own prior pages), cross-referenced
   for `@earendil-works/pi-ai`'s own scope, the hook lifecycle-stage vocabulary, and
   `PI_CODING_AGENT_DIR`'s override semantics, respectively -- not re-derived here.
+
+**Hermes Agent (authoritative for Hermes Agent's own documented behavior only;
+fetched this session via `hermes-agent.nousresearch.com/docs`'s own combined
+`llms-full.txt` export, cited below by the specific page each excerpt's own
+`<!-- source: ... -->` marker names, matching the source path convention
+`website/docs/<path>.md` -> `hermes-agent.nousresearch.com/docs/<path>`):**
+- `website/docs/reference/cli-commands.md`, fetched in full this session --
+  `hermes doctor [--fix]`, `hermes dump [--show-keys]` (and its full example
+  output), `hermes debug share` (`--lines`, `--expire`, `--nous`, `--local`,
+  `--no-redact`), `hermes status [--all] [--deep]`, `hermes logs` (the five
+  named log files, `--level`/`--since`/`--session`/`--component`/`-f`/`-n`
+  filters, `RotatingFileHandler`-based rotation), and `hermes prompt-size`.
+- `website/docs/reference/slash-commands.md`, fetched in full this session --
+  `/usage`, `/context [all]`, `/status`, `/footer`, `/debug`, `/insights`, and
+  the CLI-vs-messaging-gateway command-availability tables.
+- `website/docs/user-guide/cli.md`, fetched in full this session -- the CLI
+  status bar's exact field set and color-coding thresholds, `!` shell mode,
+  and the `/context`/`/status` command descriptions.
+- `website/docs/user-guide/configuration.md`, fetched in full this session --
+  `display.turn_summary`, `display.spinner_token_flow`,
+  `display.file_mutation_verifier` (with both example footers),
+  `display.runtime_footer` (fields, example output), `security.redact_secrets`,
+  `approvals.denial_breaker_threshold`, `agent.session_stall_timeout`
+  (session stall watchdog), and `agent.reconnect_attention_after` (terminal
+  classification vs. needs-attention escalation).
+- `website/docs/user-guide/security.md`, fetched in full this session --
+  `security.redact_secrets`'s stated scope ("before it enters the conversation
+  context and logs"), Tirith command scanning, and the website blocklist.
+- `website/docs/user-guide/features/delegation.md`, fetched in full this
+  session -- the "Failure Visibility" section verbatim (CLI/gateway/parent-
+  agent surfaces, the single-most-informative-line error-text rule) and the
+  zero-API-call timeout diagnostic dump to
+  `~/.hermes/logs/subagent-timeout-<session>-<timestamp>.log`.
+- `website/docs/user-guide/messaging/index.md`, fetched in full this session --
+  the per-adapter circuit breaker (`/platform` command, trip conditions,
+  no-auto-resume policy) and where its trip events are logged.
+- `website/docs/user-guide/features/built-in-plugins.md`, fetched in full this
+  session -- the `observability/langfuse` plugin's exact hook wiring
+  (`pre`/`post_api_request`, `pre`/`post_tool_call`), its fail-open failure
+  mode, its session-grouping key, and the NeMo Relay migration note
+  (`HERMES_NEMO_RELAY_PLUGINS_TOML`, the retired `_ATOF_`/`_ATIF_` env vars).
+- `website/docs/user-guide/features/web-dashboard.md`, fetched in full this
+  session -- the dashboard's Logs page (file/level/component/lines filters,
+  auto-refresh) and Analytics page (daily token chart, per-model cost/session
+  breakdown, all computed from Hermes' own `agent.usage_pricing` numbers).
+- `website/docs/developer-guide/model-provider-plugin.md` and
+  `website/docs/developer-guide/terminal-environment-plugin.md`, both fetched
+  in full this session -- the `doctor_checks()` plugin-registration contract
+  and its documented auto-wiring into `hermes doctor`/`hermes status`,
+  underlying §5.1's "extensible registry, not a fixed checklist" finding.
+- `website/docs/user-guide/security.md` (advisory scanner section) and
+  `website/docs/user-guide/features/hooks.md`, both fetched in full this
+  session -- the supply-chain advisory scanner (`hermes doctor --ack`) and the
+  `pre_approval_request` hook's own documented mandatory-redaction note,
+  respectively; the latter cross-referenced against this book's prior citation
+  of the same hooks page in
+  [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md).
+- [hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md) §6 and
+  [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §6 (this
+  book's own prior pages), cross-referenced for Hermes' own architectural
+  introduction (the shared `AIAgent` class, the three hook systems, the
+  eight-layer defense-in-depth security model) -- not re-derived here.

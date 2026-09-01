@@ -7,16 +7,16 @@ agent instance gets and the final result it hands back.
 several agents. This page asks the question both of those deliberately
 leave open: once two agent instances are already running side by side --
 a resumed subagent, two agent-team teammates, two `/fleet` subtasks, a
-parent session and its OpenCode child session -- what is the actual
-transport and envelope a message travels over between them? Is it a
-tool call, a file on disk, a server-sent-event stream, a database row? Is
-delivery push or pull? Does the message carry any provenance metadata
-telling the receiver who really sent it? Is there a distinction between
-an ordinary natural-language message and a structured protocol message
-(a shutdown request, a plan approval)? The three harnesses give three
-structurally different answers, and the differences matter for anyone
-building automation that assumes messaging "just works" the same way
-across all of them.
+parent session and its OpenCode child session, two Hermes Bot Mode
+teammates -- what is the actual transport and envelope a message travels
+over between them? Is it a tool call, a file on disk, a server-sent-event
+stream, a database row? Is delivery push or pull? Does the message carry
+any provenance metadata telling the receiver who really sent it? Is
+there a distinction between an ordinary natural-language message and a
+structured protocol message (a shutdown request, a plan approval)? The
+five harnesses this page covers give five structurally different
+answers, and the differences matter for anyone building automation that
+assumes messaging "just works" the same way across all of them.
 
 ---
 
@@ -607,19 +607,322 @@ them as interchangeable.
 
 ---
 
-## 5. Synthesis
+## 5. Hermes Agent (Nous Research)
 
-| Dimension | Claude Code (`SendMessage`) | Copilot CLI | OpenCode | pi |
-|---|---|---|---|---|
-| Transport | Tool call, resolved to either an in-conversation resume or a filesystem mailbox write | One-directional event stream (SDK-documented); no CLI-confirmed transport for a peer channel | Real HTTP Server-Sent-Events endpoint (`text/event-stream`), source-verified | Spawned OS process (`child_process.spawn`, `--mode json -p --no-session`), stdin closed at spawn -- source-verified from an official but opt-in reference extension, not a core primitive |
-| Message envelope | Natural-language "task direction" for ordinary messages; two named structured types (`shutdown_request`, `plan_approval_response`) for agent-team protocol messages | Named lifecycle events with fixed field sets per type (`agentName`, `toolCallId`, `error`, etc.) -- not a general-purpose message, a fixed event schema | A generic `Info` message row (`role`, `parts[]`, `metadata`) -- the same schema for every message in the product, human or agent-originated | Streamed JSONL `AgentSessionEvent`/`AgentEvent` lines (`message_end`, `tool_result_end`, etc., per `docs/json.md`) consumed for UI progress only; the one value actually delivered to the parent LLM is the tool call's own final `content`, assembled client-side by the extension |
-| Addressing | Agent ID (durable across name reuse) or agent name (collision-checked as of v2.1.199) | `agentId` tag on each event, attributing it to the sub-agent that produced it -- not an address a message is sent *to* | `sessionID` (a session with a `parentID` is a subagent's session); no separate agent-address concept beyond the session ID itself | Agent *name* only, resolved from a markdown frontmatter file (`~/.pi/agent/agents/*.md`, or project-scoped `.pi/agents/*.md`) at dispatch time -- no persistent handle to a *running* instance exists, because each dispatch is a fresh, short-lived child process, not a resumable session |
-| Push vs. pull | Push: "the lead doesn't need to poll for updates"; mailbox delivered automatically | Push: events "share the parent session stream" | Push: SSE stream, plus a `server.heartbeat` keepalive so a client can tell "connected, idle" from "disconnected" | Push, but UI-scoped only: the extension's `onUpdate` callback is invoked as JSONL lines arrive on the child's stdout, updating the tool call's live render; nothing is pushed into the parent LLM's own context until the child process exits |
-| Peer-to-peer (agent-to-agent, not just parent-child) | Yes -- agent teams: "teammates message each other directly," one send per recipient, no broadcast primitive | Not found in any source fetched this session, across three separate pages researched | Not applicable in the same sense -- there is no peer concept; every message is a write into *some* session's own row, parent or child | No -- strictly parent-to-child, one direction, spawn-time only; sequencing multiple subagents (chain mode) is the parent extension's own string interpolation of one child's finished output into the next child's spawn arguments, never a channel between the two children themselves |
-| Provenance / trust boundary on receipt | Enforced at the permission-classifier level: a message is tagged as coming from another agent, not the human, and cannot carry approval consent | Not documented -- no permission-relay discussion found for Copilot CLI's sub-agent events | Not documented as a trust boundary; the message schema itself carries no sender-trust field distinct from `role: "user" | "assistant"` | Documented at the agent-*definition* level, not the message level: project-local agent files (`.pi/agents/*.md`) are treated as less trusted than user-level ones, and the reference extension prompts for confirmation before running a project-local agent in an untrusted project (`agentScope`, `confirmProjectAgents`) -- a load-time trust gate on which prompt runs, not a runtime check on message content |
-| Malformed-message handling | Documented, dated fix: bad mailbox entries are validated, reported as errors, and evicted individually (v2.1.207+); before that, one bad entry blocked the whole mailbox | Not documented | Not documented as a distinct failure mode; ordinary schema validation (Effect's `Schema.Struct`) applies to every message row generally | Documented per-invocation, not per-message: a non-zero child exit code surfaces as a tool error with captured stderr/output, an LLM-level `stopReason: "error"` propagates as an error message, and in chain mode the whole chain stops at the first failing step |
-| Extensibility hook for messaging-adjacent events | Three dedicated hooks (`TeammateIdle`, `TaskCreated`, `TaskCompleted`), each supporting exit-code-2 blocking, no `matcher` support | Not found | The same generic SSE stream any external tool could subscribe to; no dedicated hook system found for messaging specifically | None dedicated to subagent messaging specifically; the generic `registerTool`/`onUpdate`/`exec` extension primitives the reference example is built from are available to any tool, and a separate, unrelated `pi.events` in-process pub/sub bus exists for extension-to-extension notification within one session (§4.4) -- not a hook on the subagent pattern itself |
-| Verifiability | Docs-only (closed-source product) | Docs-only, and thinner than the other two on this specific question | Docs **and** live `dev`-branch source, cross-checked end to end (schema file, publish call sites, SSE handler) | Docs **and** the full, real TypeScript source of the one reference extension the "subagent" concept is built from, both fetched this session from the `main` branch |
+Sources for this section: VERIFIED, fetched 1 September 2026. Docs --
+`hermes-agent.nousresearch.com/docs/user-guide/features/delegation` and
+`.../user-guide/bot-mode` (both fetched directly this session). Source --
+`tools/delegate_tool.py`, `tools/bot_mode_dm.py`, `tools/bot_relay.py`,
+`tools/bot_failure_reasons.py`, `tools/send_message_tool.py`,
+`ui-tui/src/gatewayTypes.ts`, and
+`ui-tui/src/app/createGatewayEventHandler.ts`, all fetched this session
+via `gh api repos/NousResearch/hermes-agent/contents/<path>` at the
+repository's default branch head. Hermes Agent is a fifth, independent,
+self-hosted product -- see
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md) §6
+and [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md)
+§6 for this book's fuller architectural introduction to the harness
+itself, not repeated here; [fan-out.md](fan-out.md) §5 already documents
+`delegate_task`'s dispatch/concurrency mechanics and Bot Mode's
+group-chat shape from the dispatch angle -- this section asks the
+narrower question those two pages leave open: once a `delegate_task`
+child or a Bot Mode teammate has something to say, what is the actual
+wire format and delivery mechanism that gets it back to whoever is
+waiting?
+
+### 5.1 `delegate_task` results: a background handle now, the summary posted back as a new message later
+
+```mermaid
+sequenceDiagram
+    participant Parent as Parent AIAgent turn
+    participant DT as delegate_task tool
+    participant Child as Child AIAgent (fresh conversation)
+    participant DB as profile state.db
+    participant Queue as fresh-turn queue
+
+    Parent->>DT: delegate_task(goal, context) or tasks=[...]
+    DT-->>Parent: handle returned immediately -- turn continues
+    DT->>Child: spawn (isolated context, own terminal session)
+    Note over Child: only goal+context enter --<br/>"subagents know nothing" of parent history
+    Child->>Child: works independently
+    Child-->>DB: completion event stored durably
+    DB->>Queue: published to the normal fresh-turn queue
+    Queue-->>Parent: synthetic turn delivers final summary as a new message
+    Note over Queue: durable claim -- competing consumers;<br/>only the accepting consumer acknowledges
+```
+
+The documentation states the mechanism plainly: "Top-level model calls run
+in the background automatically. Hermes returns a handle immediately so
+the conversation can continue, then posts the result back as a new
+message." A batch call (`delegate_task(tasks=[...])`) works the same way
+at one level up: "Hermes returns one background handle, runs the
+subagents in parallel, and posts one consolidated result after every
+child finishes," with results "sorted by task index to match input order
+regardless of completion order." The one architectural exception is an
+*orchestrator subagent* -- a child that itself calls `delegate_task` on
+further children -- which "waits for its own workers so it can synthesize
+their results before returning," i.e. synchronous blocking only applies
+one level down from a subagent's own perspective, never at the top level
+where the human/parent conversation is waiting.
+
+The redelivery mechanism behind "posts the result back as a new message"
+is documented with unusual mechanical precision for a hosted product:
+"When a background delegation finishes, Hermes stores its completion
+event in the active profile's `state.db` before publishing it to the
+normal fresh-turn queue. If Hermes restarts after completion but before
+delivery, the pending event is restored and routed through the same
+ownership checks. Competing consumers use a durable claim, so only the
+consumer that successfully accepts the synthetic turn acknowledges
+delivery; failed attempts release the claim for retry." This is a
+persistence-then-queue design comparable in spirit to Claude Code's
+mailbox-file persistence (§1.3 above) but answering a different failure
+mode: Claude Code's mailbox survives a malformed *entry*, while Hermes'
+`state.db` write survives a *process restart* between a child finishing
+and its result being delivered -- and the docs are explicit that this
+buys only delivery durability, not execution durability: "This does not
+resume child execution after a crash. A delegation whose owner process
+disappears while it is still running is recorded as `unknown`, because
+Hermes cannot prove whether its external side effects happened." A
+related, separate suppression rule governs a subagent's own
+background *processes* (e.g. a child running `npm ci` with
+`notify_on_complete`): those notifications "technically route their
+completion and watch-pattern notifications to the **parent**
+conversation, because anything that outlives the child needs a durable
+consumer," but are suppressed by default in the parent chat --
+"Suppressed events are logged at debug level" and can be restored via
+`delegation.surface_child_process_notifications: true` -- a second,
+independent instance of the same "route to the durable consumer, but
+don't necessarily surface it" design the completion-event queue itself
+embodies.
+
+### 5.2 The `subagent.*` gateway event stream: push-delivered progress telemetry, never the message the parent LLM actually receives
+
+Source-verified from `ui-tui/src/gatewayTypes.ts`: the gateway emits a
+six-member tagged union of `subagent.*` events --
+`subagent.spawn_requested`, `subagent.start`, `subagent.thinking`,
+`subagent.tool`, `subagent.progress`, and `subagent.complete` -- each
+carrying a `SubagentEventPayload` with fields including `goal`,
+`task_index`, `subagent_id`, `parent_id`, `depth`, `status`, `model`,
+`tool_name`, `tool_preview`, `files_read`/`files_written`, token counts,
+and `cost_usd`. `ui-tui/src/app/createGatewayEventHandler.ts` consumes
+every member of that union purely to drive the terminal UI's live
+spawn-tree render (`turnController.upsertSubagent(...)`, keyed by the
+server-issued `subagent_id`) -- `subagent.spawn_requested` marks a child
+"built but not yet running (waiting on `ThreadPoolExecutor` slot)," and
+`subagent.complete` merges in `duration_seconds`, a normalized `status`,
+and a `summary` string. This is architecturally the same shape this page
+already documents for pi's reference subagent extension (§4.2): a
+UI-facing progress stream that a client renders live but that never, by
+itself, re-enters the parent model's own context turn by turn. The
+documentation's own framing of what the parent's LLM actually receives
+is unambiguous on this point -- "only its final summary enters the
+parent's context" -- meaning the six-event `subagent.*` stream and the
+one `state.db`-persisted completion event from §5.1 are two structurally
+different things serving two different consumers: the event stream is
+transient, UI-scoped telemetry (nothing about it is durable or
+replayed on gateway restart), while the completion event is the durable,
+model-facing message the parent conversation actually resumes on.
+
+### 5.3 `message_agent`: a validated, server-attributed send tool that replaced an earlier shell-out protocol
+
+Source-verified from `tools/bot_mode_dm.py`, whose own module docstring
+names the problem it was built to fix: "the Bot Mode teammate protocol
+taught agents to DM each other via a prompt-injected `hermes -p <bot>
+chat ...` shellout. That transport works, but the *invocation* was
+fragile -- quoting traps..., temp-file choreography, dead-profile races
+-- and the Desktop's remote-mention path forwarded raw user text
+verbatim." `message_agent(target, message)` replaces that free-form
+shellout with a structured tool call bearing a real JSON-schema
+`parameters` object (`target: string`, `message: string`, capped at
+16,000 characters), injected -- not globally registered -- only into a
+Bot's own canonical "Bot Chat" session, with a second, execution-time
+title check as defense in depth against a forged call from a session
+that should never have had the tool (group-room member sessions, CLI
+sessions, cron agents, and ordinary subagents never see it). Three
+mechanical guarantees the source gives directly, all enforced
+server-side rather than left to model discipline:
+
+- **The target is validated against a live roster** built from the
+  install's own local profiles (`~/.hermes/profiles/`) plus any
+  registered peers, before any delivery is attempted; an unresolved
+  target returns a structured error listing the actual reachable names
+  rather than silently failing.
+- **Attribution is stamped by the tool, not composed by the sending
+  model.** Every delivered body is prefixed with `f"Message from 🤖
+  {sender_handle} (@{sender_handle}): "` inside `message_agent_tool()`
+  itself, and the tool's own schema description tells the calling model
+  never to include that prefix or to paste the human user's words
+  verbatim -- "paraphrase the actionable substance, and keep private 1:1
+  chat content private."
+- **Delivery is fire-and-forget by construction, not by convention.**
+  The tool's schema description states this as an explicit behavioral
+  contract to the model: "It does NOT return their reply and you must
+  not wait or poll for one -- send it, finish your turn, and the reply
+  arrives later as a background-process completion notification."
+
+### 5.4 Local delivery is a full agent turn, not a mailbox write -- and reuses Hermes' own generic background-process primitive
+
+```mermaid
+sequenceDiagram
+    participant Sender as Sending Bot's turn
+    participant Tool as message_agent tool
+    participant Term as terminal_tool(background=True,<br/>notify_on_complete=True)
+    participant CLI as spawned `hermes -p <target>` process
+    participant Target as Target Bot's own "Bot Chat" session
+
+    Sender->>Tool: message_agent(target, message)
+    Tool->>Tool: validate roster, prefix attribution,<br/>write message to temp DM file
+    Tool->>Term: spawn background subprocess
+    Term-->>Tool: process_id (ack)
+    Tool-->>Sender: {"status":"sent", detail: "do NOT wait"} -- turn ends
+    Term->>CLI: hermes -p <target> chat --in ~ -c "Bot Chat"<br/>--create-if-missing -Q --query-file <tmp>
+    CLI->>Target: runs one full agent turn inside the<br/>target's persistent Bot Chat session
+    Target-->>CLI: reply text on stdout
+    CLI-->>Term: process exits, DM tempfile cleaned up
+    Term-->>Sender: notify_on_complete fires --<br/>reply arrives as the sender's next-turn notification
+```
+
+The most structurally distinctive finding in this section, source-read
+directly from `tools/bot_mode_dm.py`'s `_start_delivery`/`_spawn_delivery`
+functions: local (same-machine) delivery is not a write into a mailbox
+file or a queue row at all -- it is a **new, separate `hermes` CLI
+process invocation** (`hermes -p <resolved-profile> chat --in ~ -c "Bot
+Chat" --create-if-missing -Q`) that runs one complete agent turn inside
+the target Bot's own persistent, named session, with the message body
+supplied via a temp file rather than shell-interpolated (comment: "nothing
+shell-interpreted -- quotes, `$(...)`, and backticks arrive verbatim").
+That subprocess is launched through `terminal_tool(background=True,
+notify_on_complete=True)` -- the same generic background-process
+primitive Hermes uses for any long-running shell command a subagent or
+main agent starts (`npm ci` with `notify_on_complete`, §5.1) -- meaning
+Hermes has exactly **one** asynchronous-completion notification channel
+in the whole product, and delegate_task results, arbitrary background
+shell processes, and bot-to-bot message replies are three different call
+sites feeding the same channel rather than three separately engineered
+messaging systems. Because delivery is a real agent turn against a
+stateful session, and two deliveries into the *same* target profile must
+never run concurrently, `tools/bot_relay.py` implements a **per-profile
+turn lock**: a file under `bot_relay/locks/<profile>.lock` held with
+`fcntl.flock` "for exactly the turn execution window," released
+automatically by the kernel on holder-process death so a crashed turn
+can never wedge the profile permanently. A second deliverer queues
+behind the lock up to a configurable `bot_mode.turn_wait_seconds` budget
+(120s fallback) before giving up with a structured `TurnBusyError`
+tagged reason `target_busy` -- a concrete, source-verified answer to "what
+happens when two agents try to message the same teammate at once" that
+none of this page's other three harnesses documents at all.
+
+### 5.5 Cross-connection delivery: a durable file-based envelope queue with TTL expiry and a typed failure-reason taxonomy
+
+For a target Bot on a different registered Desktop connection (not a
+same-machine profile), `tools/bot_relay.py` implements delivery as a
+literal three-directory envelope queue under `<HERMES_ROOT>/bot_relay/`:
+`outbox/` (one JSON file per queued message, written by
+`enqueue_envelope`), `claimed/` (atomically renamed out of `outbox/` via
+`os.replace` the instant the Desktop drains it, "so a second drain can't
+double-deliver"), and `replies/` (one JSON file per envelope ID, written
+back by `write_reply` once the Desktop relays the target's response).
+The envelope itself carries `id`, `created_at`, `from_profile`,
+`from_handle`, `target_connection`, `target_profile`, `target_handle`,
+and `message` -- a genuine, source-defined message envelope schema,
+distinct from the plain natural-language body `message_agent` accepts
+from the model. Three failure-handling mechanics are worth naming
+precisely because none of them are documented, even approximately, for
+any other harness on this page:
+
+- **A configurable TTL expires undelivered envelopes at drain time,
+  not send time.** `claim_pending_envelopes` checks each envelope's age
+  against `bot_mode.envelope_ttl_seconds` (900-second fallback); an
+  envelope older than the TTL is never delivered -- it is answered with
+  an error reply tagged reason `queued_expired` and removed from disk,
+  so the sender's waiter resolves instead of hanging indefinitely.
+- **A liveness check fails fast before an envelope is even queued.**
+  `enqueue_envelope` consults a freshness-gated roster snapshot
+  (`_target_liveness`, honoring an `online: false` roster row or a
+  target's absence from a *recently synced* roster) and raises
+  `EnvelopeRefusedError` with reason `runtime_offline` when the target is
+  "definitively offline right now," rather than silently queueing a
+  message nobody will ever drain; an unknown or stale roster fails open
+  by design ("proves nothing").
+- **A single, end-to-end typed reason code rides with every failure.**
+  The docs enumerate eleven named codes -- `provider_auth_or_access`,
+  `provider_quota_limit`, `provider_rate_limit`, `provider_server_error`,
+  `context_overflow`, `missing_config`, `model_unavailable`,
+  `runtime_offline`, `queued_expired`, `delivery_timeout`, and
+  `target_busy` -- classified once at "the target gateway," forwarded by
+  the Desktop unchanged, and surfaced to the sending agent's own
+  completion notification as a literal `[reason: <code>]` tag ahead of
+  the human-readable error text, so "a calling agent can branch on the
+  code... instead of parsing provider prose." `tools/bot_failure_reasons.py`
+  additionally classifies free-text agent errors into this same enum
+  when no explicit reason was set. This is a substantially richer,
+  more explicitly machine-readable failure taxonomy than Claude Code's
+  own malformed-mailbox-entry fix (§1.3): Claude Code documents *one*
+  failure mode (a bad JSON entry) and *one* recovery (validate, evict,
+  keep delivering); Hermes documents eleven distinct, named failure
+  *reasons* threaded through an entire retry/backoff/expiry pipeline.
+
+A third channel exists for machine-to-machine messaging with no Desktop
+process in the loop at all: `hermes peer add <name> --url <api-server-url>
+--key <API_SERVER_KEY>` registers a remote gateway directly, and `hermes
+peer dm <peer>[/<agent>]` (or `message_agent(target="<peer>/<agent>")`
+from inside a model's own tool call) delivers into that remote profile's
+canonical Bot Chat over the peer's own API-server HTTP endpoint, "the
+exact cross-machine twin of the local `hermes -p <bot> chat` command,"
+per the documentation. Because this path is a direct gateway-to-gateway
+HTTP call rather than the Desktop-mediated file relay, the docs flag it
+as subject to ordinary NAT reachability constraints ("a gateway behind
+home NAT can dial out to a public peer... but the reverse direction has
+no inbound route unless your network provides one") -- a constraint the
+Desktop-relay path above does not share, because the Desktop itself
+holds both connections' sockets open rather than requiring either
+gateway to accept an inbound connection from the other.
+
+### 5.6 Group chats: voluntary peer participation, not addressed one-to-one messaging
+
+Bot Mode's other coordination surface, a shared multi-Bot "room" (2--6
+members), is a genuinely different message-passing shape from
+`message_agent`'s addressed one-to-one delivery: a human or Bot message
+into the room "triggers up to three serial rounds of member turns,"
+each member deciding independently whether to speak -- "not every Bot
+replies to every message... a Bot replies only when it has something new
+to add and passes otherwise" -- with `@name` used to pull a specific
+teammate into the round and `@user` as an explicit escalation channel
+back to the human, flagged in the UI as a "needs you" badge. Hard caps
+(10 messages per send, 3 rounds) bound how long a room can keep talking
+to itself. Each member "keeps its own persistent `Group: <name>` session,"
+so the room's history is really N separate per-member session logs, not
+one shared transcript row the way OpenCode's synthetic-completion write
+is (§3 above). This is the same "independent peers, voluntary per-turn
+participation, human-visible shared surface" shape [fan-out.md](fan-out.md)
+§5.2 already named from the dispatch angle; from the messaging angle
+specifically, the load-bearing addition is that rooms themselves are
+**replicated, not centrally hosted**: "each room's recent transcript,
+members, picture, and name are mirrored into the shared profile metadata
+of every gateway your Desktop is connected to, with per-gateway
+versioning so two Desktops writing at once merge instead of overwriting
+each other" -- a CRDT-adjacent, multi-writer replication design for the
+room's own state that none of this page's addressed one-to-one channels
+(Claude Code's mailbox, Hermes' own `message_agent`/envelope-queue paths
+above) need, because a mailbox or an envelope queue has exactly one
+reader, while a group room can be viewed and written from several
+Desktops against the same gateway at once.
+
+---
+
+## 6. Synthesis
+
+| Dimension | Claude Code (`SendMessage`) | Copilot CLI | OpenCode | pi | Hermes Agent |
+|---|---|---|---|---|---|
+| Transport | Tool call, resolved to either an in-conversation resume or a filesystem mailbox write | One-directional event stream (SDK-documented); no CLI-confirmed transport for a peer channel | Real HTTP Server-Sent-Events endpoint (`text/event-stream`), source-verified | Spawned OS process (`child_process.spawn`, `--mode json -p --no-session`), stdin closed at spawn -- source-verified from an official but opt-in reference extension, not a core primitive | Three distinct transports, source-verified: `delegate_task` results ride a durable `state.db`-backed completion queue (§5.1); local bot-to-bot delivery spawns a whole new `hermes` CLI process running one agent turn against `terminal_tool(background=True, notify_on_complete=True)` (§5.4); cross-connection delivery is a file-based `outbox`/`claimed`/`replies` envelope queue drained by the Desktop, or a direct peer-gateway HTTP call (§5.5) |
+| Message envelope | Natural-language "task direction" for ordinary messages; two named structured types (`shutdown_request`, `plan_approval_response`) for agent-team protocol messages | Named lifecycle events with fixed field sets per type (`agentName`, `toolCallId`, `error`, etc.) -- not a general-purpose message, a fixed event schema | A generic `Info` message row (`role`, `parts[]`, `metadata`) -- the same schema for every message in the product, human or agent-originated | Streamed JSONL `AgentSessionEvent`/`AgentEvent` lines (`message_end`, `tool_result_end`, etc., per `docs/json.md`) consumed for UI progress only; the one value actually delivered to the parent LLM is the tool call's own final `content`, assembled client-side by the extension | A `message_agent(target, message)` tool call whose body is server-side wrapped in a fixed `Message from 🤖 <sender> (@<sender>): ` attribution prefix before delivery (§5.3); cross-connection envelopes additionally carry `id`/`created_at`/`from_profile`/`from_handle`/`target_connection`/`target_profile`/`target_handle` as a distinct JSON schema (§5.5); a separate six-member `subagent.*` gateway-event union (`spawn_requested`/`start`/`thinking`/`tool`/`progress`/`complete`) carries UI telemetry only, never the model-facing message (§5.2) |
+| Addressing | Agent ID (durable across name reuse) or agent name (collision-checked as of v2.1.199) | `agentId` tag on each event, attributing it to the sub-agent that produced it -- not an address a message is sent *to* | `sessionID` (a session with a `parentID` is a subagent's session); no separate agent-address concept beyond the session ID itself | Agent *name* only, resolved from a markdown frontmatter file (`~/.pi/agent/agents/*.md`, or project-scoped `.pi/agents/*.md`) at dispatch time -- no persistent handle to a *running* instance exists, because each dispatch is a fresh, short-lived child process, not a resumable session | Profile name resolved against a live roster injected into the sender's own system prompt, with `<peer>/<agent>` for a registered peer gateway and `<handle>@<connection>` disambiguating a same-named Bot on another registered Desktop connection (§5.3-§5.5) -- no durable agent-ID handle comparable to Claude Code's |
+| Push vs. pull | Push: "the lead doesn't need to poll for updates"; mailbox delivered automatically | Push: events "share the parent session stream" | Push: SSE stream, plus a `server.heartbeat` keepalive so a client can tell "connected, idle" from "disconnected" | Push, but UI-scoped only: the extension's `onUpdate` callback is invoked as JSONL lines arrive on the child's stdout, updating the tool call's live render; nothing is pushed into the parent LLM's own context until the child process exits | Push but fire-and-forget: the sender gets an immediate acknowledgement and is told explicitly not to wait or poll; the reply surfaces later on exactly one shared channel -- a background-process completion notification -- reused across `delegate_task` results, arbitrary background shell processes, and `message_agent` replies alike (§5.1, §5.4) |
+| Peer-to-peer (agent-to-agent, not just parent-child) | Yes -- agent teams: "teammates message each other directly," one send per recipient, no broadcast primitive | Not found in any source fetched this session, across three separate pages researched | Not applicable in the same sense -- there is no peer concept; every message is a write into *some* session's own row, parent or child | No -- strictly parent-to-child, one direction, spawn-time only; sequencing multiple subagents (chain mode) is the parent extension's own string interpolation of one child's finished output into the next child's spawn arguments, never a channel between the two children themselves | Yes, and in two distinct shapes: addressed one-to-one via `message_agent` (§5.3-§5.5), and voluntary many-to-many in a shared, replicated group room where each member decides per-turn whether to speak at all (§5.6) |
+| Provenance / trust boundary on receipt | Enforced at the permission-classifier level: a message is tagged as coming from another agent, not the human, and cannot carry approval consent | Not documented -- no permission-relay discussion found for Copilot CLI's sub-agent events | Not documented as a trust boundary; the message schema itself carries no sender-trust field distinct from `role: "user" | "assistant"` | Documented at the agent-*definition* level, not the message level: project-local agent files (`.pi/agents/*.md`) are treated as less trusted than user-level ones, and the reference extension prompts for confirmation before running a project-local agent in an untrusted project (`agentScope`, `confirmProjectAgents`) -- a load-time trust gate on which prompt runs, not a runtime check on message content | Enforced at composition time rather than only on receipt: the tool's own schema instructs the sending model never to forward the human's words verbatim and to paraphrase, while the true-sender attribution prefix is stamped server-side inside `message_agent_tool()` itself, not left to the model to self-report (§5.3) |
+| Malformed-message handling | Documented, dated fix: bad mailbox entries are validated, reported as errors, and evicted individually (v2.1.207+); before that, one bad entry blocked the whole mailbox | Not documented | Not documented as a distinct failure mode; ordinary schema validation (Effect's `Schema.Struct`) applies to every message row generally | Documented per-invocation, not per-message: a non-zero child exit code surfaces as a tool error with captured stderr/output, an LLM-level `stopReason: "error"` propagates as an error message, and in chain mode the whole chain stops at the first failing step | No documented malformed-*entry* recovery comparable to Claude Code's, but a substantially richer *delivery-failure* taxonomy: eleven named machine-readable reason codes (`provider_auth_or_access`, `queued_expired`, `target_busy`, `runtime_offline`, etc.) ride end-to-end with every failed delivery, plus TTL-based envelope expiry and a fail-fast offline check before an envelope is even queued (§5.5) |
+| Extensibility hook for messaging-adjacent events | Three dedicated hooks (`TeammateIdle`, `TaskCreated`, `TaskCompleted`), each supporting exit-code-2 blocking, no `matcher` support | Not found | The same generic SSE stream any external tool could subscribe to; no dedicated hook system found for messaging specifically | None dedicated to subagent messaging specifically; the generic `registerTool`/`onUpdate`/`exec` extension primitives the reference example is built from are available to any tool, and a separate, unrelated `pi.events` in-process pub/sub bus exists for extension-to-extension notification within one session (§4.4) -- not a hook on the subagent pattern itself | None found scoped specifically to subagent or bot-to-bot messages; [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md) §6 documents three general-purpose hook systems (gateway/plugin/shell) that observe tool calls and turns broadly, none named for the messaging events this page covers |
+| Verifiability | Docs-only (closed-source product) | Docs-only, and thinner than the other two on this specific question | Docs **and** live `dev`-branch source, cross-checked end to end (schema file, publish call sites, SSE handler) | Docs **and** the full, real TypeScript source of the one reference extension the "subagent" concept is built from, both fetched this session from the `main` branch | Docs **and** the full production Python tool source and TypeScript gateway-event schema, both fetched this session directly from `NousResearch/hermes-agent` |
 
 **The design lesson.** The three harnesses answer "how does a message
 actually get from one agent instance to another" in three
@@ -666,6 +969,39 @@ another session" answer will find something one level starker still: pi
 does not ship multiple agents talking to anything, in or out of process,
 unless a project has deliberately wired the one example extension the
 repository provides for building that pattern themselves.
+
+Hermes Agent answers the question a fifth way, and is the only harness on
+this page that gives *different, independently-engineered* answers for
+its two different kinds of messaging need. Parent-to-child delegation
+results are not messaged at all in the conversational sense -- they are
+persisted completion events (`state.db`, a durable claim, a fresh-turn
+queue) that survive a gateway restart between a child finishing and its
+result being delivered, while a separate, UI-scoped `subagent.*` event
+stream carries live progress telemetry that never touches the parent
+model's own context, the same push-but-UI-only shape this page already
+documents for pi's reference extension. Bot-to-bot messaging, by
+contrast, is a genuinely peer-to-peer capability engineered with its own
+validated tool (`message_agent`), its own server-enforced attribution
+(closing off the exact spoofing surface Claude Code's provenance tagging
+also guards against, §1.4, independently arrived at), and a delivery
+mechanism unlike anything else on this page: a same-machine message is
+not a mailbox write but a full, separately-spawned agent turn against
+the recipient's own persistent session, serialized by a per-profile file
+lock so two simultaneous deliveries can never race into the same Bot
+Chat. Cross-machine delivery adds a third distinct transport again -- a
+durable, TTL-bounded file envelope queue relayed by the Desktop, or a
+direct gateway-to-gateway HTTP call for an always-on peer -- each with
+its own explicitly named failure mode threaded through an eleven-code
+typed-reason taxonomy richer than any other harness on this page
+documents for message delivery specifically. A workflow builder coming
+to Hermes expecting one unified "inter-agent message" concept, the way
+Claude Code's `SendMessage` or OpenCode's session-row schema each offer
+a single answer, will instead find three purpose-built transports
+solving three different delivery problems (durable async result
+delivery, addressed peer messaging, and voluntary group participation)
+that happen to share exactly one thing: the generic background-process
+completion-notification channel every one of them ultimately surfaces
+through.
 
 ---
 
@@ -782,3 +1118,66 @@ real source of its one reference multi-agent extension), `main` branch via
   confirms `pi.events` is an in-process, single-session
   extension-to-extension pub/sub bus, cited in section 4.4 specifically to
   distinguish it from the subagent-spawning mechanism.
+
+**Hermes Agent (authoritative for its own documented behavior AND, this
+session, its own real production source), fetched 1 September 2026:**
+- `https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation` --
+  `delegate_task`'s "returns a handle immediately... posts the result
+  back as a new message" framing, batch-mode result ordering, the
+  durable-background-completions paragraph (`state.db`, fresh-turn
+  queue, durable claim, restart-safe redelivery, the `unknown`-outcome
+  caveat for a crashed owner process), and the child-background-process
+  notification-suppression default (§5.1).
+- `https://hermes-agent.nousresearch.com/docs/user-guide/bot-mode` --
+  Bot-to-bot messaging (`@mentions`, `message_agent`, fire-and-forget
+  framing, attribution prefix), the eleven named delivery-failure reason
+  codes and their end-to-end propagation, the Desktop-relay mechanics
+  for cross-connection messaging, `hermes peer`/`hermes peer dm` for
+  Desktop-less machine-to-machine delivery and its NAT-reachability
+  caveat, and the group-chat coordination shape (serial rounds,
+  `@name`/`@user`, per-gateway-versioned room replication) (§5.3-§5.6).
+- `repos/NousResearch/hermes-agent/contents/tools/delegate_tool.py`,
+  via `gh api`, default branch head -- cross-checked against the docs'
+  own durable-completions claim; the file's own comments confirming the
+  durable-ownership-spine design for background delegation (§5.1).
+- `repos/NousResearch/hermes-agent/contents/tools/bot_mode_dm.py`, via
+  `gh api` -- the full `message_agent` tool implementation: its module
+  docstring naming the shell-out protocol it replaced, the JSON-schema
+  `message_agent_tool_schema()`, the Bot-Chat-only injection and
+  execution-time title gate, the server-side attribution-prefix
+  construction inside `message_agent_tool()`, the `MESSAGE_MAX_CHARS`
+  cap, and the local-delivery `_start_delivery`/`_spawn_delivery`
+  functions spawning `hermes -p <profile> chat --in ~ -c "Bot Chat"
+  --create-if-missing -Q` through `terminal_tool(background=True,
+  notify_on_complete=True)` (§5.3-§5.4).
+- `repos/NousResearch/hermes-agent/contents/tools/bot_relay.py`, via
+  `gh api` -- the cross-connection envelope-queue implementation: the
+  `outbox`/`claimed`/`replies` directory design, `enqueue_envelope`'s
+  `EnvelopeRefusedError`/`runtime_offline` fail-fast liveness check,
+  `claim_pending_envelopes`'s atomic `os.replace` claim and
+  TTL-expiry/`queued_expired` handling, `write_reply`'s reason-code
+  persistence, and the per-profile `acquire_turn_lock`/`TurnBusyError`/
+  `target_busy` `fcntl.flock` serialization mechanism (§5.4-§5.5).
+- `repos/NousResearch/hermes-agent/contents/tools/bot_failure_reasons.py`
+  and `tools/send_message_tool.py`, via `gh api` -- confirming,
+  respectively, the free-text-to-reason-code classifier `write_reply`
+  falls back to, and that `send_message_tool.py` is a distinct
+  human-facing cross-platform (Telegram/Discord/Slack) messaging tool,
+  not the agent-to-agent `message_agent` path, avoiding a
+  same-repository naming collision this section does not conflate.
+- `repos/NousResearch/hermes-agent/contents/ui-tui/src/gatewayTypes.ts`
+  and `ui-tui/src/app/createGatewayEventHandler.ts`, via `gh api` --
+  the six-member `subagent.*` `GatewayEvent` union and
+  `SubagentEventPayload` field set, and the TUI's own
+  `turnController.upsertSubagent(...)` consumption of every member
+  purely for live progress rendering, confirming the UI-telemetry-only
+  scope of that event stream against the docs' own "only its final
+  summary enters the parent's context" statement (§5.2).
+- Cross-referenced without re-fetching this session:
+  [Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+  §6 and [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md)
+  §6, both already sourced from `hermes-agent.nousresearch.com`
+  elsewhere in this book, for this harness's broader architectural
+  introduction; [fan-out.md](fan-out.md) §5, for `delegate_task`'s
+  dispatch/concurrency mechanics and Bot Mode's group-chat shape from
+  the dispatch angle, not repeated here.

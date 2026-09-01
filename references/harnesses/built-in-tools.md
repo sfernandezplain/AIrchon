@@ -10,9 +10,9 @@ alongside the built-ins, see [MCP integration](mcp-integration.md).
 
 Every claim below is tagged VERIFIED (fetched this session from the
 named source) or BEST CURRENT UNDERSTANDING, UNCONFIRMED. Claude Code,
-Copilot CLI, OpenCode, and pi are four separate products from four
-separate organizations -- nothing confirmed for one is assumed for
-another. Sources and fetch dates at the bottom.
+Copilot CLI, OpenCode, pi, and Hermes Agent are five separate products
+from five separate organizations -- nothing confirmed for one is
+assumed for another. Sources and fetch dates at the bottom.
 
 ---
 
@@ -666,7 +666,336 @@ by this page.
 
 ---
 
-## 5. Synthesis -- the same twelve jobs, four different tool surfaces
+## 5. Hermes Agent (Nous Research)
+
+Sources for this section: VERIFIED, fetched 1 September 2026 directly from
+`hermes-agent.nousresearch.com/docs/` -- `user-guide/features/tools` (the
+conceptual overview and toolset-usage syntax), `reference/tools-reference`
+(the authoritative, code-derived per-tool registry this section's tables
+are drawn from), and `reference/toolsets-reference` (how tools are bundled,
+gated, and selected). Hermes Agent is a sixth, independent, self-hosted
+product with no dependency on any harness covered elsewhere on this page --
+see [Hooks and lifecycle extensibility](hooks-lifecycle-extensibility.md)
+§6 and [Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§6 for this book's fuller architectural introduction and its eight-layer,
+"reject 'trust the LLM'" command-approval model, neither repeated here.
+This section is scoped narrowly to the tool surface itself: what ships,
+how it is organized, and how *availability* (does this tool exist in the
+model's schema at all) is decided -- a question distinct from whether an
+already-available tool call is then *permitted to execute*, which is
+§6's and hooks §6's subject, not this page's.
+
+### 5.1 An order-of-magnitude larger, dynamically-gated surface -- not a fixed table
+
+```mermaid
+flowchart TB
+    subgraph Kinds["Toolset kinds, per toolsets-reference"]
+        K1["Core -- one bundle of related tools,\ne.g. file: read_file/write_file/patch/search_files"]
+        K2["Composite -- combines core toolsets,\ne.g. coding = file+terminal+search+web+skills+\ntodo+memory+session_search+clarify+code_execution+\ndelegation+vision; debugging = file+terminal+web"]
+        K3["Platform -- full per-deployment config,\ne.g. hermes-cli, hermes-discord, hermes-webhook"]
+        K4["Dynamic -- mcp-<server> per configured MCP\nserver, plugin-registered (ctx.register_tool()),\ncustom_toolsets in config.yaml"]
+    end
+    K1 --> K2 --> K3
+    K4 -.->|generated/merged at runtime| K3
+    K3 --> Gate1{"Capability-gated?\n(browser/computer_use/code_execution/\nFeishu/HA/cronjob need a backend or credential)"}
+    Gate1 -->|no| Gate2{"Workflow-gated?\n(kanban: opt-in only,\nnot enabled by all/*)"}
+    Gate1 -->|yes, missing| Absent["Tool schema withheld this session"]
+    Gate2 --> Gate3["hermes tools per-tool disable\n(finer-grained, persists to config.yaml)"]
+    Gate3 --> Session["Session's actual tool schema"]
+```
+
+Where Claude Code, Copilot CLI, OpenCode, and pi each ship a single,
+enumerable inventory (§1.1's ~30-row table, §2.1's changelog-confirmed
+functional set, §3.1's ~13-tool list, §4.2's closed 8-member `ToolName`
+union), Hermes' own `tools-reference` page states its own registry size
+directly rather than leaving a reader to count rows: "Quick counts
+(current registry): ~86 tools -- 10 browser tools (core) + 2 CDP-gated
+browser tools, 4 file tools, 4 Home Assistant tools, 2 terminal tools
+(`terminal`, `process`), 12 desktop-GUI tools ... 2 web tools, 5 Feishu
+tools, 7 Spotify tools (registered by the bundled spotify plugin), 5
+Yuanbao tools, 12 kanban tools (registered when the kanban dispatcher
+spawns the agent), 3 project tools (desktop/GUI sessions), 2 Discord
+tools, 3 video tools (`video_generate`, `xai_video_edit`,
+`xai_video_extend`), and a handful of standalone tools (`memory`,
+`clarify`, `delegate_task`, `execute_code`, `cronjob`, `session_search`,
+`skill_view`/`skill_manage`/`skills_list`, `text_to_speech`,
+`image_generate`, `vision_analyze`, `video_analyze`, `todo`,
+`computer_use`, `x_search`)." That count is the harness's own explicit
+acknowledgment that its docs state a floor, not a fixed ceiling: "Every
+tool belongs to exactly one toolset," and toolsets come in three
+documented kinds -- **Core** ("a single logical group of related tools,"
+e.g. `file` bundling `read_file`/`write_file`/`patch`/`search_files`),
+**Composite** ("combines multiple core toolsets for a common scenario,"
+e.g. `coding` or `debugging`), and **Platform** ("a complete tool
+configuration for a specific deployment context," e.g. `hermes-cli` is
+"the default for interactive CLI sessions") -- plus a fourth, dynamic
+category this page's other four harnesses have no documented
+counterpart for at this granularity: an `mcp-<server>` toolset is
+generated automatically per configured MCP server (a `github` MCP
+server entry yields a `mcp-github` toolset "containing all tools that
+server exposes"), a plugin can register its own toolset via
+`ctx.register_tool()` during initialization, and a user can define
+`custom_toolsets` directly in `config.yaml`. `web_search`/`web_extract`
+carry an explicit credential-OR list (`EXA_API_KEY` or
+`PARALLEL_API_KEY` or `FIRECRAWL_API_KEY` or `KEENABLE_API_KEY`) rather
+than a single fixed backend, and browser's two CDP-gated tools
+(`browser_cdp`, `browser_dialog`) "only register when a Chrome DevTools
+Protocol endpoint is reachable at session start" -- so even within one
+session, "which of the ~86 exist in this model's schema right now" is a
+runtime-resolved question, not a static list the way Claude Code's or
+pi's own tables are.
+
+### 5.2 File and terminal core: read_file/write_file/patch/search_files, terminal/process
+
+The `file` toolset's four tools are named, in their own descriptions,
+as deliberate shell-equivalent replacements: `read_file` ("Use this
+instead of cat/head/tail in terminal"), `write_file` ("Use this instead
+of echo/cat heredoc in terminal"), `patch` ("Use this instead of
+sed/awk in terminal"), and `search_files` ("Use this instead of
+grep/rg/find/ls in terminal"), and the `terminal` tool's own
+description reinforces the same steering from the other direction --
+"Do NOT use cat/head/tail -- use read_file. Do NOT use grep/rg/find --
+use search_files." This is a stronger, tool-description-level nudge
+toward the dedicated file tools over shell equivalents than this page
+documents for Claude Code (§1.4's Edit/Write are gated by a
+read-before-edit rule, not by a system-prompt instruction discouraging
+Bash `cat`), Copilot CLI, or OpenCode.
+
+`read_file` returns `LINE_NUM|CONTENT`-formatted, paginated content
+(`offset`/`limit`), truncates reads over roughly 100K characters "on a
+line boundary" and returns a `next_offset` to continue, and additionally
+parses Jupyter notebooks (`.ipynb`), Word documents (`.docx`), and Excel
+workbooks (`.xlsx`) -- a document-format range this page finds no
+comparable single-tool breadth for elsewhere (Claude Code's `Read`
+handles notebooks and PDFs but not `.docx`/`.xlsx`, per §1.5). A
+UTF-16-specific behavior is called out directly in the docs: `read_file`
+"detects UTF-16 (BOM or byte-pattern heuristic, either endianness --
+common for Windows Notepad files and PowerShell `>` redirects) and
+transcodes it to UTF-8 for display instead of flagging the file as
+binary," with the result disclosing the conversion and `patch`/
+`write_file` re-encoding as UTF-8 on write; files over 10MB or
+genuinely binary still get a binary-file refusal. `write_file`
+"OVERWRITES the entire file -- use 'patch' for targeted edits," creates
+parent directories automatically, and both `write_file` and `patch`
+"auto-run syntax checks" on written/patched files (`.py`/`.json`/
+`.yaml`/`.toml` and other linted languages), surfacing "only NEW errors
+introduced by the write" -- a narrower, noise-suppressing variant of
+the auto-lint-after-edit behavior §1.5 documents for Claude Code's LSP
+integration, but triggered directly off the write/patch call rather
+than off a separately-installed code-intelligence plugin. `patch` itself
+does "targeted find-and-replace edits," but unlike Claude Code's `Edit`
+(§1.4), OpenCode's `edit` (§3.1), or pi's `edit` (§4.2) -- all three
+of which require an exact, character-for-character match -- Hermes'
+own docs state `patch` "uses fuzzy matching (9 strategies) so minor
+whitespace/indentation differences won't break it," returning a
+unified diff; no comparable fuzzy-match tolerance is documented for any
+of this page's other four harnesses' own edit tools, all of which are
+exact-match-or-refuse by design.
+
+`terminal` executes on a persistent filesystem across calls within a
+session and exposes a `background=true` flag plus a
+`notify_on_complete=true` option that fires an automatic notification
+when a backgrounded command finishes, "no polling needed" -- functionally
+adjacent to but more explicit than Claude Code's own automatic-timeout
+backgrounding (§1.3, which moves a command to the background only after
+it hits its own timeout, rather than on caller request from the start).
+A companion `process` tool manages exactly those backgrounded jobs via
+an `action` parameter -- `list`, `poll` ("check status + new output"),
+`log` (paginated full output), `wait` (block until done or timeout),
+`kill`, and `write` (send input to a running process's stdin) -- and
+`pty=true` on `terminal` additionally "enables interactive CLI tools
+like Codex and Claude Code," i.e. Hermes' own terminal tool is
+documented as capable of driving another harness's CLI as a subprocess
+inside its own sandboxed session. Tool-result annotation is itself
+documented behavior worth flagging: a command killed by a signal gets a
+human-readable explanation instead of a bare exit code -- quoted
+directly, exit `-9`/`137` becomes "terminated by signal 9: SIGKILL --
+often the kernel OOM killer on memory exhaustion, or an explicit `kill
+-9`" -- with segfaults, aborts, `SIGTERM`, broken pipes, and
+CPU/file-size-limit signals labeled the same way, and the shell's
+128-plus-signal-number exit-code convention explicitly hedged with
+"usually" since an application can legitimately exit with those same
+codes on purpose.
+
+`terminal`'s own backend is itself a configurable seven-way choice --
+`local` (default), `docker`, `ssh`, `singularity`/Apptainer, `modal`,
+`daytona`, and `vercel_sandbox` -- set via `terminal.backend` in
+`~/.hermes/config.yaml`; the Docker backend in particular starts "a
+single long-lived container on first use (`docker run -d ... sleep
+infinity`)" and "routes every terminal, file, and `execute_code` call
+through `docker exec` into that same container," so working-directory
+state, installed packages, and files written under `/workspace` all
+persist across calls, across `/new`/`/reset`, and across `delegate_task`
+subagents, for the lifetime of the Hermes process (or, with
+`container_persistent: true`, across Hermes restarts too) -- container
+security hardening (read-only root filesystem, all capabilities
+dropped, no privilege escalation, a 256-process PID limit, full
+namespace isolation) and the approval-system trade-off this enables
+("dangerous command approval is skipped for containerised backends
+since the container itself constitutes the security boundary") are
+[Permissions & sandboxing architecture](permissions-and-sandboxing.md)
+§6.2's subject, not re-derived here. A `sudo` call inside a `terminal`
+session prompts interactively for a password (cached for the session)
+or reads a pre-set `SUDO_PASSWORD` from `~/.hermes/.env`.
+
+### 5.3 Cognition and orchestration tools: todo, clarify, execute_code, delegate_task, memory, session_search, cronjob
+
+Several standalone tools cover jobs this page's other harnesses fold
+into subagent dispatch, a checklist tool, or leave uncovered entirely.
+`todo` manages a session-scoped task list with call-with-no-parameters
+returning the current list, and items may nest via a `parent` field
+pointing at another item's `id`, rendered as an indented tree by
+surfaces -- structurally closer to Claude Code's now-legacy `TodoWrite`
+(§1.1) than to its newer `Task*` family, though independently
+implemented. `clarify` asks the user a question mid-execution in one of
+three modes -- single-select (up to four choices, plus a fifth,
+always-present "Other" free-text option), multi-select (checkboxes,
+returns a list), or fully open-ended -- and additionally accepts a
+`questions` array of two to five independent questions batched into one
+prompt, with per-surface rendering documented separately for desktop
+(one card, a single "Confirm and continue" submitting the whole batch),
+TUI/CLI (a compact answered/active/pending status list), and messaging
+platforms (falls back to asking one at a time); a prompt that times out
+mid-batch keeps whatever answers were already locked in, flagged
+`"timed_out": true`, rather than discarding the whole exchange. This is
+a materially richer, multi-question clarification primitive than
+Claude Code's own `AskUserQuestion` (§1.1's one-line table entry) is
+documented as offering. `execute_code` runs "a Python script that can
+call Hermes tools programmatically," explicitly scoped to cases needing
+"3+ tool calls with processing logic between them," filtering large
+tool outputs before they reach the model's own context, or conditional
+branching -- a code-execution-as-orchestration tool with no named
+equivalent in Claude Code's, Copilot CLI's, or OpenCode's own documented
+tool tables on this page (pi ships no comparable tool either, per §4.5's
+stated omissions, though a user extension could add one).
+
+`delegate_task` is Hermes' subagent-dispatch tool -- "spawn subagents in
+isolated contexts; each gets its own conversation, terminal session, and
+toolset, and only its final summary returns to you," accepting either a
+single `goal` or a `tasks` array for a parallel batch; full dispatch
+mechanics belong to [Handoff mechanism](handoff-mechanism.md), not
+duplicated here, the same scoping convention §2.1 and §3.1 both already
+apply to Copilot CLI's `task` tool and OpenCode's `task` tool
+respectively. `memory` ("save important information to persistent
+memory that survives across sessions... your memory appears in your
+system prompt at session start") is the one standalone
+persistent-memory tool this page can name outside of Copilot CLI's
+`store_memory`/`vote_memory` pair (§2.1) -- Claude Code and OpenCode
+both show "none built in" in this page's own synthesis table below,
+relying on MCP memory servers instead; see [Memory
+management](memory-management.md) for Hermes' fuller memory mechanism,
+not re-derived here. `session_search` ("FTS5-backed retrieval; returns
+actual messages from the DB (no LLM calls)") searches the local session
+database directly across four call shapes -- discovery (`query`),
+scroll (`session_id` + `around_message_id`), read (`session_id` alone),
+and browse (no arguments) -- a durable-storage search primitive
+structurally distinct from any tool named elsewhere on this page.
+`cronjob` is a single "unified scheduled-task manager" tool taking an
+`action` of `create`/`list`/`update`/`pause`/`resume`/`run`/`remove`,
+supporting skill-backed jobs and running each invocation "in fresh
+sessions with no current-chat context" -- the closest Hermes analogue to
+Claude Code's own `CronCreate`/`CronDelete`/`CronList` family (§1.1),
+collapsed here into one action-parameterized tool rather than three
+separately-named ones. Skill-related tool-callable access
+(`skill_view`, `skill_manage`, `skills_list`) is already fully documented
+in [Built-in skills](built-in-skills.md) §5, including the
+progressive-disclosure levels those three tools implement and the
+no-review-gate autonomous-authorship point specific to `skill_manage`;
+not re-derived here.
+
+### 5.4 Toolset gating is an *availability* question, layered under, not instead of, the approval system
+
+A tool's presence in a given session's schema resolves through several
+independent, stacked checks documented across `tools-reference` and
+`toolsets-reference`, each answering "does the model even see this
+tool" rather than "is this specific call allowed to run" --
+the latter question belongs to command-approval (Smart/Manual/Off,
+§6.1 of the permissions/sandboxing page) and to `pre_tool_call`
+directive hooks (§6.1 of the hooks page), neither re-derived here.
+First, **toolset selection** itself: per-session via `hermes chat
+--toolsets web,file,terminal`, per-platform via a `toolsets:` list in
+`config.yaml`, or interactively via the `hermes tools` curses UI or
+in-chat `/tools list`/`/tools disable <name>`/`/tools enable <name>`
+commands; `all`/`*` expands to "every registered toolset (built-in +
+dynamic + plugin)." Second, **capability gating**: "a handful of tools
+have an additional availability check on top of toolset membership and
+are not turned on by `all`/`*` alone" -- browser, `computer_use`,
+`code_execution`, the Feishu tools, Home Assistant, and `cronjob` are
+named explicitly as requiring their own backend or credential (Home
+Assistant's four tools specifically "only available when `HASS_TOKEN`
+is set," the browser toolset's two CDP-gated tools only when a CDP
+endpoint is reachable, `x_search`'s schema "only registered when xAI
+credentials ... are configured") -- described in the docs as
+"check_fn-gated at runtime," i.e. a tool can be named in an enabled
+toolset and still be absent from the model's actual schema for that
+session. Third, a **deliberate wildcard exception**: the twelve-tool
+`kanban` toolset is "workflow-gated" and stays off even under `all`/`*`
+specifically because its tools "mutate shared board state" -- it must
+either be named explicitly in a toolset list or the session must be a
+dispatcher-spawned worker with the `HERMES_KANBAN_TASK` environment
+variable set. Fourth, a **finer-grained, persisted override**: the
+`hermes tools` command "operates at the tool level (finer than
+toolsets) and persists to `config.yaml`" -- "disabled tools are filtered
+out even if their toolset is enabled," so an individual tool can be
+turned off independently of whatever toolset(s) would otherwise grant
+it. This four-layer availability stack (toolset selection ->
+capability gate -> workflow-gate exception -> per-tool disable) has no
+single named counterpart on this page: it is a considerably more
+granular version of the same "what the model is even offered" layer
+§2.2's diagram draws for Copilot CLI's `--available-tools`/
+`--excluded-tools` as distinct from execution permission, and of
+OpenCode's own always-on-unless-configured default (§3.2) -- but
+Hermes is the only one of this page's harnesses to combine
+credential/backend auto-detection with an explicit opt-in exception
+carved out for one specific, mutation-heavy toolset.
+
+MCP-sourced tools carry their own naming convention, distinct from
+every other harness's own MCP-tool naming on this page: "MCP tools
+appear with the prefix `mcp__<server>__`" -- e.g. `mcp__github__
+create_issue` for a configured `github` MCP server -- compare Claude
+Code's dedicated `ListMcpResourcesTool`/`ReadMcpResourceTool` pair
+(§1.1, for MCP-exposed *resources* specifically, not tool naming) and
+Copilot CLI's `MCP-SERVER`-per-server-name permission *kind* (§2.1, a
+permission-system category rather than a literal tool-name prefix);
+full MCP loading/discovery mechanics are [MCP
+integration](mcp-integration.md)'s subject, not this page's.
+
+### 5.5 Platform toolsets: the same product exposes a different tool surface per deployment context
+
+Because Hermes runs as a CLI, a TUI, a desktop app, and a persistent
+multi-platform messaging gateway (Telegram/Discord/Slack/WhatsApp/
+Signal/Matrix/Mattermost/email/SMS/BlueBubbles/DingTalk/QQ/WeCom/
+WeChat/Feishu/Yuanbao) from the same codebase, `toolsets-reference`
+documents a full **Platform Toolsets** table that fixes the complete
+tool configuration per deployment target rather than leaving it to
+per-session flags alone: `hermes-cli` is the richest, full default
+(file, terminal, web, browser, memory, skills, vision, image_gen, todo,
+tts, delegation, code_execution, cronjob, session_search, clarify,
+computer_use, Home Assistant, and the kanban tools where check_fn-gated
+conditions hold); `hermes-acp` ("focused on coding tasks in IDE
+context") drops `clarify`, `cronjob`, `image_generate`,
+`text_to_speech`, `computer_use`, all four Home Assistant tools, and
+the kanban tools; `hermes-api-server` drops `clarify`, `text_to_speech`,
+`computer_use`, and the kanban tools while keeping the rest, "suitable
+for programmatic access where user interaction isn't possible";
+`hermes-discord` adds `discord`/`discord_admin` on top of the
+`hermes-cli` baseline; and, at the narrow end,
+`hermes-webhook` is a "restricted safe subset -- only `web_search`,
+`web_extract`, `vision_analyze`, and `clarify`," explicitly denying
+webhook-triggered runs any terminal, file, or browser access at the
+tool-surface level rather than relying on a later permission check to
+catch a mutating call. `hermes-gateway` is the internal union of every
+`hermes-<platform>` toolset, used when the gateway must accept a
+message from any configured source. No other harness on this page
+documents this granular a per-deployment-surface tool-availability
+matrix -- Claude Code's `--bare` headless mode (§1.6) is the closest
+comparison this page has sourced, and it is a single restricted mode
+against Hermes' dozen-plus named platform toolsets, each independently
+tunable.
+
+---
+
+## 6. Synthesis -- the same twelve jobs, five different tool surfaces
 
 ```mermaid
 flowchart LR
@@ -740,19 +1069,44 @@ flowchart LR
         P11["none built in"]
         P12["none built in"]
     end
-    J1 -.-> C1 & G1 & O1 & P1
-    J2 -.-> C2 & G2 & O2 & P2
-    J3 -.-> C3 & G3 & O3 & P3
-    J4 -.-> C4 & G4 & O4 & P4
-    J5 -.-> C5 & G5 & O5 & P5
-    J6 -.-> C6 & G6 & O6 & P6
-    J7 -.-> C7 & G7 & O7 & P7
-    J8 -.-> C8 & G8 & O8 & P8
-    J9 -.-> C9 & G9 & O9 & P9
-    J10 -.-> C10 & G10 & O10 & P10
-    J11 -.-> C11 & G11 & O11 & P11
-    J12 -.-> C12 & G12 & O12 & P12
+    subgraph HM["Hermes Agent"]
+        H1[terminal]
+        H2[read_file]
+        H3[write_file]
+        H4["patch<br/>(fuzzy-matched)"]
+        H5["search_files<br/>(target=content)"]
+        H6["search_files<br/>(target=name)"]
+        H7[web_extract]
+        H8[web_search]
+        H9[delegate_task]
+        H10[todo]
+        H11["none built in"]
+        H12[memory]
+    end
+    J1 -.-> C1 & G1 & O1 & P1 & H1
+    J2 -.-> C2 & G2 & O2 & P2 & H2
+    J3 -.-> C3 & G3 & O3 & P3 & H3
+    J4 -.-> C4 & G4 & O4 & P4 & H4
+    J5 -.-> C5 & G5 & O5 & P5 & H5
+    J6 -.-> C6 & G6 & O6 & P6 & H6
+    J7 -.-> C7 & G7 & O7 & P7 & H7
+    J8 -.-> C8 & G8 & O8 & P8 & H8
+    J9 -.-> C9 & G9 & O9 & P9 & H9
+    J10 -.-> C10 & G10 & O10 & P10 & H10
+    J11 -.-> C11 & G11 & O11 & P11 & H11
+    J12 -.-> C12 & G12 & O12 & P12 & H12
 ```
+
+Hermes' registry runs to roughly 86 tools once every platform-, credential-,
+and workflow-gated toolset is counted (§5.1) -- far beyond the twelve
+functional jobs this diagram tracks. The twelve above are the jobs every
+harness on this page can be compared against directly; browser automation,
+scheduled cron jobs, Home Assistant control, desktop-GUI affordances,
+Spotify/Discord/messaging-platform actions, and code-execution-as-
+orchestration are real parts of Hermes' own surface with no named
+counterpart in Claude Code's, Copilot CLI's, OpenCode's, or pi's own
+documented tool tables, and are deliberately left off this comparison
+diagram rather than force-mapped onto a job column that doesn't fit them.
 
 **Naming and rule-syntax convergence is superficial, and pi mostly opts out of it
 entirely.** Claude Code, Copilot CLI, and OpenCode converge on a `kind(specifier)` shape
@@ -763,9 +1117,17 @@ OpenCode's `"git *"` pattern under a `bash` key -- but the wildcard grammars dif
 OpenCode's is a simple `*`/`?` glob). pi has no rule-specifier grammar to compare at all --
 its only lever over tool *availability* is the coarse, session-start
 `--tools`/`--exclude-tools` allowlist (§4.3), with no per-call pattern matching on command
-or path arguments anywhere in its documented surface. A rule string written for one of the
-first three harnesses is not portable to another even when it looks similar, and none of
-them are expressible in pi's vocabulary at all.
+or path arguments anywhere in its documented surface. Hermes sits closer to pi than to the
+first three on this specific axis: its own tool-*availability* levers (toolset selection,
+capability gating, the `hermes tools` per-tool disable, §5.4) have no rule-specifier
+grammar either -- they select whole tools or toolsets, not commands or paths within a
+tool's arguments -- while whether an already-available call is *permitted to execute* is a
+separate question this page defers to [Permissions & sandboxing
+architecture](permissions-and-sandboxing.md) §6's own three named command-approval modes
+(Smart/Manual/Off) and hardline blocklist, a mechanism with its own vocabulary distinct
+from any `kind(specifier)` string. A rule string written for one of the first three
+harnesses is not portable to another even when it looks similar, and none of them are
+expressible in pi's or Hermes' own vocabulary at all.
 
 **The permission *default* differs meaningfully, and pi is the most permissive point on
 the whole spectrum.** Claude Code prompts per-tool with documented exceptions (read-only
@@ -781,7 +1143,15 @@ as pi's one and only static lever. This is a real, sourced product difference, n
 wording nuance: an OpenCode user who never touches the `permission` block, or a pi user
 under any configuration whatsoever, has no per-call gate at all on `bash`, `edit`, or
 `write`, where the same user on Claude Code or Copilot CLI would see prompts for mutating
-operations from first use.
+operations from first use. Hermes does not sit on this same permissiveness axis at all,
+because it separates the two questions this paragraph's other four harnesses mostly
+collapse into one: its `toolset`/capability-gating layer (§5.4) governs only which tools
+*exist* in a session's schema, while whether an available, mutating call like `terminal`
+or `write_file` is then allowed to *run* is a wholly separate command-approval system --
+Smart (an auxiliary-LLM risk classifier, the harness's own default), Manual, or Off --
+documented in full in [Permissions & sandboxing
+architecture](permissions-and-sandboxing.md) §6.1, closer in shape to Claude Code's own
+classifier-mediated default than to pi's or OpenCode's simpler allow-by-default stance.
 
 **Task/todo tooling is the least convergent job in the table, and pi is the one harness
 that excludes it as a matter of stated principle rather than simply lacking a confirmed
@@ -791,8 +1161,12 @@ checklist tool at all, routing task-shaped work through subagent dispatch instea
 OpenCode keeps a simple standalone `todowrite` tool, explicitly disabled for subagents by
 default; pi's own `usage.md` names "to-dos" directly in its list of things "intentionally"
 excluded from the built-in tool set, offering `pi.registerTool()`-based extensions as the
-sanctioned way to add one back (§4.5). Do not assume a "todo list" concept transfers
-between these harnesses even when the word appears in more than one of them.
+sanctioned way to add one back (§4.5). Hermes lands at a third point on the same spectrum:
+a standalone `todo` tool ships by default in the `hermes-cli` platform toolset (§5.3),
+structurally closer to Claude Code's legacy `TodoWrite` than to its newer `Task*` family,
+independently implemented rather than descended from either. Do not assume a "todo list"
+concept transfers between these harnesses even when the word appears in more than one of
+them.
 
 **Model-conditional tool substitution is a real, sourced pattern -- confirmed for one
 harness, not yet found for the other three.** Copilot CLI's `apply_patch` toolchain
@@ -804,9 +1178,17 @@ found in any source fetched for this page -- treat as an open question, not a ru
 one; pi's `edit`/`grep`/`find` in particular are documented as model-agnostic wrappers
 around a fixed diff algorithm and fixed `rg`/`fd` binaries (§4.2, §4.4), which weighs
 against an undiscovered model-conditional variant existing there, without ruling one out.
+No comparable model-conditional tool substitution was found in any Hermes source fetched
+for this page either -- what Hermes does document is a *different* axis of the same
+general idea, backend-conditional rather than model-conditional substitution: `terminal`'s
+seven interchangeable backends (local/Docker/SSH/Singularity/Modal/Daytona/Vercel
+Sandbox, §5.2) and `video_generate`'s single tool whose own description "is rebuilt at
+session start to reflect the active backend's actual capabilities" are both configuration-
+driven, not driven by which underlying LLM is in the loop.
 
 **pi is the only harness in this book whose entire built-in tool set is a closed,
-literally-enumerated union in its own source, not just a documented list.** Claude Code's,
+literally-enumerated union in its own source, not just a documented list -- Hermes sits at
+the opposite extreme.** Claude Code's,
 Copilot CLI's, and OpenCode's inventories in §1-§3 above are all read from prose
 documentation describing an implementation this book did not independently inspect at the
 source level for this page; pi's eight-tool `ToolName` union (§4.2) is the one inventory
@@ -815,7 +1197,13 @@ declaration with no room for an undocumented ninth built-in tool to exist unnoti
 alongside it -- a materially stronger form of VERIFIED than "the docs list N tools" alone
 provides for the other three harnesses on this specific claim (their own tool
 *behavior*, once documented, is equally well-sourced -- it is specifically the
-closed-ness of the *inventory* that differs here).
+closed-ness of the *inventory* that differs here). Hermes' own `tools-reference` page, by
+contrast, states its inventory as an approximate, self-reported count ("~86 tools," §5.1)
+rather than a closed enumeration, and several of its own tools are runtime-conditional on
+credentials, CDP reachability, or plugin registration (§5.1, §5.4) -- so "how many tools
+does this harness ship" is answerable as an exact integer for pi and only as an
+order-of-magnitude, session-dependent estimate for Hermes, the two harnesses on this page
+occupying opposite ends of that specific measurability spectrum.
 
 ---
 
@@ -837,6 +1225,9 @@ closed-ness of the *inventory* that differs here).
 | `github.com/earendil-works/pi`'s `packages/coding-agent/src/core/tools/index.ts`, `bash.ts`, `powershell.ts`, `read.ts`, `write.ts`, `edit.ts`, `grep.ts`, `find.ts`, `ls.ts` (via `gh api`) | 2026-09-01 | the closed eight-member `ToolName` union; each tool's own Typebox input schema, truncation behavior, and system-prompt-contribution snippet |
 | `github.com/earendil-works/pi`'s `packages/coding-agent/src/utils/tools-manager.ts` (via `gh api`) | 2026-09-01 | the `fd`/ripgrep binary resolution-and-auto-download mechanism behind `find`/`grep`, and `PI_OFFLINE`'s effect on it |
 | `github.com/earendil-works/pi`'s `packages/coding-agent/examples/extensions/subagent/README.md` (via `gh api`) | 2026-09-01 | confirming subagent dispatch is a published example extension, not a built-in tool, and its installation mechanism |
+| `hermes-agent.nousresearch.com/docs/user-guide/features/tools` | 2026-09-01 | Hermes' own conceptual overview of tools/toolsets, the toolset-usage CLI syntax (`hermes chat --toolsets`, `hermes tools`), tool-result annotation behavior (signal-death explanations, UTF-16 transcoding), terminal backend list and configuration, Docker-backend persistent-container mechanics, container security hardening bullets, and `sudo` handling |
+| `hermes-agent.nousresearch.com/docs/reference/tools-reference` | 2026-09-01 | the authoritative, code-derived per-tool registry this section's tables are drawn from: the "~86 tools" quick-count breakdown, every per-toolset tool table and description quoted in §5.2/§5.3 (file, terminal, clarify, code_execution, delegation, cronjob, memory, session_search, todo, vision, web, x_search, browser, computer_use, kanban, project, desktop_ui, discord, spotify, yuanbao, feishu), and the MCP-tool `mcp__<server>__` naming convention |
+| `hermes-agent.nousresearch.com/docs/reference/toolsets-reference` | 2026-09-01 | the three-plus-one toolset-kind taxonomy (Core/Composite/Platform/Dynamic) quoted in §5.1, the full Platform Toolsets table (`hermes-cli`, `hermes-acp`, `hermes-api-server`, `hermes-discord`, `hermes-webhook`, `hermes-gateway`, and the rest) quoted in §5.5, the capability-gating and kanban wildcard-exception rules quoted in §5.4, MCP/plugin/custom dynamic-toolset mechanics, and the `hermes tools` per-tool-disable/`config.yaml` persistence statement |
 
 Not consulted this session, and therefore not cited above: any direct
 inspection of `github.com/anomalyco/opencode`'s `dev`-branch source for
@@ -849,4 +1240,12 @@ tooling specifically; pi's `edit-diff.ts`/`file-mutation-queue.ts`
 internals beyond what §4.2's table states, and pi's `powershell.ts`
 Windows-specific spawn path beyond the UTF-8 console fix-up already
 quoted, neither of which this page's own scope (tool inventory, not
-full shell-execution mechanics) required fetching further.
+full shell-execution mechanics) required fetching further; and, for
+Hermes specifically, any direct inspection of its own source (this
+section is sourced entirely from its three documented, code-derived
+reference pages rather than from `github.com/NousResearch/hermes-agent`
+directly, unlike pi's §4 above), and the `user-guide/features/skills`
+and `user-guide/features/memory` pages already fully cited by [Built-in
+skills](built-in-skills.md) §5 and [Memory
+management](memory-management.md)'s own Hermes sections respectively,
+not re-fetched here since neither claim needed re-verifying.

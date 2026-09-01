@@ -42,9 +42,21 @@ harness in this same position -- its own monorepo ships hundreds of
 arrives at that CI-safe visibility through a materially different
 architecture from OpenCode's record/replay cassettes: a synthetic,
 in-process "faux" model provider rather than recorded real-provider
-traffic. That asymmetry between the two closed-source harnesses and
-the two open-source ones shapes this page's structure -- OpenCode's
-and pi's sections are the only two grounded in real test code rather
+traffic. Hermes Agent (§6 below) is a third open-source harness in this
+same source-visible position, and at a scale beyond either: its
+`NousResearch/hermes-agent` monorepo ships several thousand Python test
+files plus a separate TypeScript/Electron and Rust surface, all gated
+through a single change-classifying CI orchestrator, and layers a
+first-party family of PR-driven A/B benchmark harnesses under a
+top-level `evals/` directory on top of that -- a fourth, again
+materially different, answer to the same "how do you verify a tool-call
+or context-management change without paying for a live model on every
+run" problem: neither OpenCode's recorded cassettes nor pi's dedicated
+synthetic-provider package, but small, ad hoc `httpx.MockTransport`
+fixtures authored inline in the individual test file that needs one.
+That asymmetry between the two closed-source harnesses and the three
+open-source ones shapes this page's structure -- OpenCode's, pi's, and
+Hermes' sections are the only three grounded in real test code rather
 than inferred from documentation or a changelog.
 
 ```mermaid
@@ -1025,82 +1037,426 @@ own automated-suite-isolation purpose despite the similar filename.
 
 ---
 
-## 6. Synthesis
+## 6. Hermes Agent (Nous Research)
 
-| Layer (per this page's own pyramid) | Claude Code | Copilot CLI | OpenCode | pi |
-|---|---|---|---|---|
-| Unit-level wire-format/tool-call-parsing correctness | Not source-visible; changelog shows dated reassembly *bugs* fixed (v2.1.92, v2.1.94, cross-referenced from streaming-and-incremental-rendering.md §1.2), not a visible test | Not source-visible; no equivalent changelog entries found this session | Source-verified: `tool-stream.test.ts`'s `ToolStream` unit tests, asserting exact event sequences across a deliberately split-mid-string chunk boundary (§4.3) | Source-verified: dozens of per-provider unit tests in `packages/ai/test/` (§5.3), run deterministically against the synthetic `faux` provider (§5.2) rather than recorded real traffic |
-| Session/integration correctness | Not source-visible | Not source-visible | Source-verified: `session-runner-tool-events.test.ts` (event-serialization + schema-backward-compatibility, §4.4) and `session-runner-recorded.test.ts` (whole-loop-against-a-recorded-transcript, §4.5) | Source-verified: `test/suite/`'s harness-based `AgentSession`/`AgentSessionRuntime` tests plus an issue-numbered regression directory (55+ files, §5.3), and a reusable `createSessionBackendConformance` interface-conformance generator shared across at least three packages (§5.3) |
-| Cross-provider/protocol regression matrix | Not applicable in the same sense (single first-party model provider) | Not applicable in the same sense | Source-verified: one shared golden scenario (`weatherToolLoopRequest`) run against ~18 provider/model targets spanning every protocol family llm-api-contract.md §3.3 documents (§4.2), using deterministic VCR-style recorded cassettes (§4.1) | Not confirmed as a single shared-scenario abstraction this session; instead, many separately-authored per-provider/per-feature test files (§5.3) -- a structural observation, not a confirmed architectural equivalence to OpenCode's matrix |
-| API/route-surface coverage | Not source-visible | Not source-visible | Source-verified: a dedicated DSL-driven `httpapi-exercise` route-coverage harness, its own separately-timed CI gate (§4.6-§4.7) | Not confirmed this session; the file-tree search did not surface an equivalent dedicated route-coverage harness |
-| First-party published evals *guidance* | Two Anthropic engineering posts: representative-test-set/gate-releases-on-evals discipline, three verification methods (§2.1), the evaluator-agent/criteria-rubric/sprint-contract pattern (§2.2) | None found this session -- a real, flagged gap relative to Claude Code | None found as separate published guidance; the test suite itself is the artifact, not a companion essay about testing philosophy | `packages/evals/README.md` doubles as both documentation and the artifact -- comparative-eval methodology (baseline/candidate lift, `judgeThreshold: null`) documented directly alongside the harness it describes (§5.4) |
-| Documented scaffolding for external, script-driven verification | `--bare` determinism, `--output-format json`+`--json-schema`, `system/init`'s CI-gating `plugin_errors`/`mcp_server_errors` fields (§2.3) | `-p`/`-s` scripting mode, `--share`/`--share-gist` transcript export, changelog-confirmed `--output-format json` (v0.0.422), `PermissionRequest` hook (v1.0.16), non-interactive background-agent wait-to-completion fix (v1.0.33) (§3.1-§3.2) | The record/replay cassette package itself (`@opencode-ai/http-recorder`) is both the scaffolding and the thing being scaffolded around -- a first-party, in-repo testing tool, not merely a documented CLI flag surface | The `@earendil-works/pi-evals` package itself (`createPiCodingAgentHarness`, `evalHarnessTable`) is likewise both scaffolding and artifact (§5.4); separately, `test.sh`'s process-environment-scrubbing wrapper is a script-level determinism guarantee with no CLI-flag equivalent found this session (§5.6) |
-| Changelog's own regression-fix vocabulary (proxy evidence only) | Extensive, dated, version-attributed (§2.4) | Extensive, dated, version-attributed (§3.3) | Present in commit history generally but not this page's focus, since actual test source is directly readable instead | Encoded directly as issue-numbered test file paths and `describe("regression #NNNN...")` strings rather than only changelog prose (§5.3) |
-| End-to-end/capability benchmark integration (GAIA, SWE-bench, etc.) | Not researched this session beyond §2.2's evaluator-agent pattern | Not researched this session | Not researched this session | VERIFIED absent: `gh search code` for "GAIA" and "SWE-bench" scoped to `earendil-works/pi` returned no matches this session; pi's own capability-level checks (§5.4) are entirely first-party, prompt-and-judge-based, not integrated with any published third-party benchmark |
+VERIFIED throughout this section unless flagged otherwise. Grounded
+this session against `github.com/NousResearch/hermes-agent`, `main`
+branch, located via `gh api repos/NousResearch/hermes-agent` (repo
+metadata) and `gh api repos/NousResearch/hermes-agent/git/trees/
+main?recursive=1` (a full, 12,072-entry repository file-tree listing,
+filtered for test/CI/eval paths), with individual files -- CI workflow
+YAML, `tests/conftest.py`, `pyproject.toml`, a test source file, an eval
+`README.md`, and a session-resume helper module -- read in full via `gh
+api repos/NousResearch/hermes-agent/contents/<path> -H "Accept:
+application/vnd.github.raw"` this session, plus targeted `gh api
+search/code` queries scoped to the same repository. See [Hooks and
+lifecycle extensibility](hooks-lifecycle-extensibility.md) §6 and
+[Permissions & sandboxing](permissions-and-sandboxing.md) §6 for this
+book's fuller architectural introduction to Hermes itself (a
+self-hosted, Python-implemented coding-agent product that also runs as
+a persistent, multi-platform messaging gateway); this section does not
+repeat that introduction and instead grounds Hermes' own answer to this
+page's central question -- what automated, repeatable check actually
+protects a given mechanism from regressing.
+
+### 6.1 Repository shape and CI orchestration: a single change-classifying gate over several distinct language surfaces
+
+```mermaid
+flowchart TD
+    PR["pull_request / push to main"] --> DETECT["detect job:\nscripts/ci/classify_changes.py\n(sparse-checkout, one file)"]
+    DETECT -->|python==true| PYTEST["tests.yml: Python suite\n(ubuntu-latest-96-core,\nscripts/run_tests.sh)"]
+    DETECT -->|python==true| PYOS["tests-os.yml: macOS/Windows\nmarker-selected lanes"]
+    DETECT -->|frontend==true| JS["js-tests.yml: vitest/tsc/eslint\nacross apps/desktop, ui-tui, web"]
+    DETECT -->|rust==true| RUST["rust-tests.yml: cargo test --lib\n(bootstrap-installer Tauri crate)"]
+    DETECT -->|installer==true| INSTALLER["installer-tests.yml\n(Windows install.ps1)"]
+    DETECT -.->|frontend/python_prod, DISABLED| DESKTOPE2E["e2e-desktop.yml: Playwright\n(if-gated off, tracked issue 76627)"]
+    PYTEST --> GATE["all-checks-pass\n(single required branch-protection check)"]
+    PYOS --> GATE
+    JS --> GATE
+    RUST --> GATE
+    INSTALLER --> GATE
+```
+
+Unlike the single-language test suites this page documents for OpenCode
+and pi, Hermes' repository spans several materially different test
+runtimes behind one orchestrator workflow, `ci.yaml`. A `detect` job
+runs a change classifier (`scripts/ci/classify_changes.py`) exactly
+once per run and emits boolean outputs (`python`, `python_prod`,
+`frontend`, `rust`, `installer`, `site`, and others); every downstream
+sub-workflow is a `workflow_call` gated on one of those outputs, so a
+docs-only or frontend-only pull request never spins up a Python test
+runner and vice versa -- the workflow's own header comment states the
+classifier "fails open (all lanes true)" on a direct push to `main`, so
+post-merge validation is never weakened by a classifier miss. The
+Python lane (`tests.yml`) is the largest: it runs on a single
+`ubuntu-latest-96-core` runner rather than a sharded matrix, a choice
+the workflow's own inline comment justifies by measurement -- a table
+of `HERMES_TEST_WORKERS` values from 48 to 288 against the wall-clock
+duration of the whole suite (best at 96, "one worker for each core"),
+recorded against a named CI run ID, with the surrounding comment noting
+that a prior sharded-matrix design "cost a matrix job, a duration
+cache, a per-slice artifact and a merge job" to spread work across
+smaller runners that a single large runner now clears outright. A
+second, separate `tests-os.yml` workflow runs only the subset of tests
+carrying a `macos_only` or `windows_only` pytest marker, on
+`macos-latest` and `windows-latest-32-core` respectively, on the stated
+reasoning (quoted from the workflow's own header comment) that "faking
+`sys.platform` on a Linux runner selects the branch under test without
+reproducing any of the OS behaviour that branch exists for" -- and that
+workflow explicitly fails the job if its marker selector matches zero
+test files (pytest exit code 5), rather than reporting green over a
+silently-broken selector, "the exact silent-coverage-loss failure this
+workflow exists to prevent." `js-tests.yml` runs `vitest`, `tsc`, and
+`eslint` across every workspace package (`apps/desktop`, `ui-tui`,
+`web`, and others) as one 32-core job with a lockfile-keyed
+`node_modules` cache, discovered via `npm query .workspace` so that "a
+new package or a new `check:*` script needs no change" to the workflow
+itself. `rust-tests.yml` runs `cargo test --lib` against exactly one
+crate, the Tauri-based bootstrap installer under
+`apps/bootstrap-installer/src-tauri` -- the workflow's own header
+comment records that this crate's Rust unit tests "existed in the tree
+and had never run" in CI before this workflow was added, because `.rs`
+files under `apps/` had previously been classified as `frontend` and
+routed only through the TypeScript matrix, which cannot compile or run
+a Rust test at all.
+
+### 6.2 A hermetic, autouse pytest fixture, and per-file process isolation as the default
+
+VERIFIED, `tests/conftest.py` (read in full this session, 75.8 KB) and
+`pyproject.toml`'s `[tool.pytest.ini_options]` block. An autouse fixture
+in the repository-root `tests/conftest.py` runs before every one of the
+suite's test files and rewrites the process environment for hermetic
+isolation in ways directly comparable to, but independently
+implemented from, pi's own `test.sh` environment-scrubbing wrapper
+(§5.6 above): it repoints `HERMES_HOME` at a fresh `tmp_path`-scoped
+directory so no test can read or write a developer's real
+`~/.hermes/state.db` (the fixture's own inline comment names the risk
+precisely: an argless `SessionDB()` call in any test file "opens the
+developer's REAL state.db -- reading real sessions into assertions and
+writing test rows into the real profile" if the constant is not
+re-pinned before the module-level import that computes it), pins
+`TZ=UTC`, `LANG=C.UTF-8`, `LC_ALL=C.UTF-8`, and `PYTHONHASHSEED=0` for
+deterministic, locale-independent assertions, disables AWS IMDS
+metadata-service lookups (`AWS_EC2_METADATA_DISABLED=true`) so a test
+that happens to call a credential auto-detector does not burn several
+seconds waiting on an unreachable `169.254.169.254`, and -- closest in
+spirit to pi's own `test.sh` discipline -- sets
+`HERMES_DISABLE_LAZY_INSTALLS=1` so that Hermes' own lazy-feature-
+dependency installer (`tools/lazy_deps.py`, which "auto-installs from
+GitHub when enabled and missing" by design for a real user) cannot
+silently shell out to `pip install` mid-test-run, an operation the
+fixture's own comment says "hangs to the suite timeout" if left
+enabled. `pyproject.toml` registers an `integration` pytest marker
+("marks tests requiring external services (API keys, Modal, etc.)")
+and sets `addopts = "-m 'not integration'"`, so integration-marked
+tests are excluded from every default run; the same file also registers
+a `no_isolate` marker ("opt out of per-file subprocess isolation --
+tests share mutable module-level state"), whose existence is itself
+confirmation of the default: `tests.yml`'s own inline comment states
+plainly that `scripts/run_tests.sh` runs "each test file... in its own
+freshly-spawned `python -m pytest <file>` subprocess with bounded
+parallelism. No xdist, no shared workers, no module-level state
+leakage between files" -- an isolation discipline enforced at the
+process-per-file level by default, with `no_isolate` as the named,
+explicit escape hatch for the tests that need to share state on
+purpose. Belt-and-suspenders against any test reaching a real provider,
+`tests.yml`'s own `Run tests` step additionally sets
+`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, and `NOUS_API_KEY` to empty
+strings in the job's environment, a second, CI-level layer of the same
+guarantee `tests/conftest.py`'s fixture already enforces in-process.
+
+### 6.3 Synthetic model-response fixtures authored inline per test, not a shared cassette or fake-provider package
+
+VERIFIED, `tests/e2e/test_relay_native_anthropic_stream.py` (read in
+full this session) and a `gh api search/code` query scoped to
+`repo:NousResearch/hermes-agent` for the literal string
+`MockTransport`, which returned 13 matching files this session (a
+`respx` query against the same repository returned zero matches). This
+is the concrete point of contrast with both of this page's other two
+source-visible open-source harnesses: OpenCode's CI-safe layer replays
+pre-recorded, real-provider HTTP traffic through a dedicated
+`@opencode-ai/http-recorder` cassette package (§4.1), and pi's
+equivalent layer runs everything against a purpose-built, separately
+packaged synthetic `faux` model provider (§5.2); Hermes' own tests, at
+least across the 13 files this session's search surfaced, instead
+construct a synthetic HTTP transport inline, per test file, using
+`httpx.MockTransport` directly from the `httpx` library rather than
+through any Hermes-authored recording or faking package.
+`test_anthropic_sdk_stream_runs_through_relay_managed_execution`, read
+in full, is representative of the shape: it builds a literal
+Anthropic Messages-API SSE byte string by hand (`message_start` ->
+`content_block_start` -> `content_block_delta` with the text delta
+`"hello"` -> `content_block_stop` -> `message_delta` -> `message_stop`,
+each a real `event:`/`data:` SSE frame), wraps a `respond(request)`
+closure returning that fixed byte string in an `httpx.MockTransport`,
+constructs a real `anthropic.Anthropic` SDK client with that mock
+transport injected as its `http_client`, and drives Hermes' own
+`AIAgent` through it -- exercising the real Anthropic SDK's own
+streaming-parse code path and Hermes' `relay_runtime` integration
+(`nemo_relay`, imported via `pytest.importorskip`, an internal tracing
+integration this session did not research beyond this test's usage of
+it) against a byte-for-byte known response, with no network call and no
+credential. This is architecturally a third, lighter-weight answer to
+the same "test the streaming-parse path deterministically" problem
+§4.1 and §5.2 document for OpenCode and pi respectively -- no shared
+cassette library and no shared fake-provider package, only the
+standard library-adjacent `httpx.MockTransport` primitive invoked
+locally wherever a given test needs one. This session's research did
+not find a centralized, reusable "build me a fake SSE stream" helper
+module shared across those 13 files -- **BEST CURRENT UNDERSTANDING,
+UNCONFIRMED** that each of the 13 constructs its own fixture bytes
+independently, since a full read of all 13 files was out of this
+session's scope and a shared helper could exist under a name this
+session's search terms did not surface.
+
+### 6.4 Crash-safe transcript-replay regression tests: a different "replay" than OpenCode's or pi's
+
+VERIFIED, `agent/replay_cleanup.py` (read in full this session) and its
+own module docstring. It is worth being precise about vocabulary here,
+because "replay" names two unrelated things across this page's
+harnesses. OpenCode's and pi's own record/replay machinery (§4.1, §5.2)
+replays a *previously recorded model response* back to the harness
+under test, so a test never needs a live network call. Hermes' own
+`agent/replay_cleanup.py` module solves a different problem entirely,
+one internal to the harness's session-resume path: when a session's
+last turn dies mid-tool-loop -- "the process is killed by a
+restart/shutdown command, a stale-timeout fires, or an interrupt lands
+before the tool result is written," quoted directly from the module's
+own docstring -- the persisted transcript can end with a dangling
+`assistant(tool_calls)` entry with no matching `tool` answer. On
+`/resume`, replaying that broken tail back to the model verbatim causes
+it to reissue the unanswered call, producing what the docstring calls
+an "endless 'thinking'/reboot loop," cross-referenced by the module's
+own comments to issues #49201 and #29086. `replay_cleanup.py`'s pure
+helper functions (`is_interrupted_tool_result` and others) strip that
+dangling tail before the history is replayed to the model, and are
+factored out specifically so "every resume surface -- the messaging
+gateway AND the TUI/WebUI gateway -- shares the same cleanup instead of
+the WebUI path silently skipping it," per the module's own comment
+describing a prior state where only the messaging-gateway resume path
+had the fix. This mechanism has its own dedicated regression-test
+files under `tests/agent/` -- `test_replay_cleanup.py`,
+`test_replay_budget_accounting.py`, `test_stale_replay_prune.py`, and
+`test_anthropic_kimi_signed_thinking_replay.py` (this last one is
+provider-specific: it protects the interaction between this same
+tail-stripping logic and Anthropic's/Kimi's signed extended-thinking
+blocks specifically) -- confirmed present in this session's file-tree
+listing, though their bodies were not individually read this session.
+These are Layer-1/Layer-2 unit and integration regression tests in this
+page's own pyramid, protecting a session-continuity mechanism, and
+should not be confused with either OpenCode's or pi's model-response
+replay/fake-provider testing architecture (§4.1, §5.2, §6.3 above) --
+the shared word is a coincidence of naming, not a shared mechanism.
+
+### 6.5 The `evals/` directory: a first-party, PR-driven family of A/B benchmark harnesses, and the "hermesbench discipline"
+
+VERIFIED, `README.md` files read in full this session for
+`evals/compaction/`, `evals/browser_use/`, `evals/readtool/`,
+`evals/session_search_schema/`, and `scripts/toolperf_abeval/`. Beyond
+the pytest-run unit/integration suite (§6.1-6.2), Hermes' repository
+carries a separate, top-level `evals/` directory whose contents are
+closer in spirit to pi's `packages/evals` (§5.4) than to anything
+OpenCode's own repository ships: each subdirectory is a self-contained,
+first-party A/B benchmark built to answer one specific, PR-numbered
+engineering question, run against real models at real API cost, and
+checked in as its own runner/report/results artifact rather than gated
+into the blocking CI pipeline. `evals/compaction/` measures what
+context compaction actually costs in *recall*, not just token count: it
+takes a real long transcript, generates a bank of factual recall
+questions from the region a given compaction policy would summarize
+away, runs the transcript through `ContextCompressor.compress()` under
+each named policy in a matrix (`current`, `aggressive tail,
+codex-style`, and others, defined in `policies.py`), then asks a fresh
+LLM the recall questions using only the post-compaction context and
+judges the answers against gold on a 2/1/0 scale -- and separately
+carries `test_region_scoping.py`, read in full this session, a
+deterministic (no live model call) unit-level "tripwire" that plants
+sentinel strings in the head/middle/tail of a synthetic transcript,
+mocks `call_llm`, and asserts the summarizer's own captured prompt
+carries only the middle-region sentinel, in both the compressor's
+"legacy" and "lean" modes -- a Layer-1 correctness check living inside
+what is otherwise a Layer-4-style capability eval package.
+`evals/browser_use/` is an A/B harness comparing Hermes' built-in
+twelve-tool `browser_*` toolset against a newer `browser_exec` driver
+(the design behind pull request #81958), running oracle-checked -- not
+LLM-judged -- multi-step web tasks against stable `toscrape`-family
+sites and scoring total tokens, tool calls, and wall-clock time at
+accuracy parity; its checked-in scorecard reports token reductions
+around 60% for two frontier/near-frontier models on a hard-task
+battery, with an explicit provenance note that the original raw
+per-run result files were lost to a host reboot and were reconstructed
+from session-transcript tool-call history rather than re-run from
+scratch, an unusually candid piece of after-the-fact data-provenance
+documentation for a project's own internal benchmark. `evals/readtool/`
+and `evals/session_search_schema/` are narrower, schema/tool-engineering
+A/B evals -- the former stress-tests `read_file` against nine
+adversarial fixture shapes (an 80,000-line lockfile, a 600 KB
+single-line minified file, a FIFO pipe, PNG bytes behind a `.txt`
+extension, and others) run through the *real* `AIAgent`, explicitly
+framed in its own `README.md` as a response to a third-party
+capability-table writeup ("Command Code's read-tool writeup," per the
+README) whose Hermes column the authors state directly "contained
+several errors"; the latter isolates a single tool schema
+(`tools/session_search_tool.py`) extracted from two git refs and runs a
+minimal, non-`AIAgent` agent loop so that schema wording is the *only*
+variable, scored by programmatic oracles rather than an LLM judge.
+Across all four packages the same self-named "hermesbench discipline"
+recurs verbatim in each `README.md`: a minimum of three repetitions per
+cell ("single-run deltas within +/-3% are noise, not wins"), a
+resume-safe runner that skips already-completed cells recorded in a
+`results/*.jsonl` or `meta.jsonl` file so a killed battery run can
+continue rather than restart, deliberate inclusion of at least one weak
+or mid-tier open model alongside a frontier model on the reasoning that
+"frontier models mask schema ergonomics," and an explicit rule against
+excluding failing runs from only one arm of a comparison.
+
+### 6.6 `scripts/toolperf_abeval`: a trace-scored core-toolset A/B battery, and two honestly-disclosed gaps
+
+VERIFIED, `scripts/toolperf_abeval/README.md` (read in full this
+session), issue #77056 named directly in that README, and two targeted
+`gh api search/code` queries scoped to `repo:NousResearch/hermes-agent`
+for the literal strings `GAIA` (one match, in `scripts/release.py`, not
+a benchmark integration) and `SWE-bench` (zero matches), both run this
+session. `scripts/toolperf_abeval` is architecturally the same
+two-arms-one-variable A/B pattern as §6.5's `evals/` packages -- a
+`baseline` and a `fixes` checkout of the tree, same model, same tasks,
+same repetitions, differing only by `PYTHONPATH` -- but purpose-built
+around a battery of nine deliberately "trap" tasks, each constructed so
+one specific, previously-measured production waste class fires (a
+`python` vs `python3`/venv confusion, an already-applied patch, an
+ambiguous multi-match edit, and others named in the README), and scored
+not from the harness's own self-reported metrics but from "NeMo Relay
+ATOF traces emitted by the run itself (`llm`/`tool` scope events)," a
+first-party observability integration this session did not research
+beyond this quoted usage. The README documents its own August 2026
+production run finding a real regression in the eval methodology
+itself: "startup crashes (nonzero exit with empty output) are NOT
+recorded -- they retry on resume instead of polluting cells (this bit
+the first pass of the Aug 2026 run)," an unusually direct piece of
+project self-correction to cite. Two gaps are worth naming plainly
+rather than glossing over, in the same spirit this page names Copilot
+CLI's missing published evals-guidance essay (§3, synthesis table) and
+pi's missing capability-benchmark integration (§5.4-5.5): first,
+`ci.yaml`'s own `e2e-desktop` job -- the Playwright suite exercising
+the built desktop app against a mock backend -- is disabled outright as
+of this session's research, gated behind a literal `false &&` in the
+workflow's `if:` condition, with the workflow's own inline comment
+dated "Aug 2, 2026, Teknium" stating the suite "is red on every PR and
+on main itself" because "the mock-backend Electron window never gets a
+title," tracked as issue #76627; this is a real, currently-disabled
+piece of the harness's own test surface, not a hypothetical gap.
+Second, and directly comparable to this page's pi finding (§5, last
+synthesis row): this session's own `gh api search/code` queries found
+no integration with any published third-party end-to-end capability
+benchmark (GAIA, SWE-bench, or similar) anywhere in
+`NousResearch/hermes-agent` -- Hermes' own capability-level checks, per
+§6.5-6.6, are entirely first-party, PR-motivated, and prompt-and-oracle
+or prompt-and-judge scored, not benchmarked against any shared external
+leaderboard task set.
+
+---
+
+## 7. Synthesis
+
+| Layer (per this page's own pyramid) | Claude Code | Copilot CLI | OpenCode | pi | Hermes Agent |
+|---|---|---|---|---|---|
+| Unit-level wire-format/tool-call-parsing correctness | Not source-visible; changelog shows dated reassembly *bugs* fixed (v2.1.92, v2.1.94, cross-referenced from streaming-and-incremental-rendering.md §1.2), not a visible test | Not source-visible; no equivalent changelog entries found this session | Source-verified: `tool-stream.test.ts`'s `ToolStream` unit tests, asserting exact event sequences across a deliberately split-mid-string chunk boundary (§4.3) | Source-verified: dozens of per-provider unit tests in `packages/ai/test/` (§5.3), run deterministically against the synthetic `faux` provider (§5.2) rather than recorded real traffic | Source-verified: `evals/compaction/test_region_scoping.py`'s sentinel-planting tripwire on the summarizer's own captured prompt (§6.5), plus provider-specific regression files such as `test_anthropic_kimi_signed_thinking_replay.py` (§6.4) |
+| Session/integration correctness | Not source-visible | Not source-visible | Source-verified: `session-runner-tool-events.test.ts` (event-serialization + schema-backward-compatibility, §4.4) and `session-runner-recorded.test.ts` (whole-loop-against-a-recorded-transcript, §4.5) | Source-verified: `test/suite/`'s harness-based `AgentSession`/`AgentSessionRuntime` tests plus an issue-numbered regression directory (55+ files, §5.3), and a reusable `createSessionBackendConformance` interface-conformance generator shared across at least three packages (§5.3) | Source-verified: `agent/replay_cleanup.py`'s crash-mid-tool-loop resume-safety logic, protected by `test_replay_cleanup.py`, `test_replay_budget_accounting.py`, and `test_stale_replay_prune.py` under `tests/agent/` (§6.4) -- a session-continuity mechanism, not a model-response replay architecture |
+| Cross-provider/protocol regression matrix | Not applicable in the same sense (single first-party model provider) | Not applicable in the same sense | Source-verified: one shared golden scenario (`weatherToolLoopRequest`) run against ~18 provider/model targets spanning every protocol family llm-api-contract.md §3.3 documents (§4.2), using deterministic VCR-style recorded cassettes (§4.1) | Not confirmed as a single shared-scenario abstraction this session; instead, many separately-authored per-provider/per-feature test files (§5.3) -- a structural observation, not a confirmed architectural equivalence to OpenCode's matrix | Not confirmed as a single shared-scenario abstraction this session; instead, ad hoc `httpx.MockTransport` fixtures authored inline per test file (13 files matched this session's search, §6.3) -- the lightest-weight of the three open-source harnesses' answers to this same problem |
+| API/route-surface coverage | Not source-visible | Not source-visible | Source-verified: a dedicated DSL-driven `httpapi-exercise` route-coverage harness, its own separately-timed CI gate (§4.6-§4.7) | Not confirmed this session; the file-tree search did not surface an equivalent dedicated route-coverage harness | Not confirmed this session; the file-tree search did not surface an equivalent dedicated route-coverage harness |
+| First-party published evals *guidance* | Two Anthropic engineering posts: representative-test-set/gate-releases-on-evals discipline, three verification methods (§2.1), the evaluator-agent/criteria-rubric/sprint-contract pattern (§2.2) | None found this session -- a real, flagged gap relative to Claude Code | None found as separate published guidance; the test suite itself is the artifact, not a companion essay about testing philosophy | `packages/evals/README.md` doubles as both documentation and the artifact -- comparative-eval methodology (baseline/candidate lift, `judgeThreshold: null`) documented directly alongside the harness it describes (§5.4) | Each `evals/*/README.md` and `scripts/toolperf_abeval/README.md` likewise doubles as documentation and artifact, converging independently on the same named "hermesbench discipline" (3-rep minimum, resume-safe runners, weak-model-as-signal, no one-sided run exclusion) across four otherwise-unrelated eval packages (§6.5-6.6) |
+| Documented scaffolding for external, script-driven verification | `--bare` determinism, `--output-format json`+`--json-schema`, `system/init`'s CI-gating `plugin_errors`/`mcp_server_errors` fields (§2.3) | `-p`/`-s` scripting mode, `--share`/`--share-gist` transcript export, changelog-confirmed `--output-format json` (v0.0.422), `PermissionRequest` hook (v1.0.16), non-interactive background-agent wait-to-completion fix (v1.0.33) (§3.1-§3.2) | The record/replay cassette package itself (`@opencode-ai/http-recorder`) is both the scaffolding and the thing being scaffolded around -- a first-party, in-repo testing tool, not merely a documented CLI flag surface | The `@earendil-works/pi-evals` package itself (`createPiCodingAgentHarness`, `evalHarnessTable`) is likewise both scaffolding and artifact (§5.4); separately, `test.sh`'s process-environment-scrubbing wrapper is a script-level determinism guarantee with no CLI-flag equivalent found this session (§5.6) | `tests/conftest.py`'s autouse hermetic-environment fixture is the process-internal equivalent of pi's `test.sh` (§6.2); a single change-classifying `ci.yaml` orchestrator gating separate Python/JS/Rust/installer sub-workflows is a distinct, repository-wide scaffolding layer neither OpenCode's nor pi's own CI this page researched was found to need, owing to Hermes' own multi-language surface (§6.1) |
+| Changelog's own regression-fix vocabulary (proxy evidence only) | Extensive, dated, version-attributed (§2.4) | Extensive, dated, version-attributed (§3.3) | Present in commit history generally but not this page's focus, since actual test source is directly readable instead | Encoded directly as issue-numbered test file paths and `describe("regression #NNNN...")` strings rather than only changelog prose (§5.3) | Encoded directly as issue-numbered code comments and PR-numbered eval-package provenance (`replay_cleanup.py`'s "#49201, #29086"; `evals/browser_use`'s "#81958"; `toolperf_abeval`'s "#77056") rather than a separate changelog document (§6.4-6.6) |
+| End-to-end/capability benchmark integration (GAIA, SWE-bench, etc.) | Not researched this session beyond §2.2's evaluator-agent pattern | Not researched this session | Not researched this session | VERIFIED absent: `gh search code` for "GAIA" and "SWE-bench" scoped to `earendil-works/pi` returned no matches this session; pi's own capability-level checks (§5.4) are entirely first-party, prompt-and-judge-based, not integrated with any published third-party benchmark | VERIFIED absent: `gh api search/code` for "GAIA" (one unrelated match, `scripts/release.py`) and "SWE-bench" (zero matches) scoped to `NousResearch/hermes-agent` this session; Hermes' own capability-level checks (§6.5-6.6) are entirely first-party, PR-motivated, and prompt-and-oracle or prompt-and-judge scored |
 
 **The design lesson.** The single clearest, most load-bearing fact this
 page's research turned up is the asymmetry itself: two harnesses ship
 no way to check their own correctness claims from the outside beyond a
-changelog's own honesty about dated regressions, while the other two --
-OpenCode and pi -- ship the literal assertions. That asymmetry is a
-direct consequence of this book's own standing open-source/closed-source
-split (documented on every other page touching Claude Code's or Copilot
-CLI's internals), not evidence that either closed-source team tests
-less rigorously in private -- Anthropic's own two engineering posts
-(§2.1-§2.2) are, if anything, unusually candid public evidence of a real
-internal evals discipline, just one this page cannot verify the shape
-of the way it can verify OpenCode's `ToolStream` test, its golden-
-scenario matrix, or pi's own issue-numbered regression files line by
-line. OpenCode and pi arrive at that same source-visible position by
-genuinely different routes, and the difference is itself instructive: OpenCode
-protects its CI-safe layer with recorded-and-replayed real provider
-traffic (VCR-style cassettes), while pi protects its own equivalent
-layer with an entirely synthetic in-process model (the `faux` provider,
-§5.2) -- one preserves real provider-specific response shapes at the
-cost of needing a deliberate, human-triggered re-record step when a
-cassette goes missing, the other needs no network access or secrets-
-redaction discipline at all but cannot, by construction, catch a
-regression caused by a real provider changing its actual response shape
-underneath the synthetic model's assumptions. Neither this page nor
-either project's own documentation states one choice as strictly
-superior to the other; both are read here as two legitimate, differently
--tradeoffed answers to the same "how do I test tool-call parsing without
-paying for a live model on every CI run" problem. For a builder
-validating a from-scratch harness, the concrete, transferable pattern
-this page's research actually supports pulls from both: (1) fast,
-deterministic unit tests on the fragment-accumulation algorithm itself,
-needing no network access, whether achieved via a recorded cassette or a
-synthetic fake model; (2) a small number of integration tests that wire
-the real session loop against a recorded or synthetic, not live,
-transcript; (3) either a shared "golden scenario" authored once and
-replayed against every protocol/provider target the harness supports (OpenCode's
-approach), or a densely issue-numbered regression directory naming each
-test after the specific bug it protects against (pi's approach), so
-protocol implementations or past bugs cannot silently regress
-unnoticed; (4) a separate, explicit route/API-coverage pass distinct
-from all of the above, because none of the first three layers actually
-proves the documented public surface itself behaves as promised (source-
-confirmed for OpenCode via its `httpapi-exercise` harness, §4.6; not
-confirmed as present in pi this session, per the synthesis table above);
-and (5) -- the one layer pi's own research surfaced most clearly of the
-two open-source harnesses -- a separate, explicitly non-CI-gated,
-model-backed eval package for judged, comparative, prompt-level
-behavior, kept deliberately out of the blocking pull-request gate
-because it costs real API spend and real wall-clock time per run
-(§5.4-§5.5). Layer 4 (5, in pi's own case) of this page's opening
-pyramid -- end-to-end capability evals such as GAIA (§1) -- sits outside
-and above all of these, and, per Anthropic's own harness-design post
-(§2.2), scores a combination of the model and the harness together; a
-from-scratch harness builder who only ever runs that outermost layer has
-no way to tell which of the two moved a score, which is the whole reason
-the inner layers need to exist as their own, harness-scoped discipline
-first. Notably, this session's own search of pi's repository found no
-integration with any published third-party capability benchmark (GAIA,
-SWE-bench, or similar, per the synthesis table's last row) -- pi's own
-capability-level checks are entirely first-party and prompt-authored,
-a real, citable finding about the scope of a comparatively young,
-single-maintainer-adjacent open-source project's own eval investment,
-not a criticism of its engineering rigor at the layers it does cover.
+changelog's own honesty about dated regressions, while the other three --
+OpenCode, pi, and Hermes Agent -- ship the literal assertions. That
+asymmetry is a direct consequence of this book's own standing
+open-source/closed-source split (documented on every other page touching
+Claude Code's or Copilot CLI's internals), not evidence that either
+closed-source team tests less rigorously in private -- Anthropic's own
+two engineering posts (§2.1-§2.2) are, if anything, unusually candid
+public evidence of a real internal evals discipline, just one this page
+cannot verify the shape of the way it can verify OpenCode's `ToolStream`
+test, its golden-scenario matrix, pi's own issue-numbered regression
+files, or Hermes' own `test_region_scoping.py` tripwire, line by line.
+OpenCode, pi, and Hermes arrive at that same source-visible position by
+three genuinely different routes, and the difference is itself
+instructive: OpenCode protects its CI-safe layer with recorded-and-
+replayed real provider traffic (VCR-style cassettes), pi protects its
+own equivalent layer with an entirely synthetic in-process model (the
+`faux` provider, §5.2), and Hermes protects the same kind of layer with
+neither a shared cassette library nor a shared fake-provider package but
+small, locally-authored `httpx.MockTransport` fixtures built inline in
+whichever individual test file needs one (§6.3) -- the first preserves
+real provider-specific response shapes at the cost of needing a
+deliberate, human-triggered re-record step when a cassette goes missing;
+the second needs no network access or secrets-redaction discipline at
+all but cannot, by construction, catch a regression caused by a real
+provider changing its actual response shape underneath the synthetic
+model's assumptions; the third trades any shared reusable fixture
+infrastructure at all for the lowest possible per-test setup cost,
+at the price of each test file re-deriving its own synthetic response
+bytes rather than drawing on a common, audited fixture set. Neither this
+page nor any of the three projects' own documentation states one choice
+as strictly superior to the other two; all three are read here as
+legitimate, differently-tradeoffed answers to the same "how do I test
+tool-call parsing without paying for a live model on every CI run"
+problem. For a builder validating a from-scratch harness, the concrete,
+transferable pattern this page's research actually supports pulls from
+all three: (1) fast, deterministic unit tests on the fragment-
+accumulation algorithm itself, needing no network access, whether
+achieved via a recorded cassette, a synthetic fake model, or an ad hoc
+mocked transport; (2) a small number of integration tests that wire the
+real session loop against a recorded or synthetic, not live, transcript
+-- including, per Hermes' own §6.4 finding, a dedicated regression test
+for what happens when that transcript itself is *broken* (a dangling,
+unanswered tool call left by a mid-loop crash), a failure mode this
+page had not previously named for any other harness; (3) either a shared
+"golden scenario" authored once and replayed against every
+protocol/provider target the harness supports (OpenCode's approach), a
+densely issue-numbered regression directory naming each test after the
+specific bug it protects against (pi's approach), or issue/PR-numbered
+comments and eval-package provenance notes serving the same naming
+discipline without a dedicated directory convention (Hermes' approach,
+§6.4-6.6), so protocol implementations or past bugs cannot silently
+regress unnoticed; (4) a separate, explicit route/API-coverage pass
+distinct from all of the above, because none of the first three layers
+actually proves the documented public surface itself behaves as
+promised (source-confirmed for OpenCode via its `httpapi-exercise`
+harness, §4.6; not confirmed as present in pi or Hermes this session,
+per the synthesis table above); and (5) -- the layer pi's and Hermes'
+own research each surfaced most clearly among the three open-source
+harnesses -- a separate, explicitly non-CI-gated, model-backed eval
+package (or, in Hermes' case, an entire family of them, unified only by
+a shared, self-named "hermesbench discipline" rather than one shared
+package, §6.5-6.6) for judged or oracle-checked, comparative,
+prompt-level behavior, kept deliberately out of the blocking pull-
+request gate because it costs real API spend and real wall-clock time
+per run (§5.4-§5.5, §6.5-6.6). Layer 4 (5, in pi's and Hermes' own case)
+of this page's opening pyramid -- end-to-end capability evals such as
+GAIA (§1) -- sits outside and above all of these, and, per Anthropic's
+own harness-design post (§2.2), scores a combination of the model and
+the harness together; a from-scratch harness builder who only ever runs
+that outermost layer has no way to tell which of the two moved a score,
+which is the whole reason the inner layers need to exist as their own,
+harness-scoped discipline first. Notably, this session's own searches of
+both pi's and Hermes' repositories found no integration with any
+published third-party capability benchmark (GAIA, SWE-bench, or similar,
+per the synthesis table's last row) -- pi's and Hermes' own
+capability-level checks are entirely first-party and prompt- or
+oracle-authored, a real, citable finding about the scope of each
+project's own eval investment relative to its considerable investment
+in first-party unit, integration, and A/B-benchmark testing, not a
+criticism of either project's engineering rigor at the layers it does
+cover. Hermes' own, currently-disabled Playwright desktop-E2E lane
+(§6.6) is likewise named plainly rather than smoothed over: a real,
+dated, issue-tracked gap in a test surface that is otherwise unusually
+extensive, not evidence the surface is weaker than this page's other
+findings suggest.
 
 **A brief, bounded closing note.** This project's own `CLAUDE.md` states
 plainly, as of this writing, that AIrchon itself -- the project this
@@ -1109,7 +1465,7 @@ evals harness" of its own, on the grounds that `airchon-mentor` and
 `airchon-author` are prose/research-driven rather than deterministic-
 probe-driven the way a tool like AgentXRay's own `xray` skill family
 is. That is a statement about this project's own tooling, not a claim
-about any of the three harnesses this page researches -- it is
+about any of the four harnesses this page researches -- it is
 mentioned here only because the handoff note that prompted this page
 named it explicitly as context, and it is worth being honest that this
 book's own authoring process is closer to §2.1-§2.2's manual,
@@ -1121,7 +1477,8 @@ suite.
 ## Sources
 
 All fetched or read fresh this session (2026-08-01) unless noted
-otherwise.
+otherwise; §6's Hermes Agent material was fetched fresh in a later
+session (2026-09-01).
 
 **General agent-evaluation concepts (authoritative for framework-neutral
 vocabulary and pedagogy, not for any specific harness):**
@@ -1212,5 +1569,41 @@ package/repo naming cross-checked live from each package's own
   ci.yml` (§5.5), and the full contents of `test.sh` and `pi-test.sh`
   (§5.6) -- covering §5 in full. `gh search code` queries for `GAIA` and
   `SWE-bench` scoped to this repository, both returning no matches, are
-  the source for §5's/§6's stated absence of third-party
+  the source for §5's stated absence of third-party capability-benchmark
+  integration.
+
+**Hermes Agent (authoritative for its own documented behavior AND, like
+OpenCode and pi above, its own real implementation and test source;
+`main` branch):**
+- `https://github.com/NousResearch/hermes-agent`, `main` branch, repo
+  metadata read via `gh api repos/NousResearch/hermes-agent` and located
+  via `gh api repos/NousResearch/hermes-agent/git/trees/
+  main?recursive=1` (full, 12,072-entry repository file-tree listing,
+  filtered for test/CI/eval paths) -- individual files fetched via `gh
+  api repos/NousResearch/hermes-agent/contents/<path> -H "Accept:
+  application/vnd.github.raw"` this session: `.github/workflows/
+  tests.yml`, `.github/workflows/tests-os.yml`, `.github/workflows/
+  js-tests.yml`, `.github/workflows/rust-tests.yml`, and `.github/
+  workflows/ci.yaml` in full (§6.1); `tests/conftest.py` in full (75.8
+  KB) and the `[tool.pytest.ini_options]` block of `pyproject.toml`
+  (§6.2); `tests/e2e/test_relay_native_anthropic_stream.py` in full,
+  plus a `gh api search/code` query for `MockTransport` scoped to this
+  repository (13 matches) and a second for `respx` (zero matches) (§6.3);
+  `agent/replay_cleanup.py` in full, including its own module docstring
+  and inline comments naming issues #49201/#29086 (§6.4); the full
+  `README.md` of `evals/compaction/`, `evals/browser_use/`,
+  `evals/readtool/`, and `evals/session_search_schema/`, plus the full
+  contents of `evals/compaction/test_region_scoping.py` (§6.5); the full
+  `README.md` of `scripts/toolperf_abeval/` (§6.6) -- covering §6 in
+  full. `gh api search/code` queries for `GAIA` (one unrelated match, in
+  `scripts/release.py`) and `SWE-bench` (zero matches) scoped to this
+  repository are the source for §6.6's stated absence of third-party
   capability-benchmark integration.
+- `https://hermes-agent.nousresearch.com/docs/developer-guide/
+  architecture` and `https://hermes-agent.nousresearch.com/docs/
+  developer-guide/contributing` -- located while mapping the docs
+  site's own navigation this session; not independently fetched and
+  quoted in §6 beyond confirming the repository's public location and
+  developer-facing documentation surface, since the GitHub repository
+  itself was the authoritative, directly-inspectable source for every
+  claim §6 makes.

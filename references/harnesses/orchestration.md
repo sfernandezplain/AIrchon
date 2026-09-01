@@ -648,20 +648,247 @@ behind the same opt-in extension-installation step documented in §4.1.
 
 ---
 
-## 5. Synthesis
+## 5. Hermes Agent (Nous Research)
 
-| Dimension | Claude Code (turn-by-turn) | Claude Code (Workflow tool) | Copilot CLI (`/fleet`) | OpenCode (Task + `permission.task`) | pi (reference `subagent` extension, opt-in) |
-|---|---|---|---|---|---|
-| Who plays the orchestrator role | Claude itself, or the team lead | A JS script, run by a separate runtime | An explicitly named "orchestrator agent" (the main Copilot agent) | The primary agent invoking `Task`, scoped by its own `permission.task` config | The top-level session's own model, turn by turn -- no distinct lead/orchestrator agent at all |
-| Decomposition mechanism | Model judgment, turn by turn | Claude writes the script once; the script's own logic (loops, `pipeline()`) decomposes at run time | Model judgment (dependency/nature analysis of the prompt) at `/fleet` invocation | Model judgment, encouraged toward batching via the tool's own prompt text | Model judgment, optionally nudged by a canned natural-language prompt template (§4.5) |
-| Coordination/state artifact | Claude's context window (subagents/skills) or a shared file-locked task list (agent teams) | Script variables in an isolated runtime; run state tracked for resumability | SQL-backed todo state machine (`pending/in_progress/done/blocked`) with a `todo_deps` table (SDK-page detail, not CLI-page-confirmed) | No dedicated state store found; ordinary session/subagent-session records only | An in-memory `SingleResult[]`/`SubagentDetails` array, scoped to one `execute()` call; nothing persists past the tool call returning |
-| Concurrency ceiling | No documented numeric cap (subagents), no cap for teams | 16 concurrent, 1,000 total agents per run (hard runtime limits) | Conditional on dependency analysis; no numeric cap documented | No enforced cap found; model is encouraged, not limited, to batch calls | Hard-coded in the extension: 8 tasks max, 4 concurrent (`MAX_PARALLEL_TASKS`/`MAX_CONCURRENCY`), not a core-runtime limit |
-| Dependency handling between subtasks | Not applicable at this granularity | Script's own control flow (sequential `await`, or `pipeline()` for independent items) | Explicit: "assess... whether these can be efficiently executed... in parallel," `todo_deps` table (SDK-page detail) | Not applicable -- no dependency-aware scheduler documented | Flat linear chain only, with a `{previous}` string-substitution placeholder; no DAG |
-| Result aggregation | One final message per subagent/teammate, read by Claude/lead | Script's own return value; only that final value reaches Claude's context | Not detailed on the CLI's own `/fleet` page | Last text part of each child session's final message (per handoff-mechanism.md 3.3) | Final assistant text per subprocess, capped 50 KB/task for parallel/chain modes; full transcript kept only in a TUI-only `details` object |
-| Resumability of the orchestration itself | Subagents/teammates individually resumable; no run-level resume concept | Yes -- run-level resume with documented start-order replay semantics | Undocumented | Individual subagent sessions resumable via `task_id`; no fleet-level run object | None -- child processes run `--no-session` (ephemeral) and are killed outright on abort; no persisted run state |
-| Declared vs. runtime-enforced boundary | Runtime permission-mode check per action | Fixed `acceptEdits` posture for all workflow agents, set once at launch | Undocumented | Declarative: denied subagents omitted from the Task tool schema itself, pre-empting the request entirely | Project-local agent definitions gated by an explicit `ctx.ui.confirm()` prompt when the project isn't yet trusted; otherwise no declared allow/deny surface |
-| Ships active by default | Yes | Yes (opt-in per-workflow approval, but the primitive itself is core) | Yes | Yes | **No** -- the capability exists only as an example extension bundled in the npm package but not auto-loaded; a user must manually install it |
-| Verifiability | Docs-only | Docs-only, but unusually mechanistic (concrete limits, exact resume algorithm) | CLI docs-only; deeper mechanism only on the separate SDK surface (flagged) | Docs-only for `permission.task`; Task tool mechanics themselves are source-verified (handoff-mechanism.md 3) | Fully source-verified (the example extension's own TypeScript, read in full) -- but source-verifying an opt-in example, not a core-runtime guarantee |
+Sources for this section: VERIFIED, fetched fresh 1 September 2026 from
+`hermes-agent.nousresearch.com`'s own documentation site -- pulled via the
+site's bundled full-docs export (`docs/assets/files/llms-full-*.txt`, a
+single-file concatenation of every page the site itself publishes and
+links from its `/docs` root) and spot-checked directly against the live
+individual pages `.../docs/user-guide/features/delegation`,
+`.../docs/user-guide/features/kanban`,
+`.../docs/user-guide/features/kanban-worker-lanes`,
+`.../docs/user-guide/features/mixture-of-agents`, and
+`.../docs/user-guide/messaging/a2a` (all returned HTTP 200 this session;
+the delegation page's `role="orchestrator"`/`max_spawn_depth` text was
+diffed against the bundle and matches verbatim). This book's existing
+Hermes coverage -- [fan-out.md](fan-out.md) §5 and
+[permissions-and-sandboxing.md](permissions-and-sandboxing.md) §6 -- was
+fetched 24 August 2026; see those sections for `delegate_task`'s basic
+isolated-context/own-terminal-session shape and Bot Mode's peer
+group-chat coordination pattern, neither repeated in full here. The
+documentation has visibly grown in the intervening week: `role=`
+`"orchestrator"` nested delegation, the Kanban board, and the A2A
+`a2a_orchestrate` fan-out tool all appear in this session's fetch with no
+trace in this book's earlier Hermes citations -- treat this section as a
+materially later snapshot of the same product, not a correction of
+§5/§6 elsewhere in the book.
+
+Where every harness in sections 1-4 above answers "who holds the plan"
+with essentially one primitive (Claude's turn-by-turn conversation or its
+Workflow script; Copilot's `/fleet`; OpenCode's `Task` tool;
+pi's opt-in `subagent` extension), Hermes documents **three
+structurally distinct coordination layers that coexist**, each answering
+a different version of the question: an in-conversation, turn-by-turn
+layer (`delegate_task`, optionally self-nesting); a durable, out-of-process
+layer that survives the spawning conversation's own death (the Kanban
+board); and a cross-machine layer for coordinating with agents outside
+the local Hermes process entirely (A2A's `a2a_orchestrate`). None of the
+other harnesses this book has sourced ships a documented equivalent to
+the second or third of these.
+
+### 5.1 `delegate_task` as an in-conversation orchestrator -- flat by default, self-nesting behind an explicit `role` flag
+
+VERIFIED (`.../docs/user-guide/features/delegation`): by default, "delegation
+is **flat**: a parent (depth 0) spawns children (depth 1), and those
+children cannot delegate further. This prevents runaway recursive
+delegation" -- architecturally the same authority shape as Claude Code's
+default turn-by-turn subagents (§1.1) and Copilot CLI's ordinary
+custom-agent delegation (§2.1): the model decides, per call, whether to
+delegate at all, and a spawned child has no further coordinating power of
+its own. Hermes' documented escape hatch from that flatness is a
+model-facing parameter on the same tool, not a separate primitive: a
+parent can pass `role="orchestrator"` on a `delegate_task` call, and the
+docs state directly what that buys the child: "child retains the
+`delegation` toolset. Gated by `delegation.max_spawn_depth` (default **1**
+= flat, so `role="orchestrator"` is a no-op at defaults). Raise
+`max_spawn_depth` to 2 to allow orchestrator children to spawn leaf
+grandchildren; 3+ for deeper trees. There is no upper ceiling -- cost is
+the practical limit." A global kill switch,
+`delegation.orchestrator_enabled` (default `true`), "forces every child to
+`leaf` regardless of the `role` parameter" when set to `false` -- config
+overrides what the model asks for, the same
+declarative-boundary-over-model-request shape this page's §3.2 already
+documents for OpenCode's `permission.task`, though here the boundary is a
+depth cap and a kill switch rather than a per-subagent allow/deny list.
+
+```mermaid
+flowchart TD
+    Parent["Parent session (depth 0)<br/>delegate_task(...)"] --> Leaf1["Leaf child (depth 1)<br/>role default: 'leaf'<br/>cannot call delegate_task"]
+    Parent --> Orch["Orchestrator child (depth 1)<br/>role='orchestrator'<br/>retains delegation toolset"]
+    Orch -->|"only if max_spawn_depth >= 2"| GrandLeaf["Leaf grandchild (depth 2)<br/>cannot delegate further"]
+    GrandLeaf -->|"only if max_spawn_depth = 3"| GreatLeaf["Leaf great-grandchild (depth 3)<br/>hard floor: no depth-4"]
+    KillSwitch["delegation.orchestrator_enabled: false"] -.->|"forces every child to leaf,<br/>regardless of role param"| Orch
+```
+
+The documented cost trade-off is stated as bluntly as Copilot CLI's own
+`/fleet` cost disclosure (§2.2): "With `max_spawn_depth: 3` and
+`max_concurrent_children: 3`, the tree can reach 3x3x3 = 27 concurrent
+leaf agents. Each extra level multiplies spend -- raise `max_spawn_depth`
+intentionally." Synchronization differs by role: "Top-level model calls
+run in the background automatically. Hermes returns a handle immediately
+so the conversation can continue, then posts the result back as a new
+message. An orchestrator subagent waits for its own workers so it can
+synthesize their results before returning" -- i.e. the top-level session
+never blocks on its own children, but an orchestrator *child* is
+synchronous with respect to the grandchildren it spawns, because it must
+read their results before it can hand its own summary back up the tree.
+The docs also name a "cost strategy: frontier planner, inexpensive
+workers" pattern directly comparable to the planner/worker cost split
+this page has not previously sourced as an explicit design
+recommendation from any other harness: "Decomposing a problem into
+well-specified subtasks takes frontier-level judgment; executing a
+subtask... usually doesn't... Pinning `delegation.model` to an
+inexpensive model while your main session stays on a frontier model keeps
+the planning quality where it matters and cuts spend where the volume
+is" -- with the caveat that the pin is global per session, not
+per-task: "`delegate_task` has no per-task model parameter, so every
+child in a batch runs on the configured delegation model."
+
+### 5.2 Kanban: a durable, out-of-process task board as the coordination artifact
+
+VERIFIED (`.../docs/user-guide/features/kanban`): Kanban is explicitly
+positioned against `delegate_task` as a different primitive, not a bigger
+version of the same one -- the docs' own comparison table states the
+core distinction as "Shape: RPC call (fork -> join)" vs. "Durable message
+queue + state machine," "Coordination: Hierarchical (caller -> callee)"
+vs. "Peer -- any profile reads/writes any task," and "Audit trail: Lost on
+context compression" vs. "Durable rows in SQLite forever." Every task is
+a row in `~/.hermes/kanban.db` moving through a documented state machine
+-- `triage | todo | ready | running | blocked | review | done |
+archived` -- and a `task_links` row records a `parent -> child`
+dependency edge that "the dispatcher promotes `todo -> ready`" on once
+every parent is `done`, the same dependency-gated promotion concept this
+page's §2.2 sources (with lower confidence) for Copilot CLI's SDK-level
+`todo_deps` table, except here it is a first-party, fully-documented core
+feature rather than adjacent-surface background. The coordinating actor
+is a **dispatcher** -- "a long-lived loop that, every N seconds (default
+60): reclaims stale claims, reclaims crashed workers..., promotes ready
+tasks, atomically claims, spawns assigned profiles," running "**inside
+the gateway** by default" -- i.e. the entity that decides what runs next
+is not a conversational agent's own turn-by-turn judgment (contrast
+§5.1 and every harness in §1-§4) but a scheduler process that outlives
+any single chat session and keeps working whether or not the agent that
+created the tasks is still connected.
+
+```mermaid
+stateDiagram-v2
+    [*] --> triage
+    triage --> todo: decomposer or human specifies the card
+    todo --> ready: dispatcher promotes when all task_links parents are done
+    ready --> running: dispatcher claims + spawns the assignee profile
+    running --> review: kanban_request_review
+    running --> blocked: kanban_block (dependency/needs_input/capability/transient)
+    running --> done: kanban_complete
+    review --> done: reviewer calls kanban_complete
+    review --> running: reviewer calls kanban_request_changes
+    blocked --> ready: kanban_unblock (or dependency clears)
+    blocked --> triage: BLOCK_RECURRENCE_LIMIT re-blocks for the same reason
+    done --> archived: archive
+    running --> running: crashed/gave_up/timed_out --> reclaimed, retried
+```
+
+**Orchestration is itself just another profile role on the board, not a
+separate code path.** VERIFIED: "An **orchestrator** is a Hermes profile
+whose toolset includes `kanban` but excludes `terminal`/`file`/`code`/`web`
+for implementation. Its job is decomposing a high-level goal into child
+tasks via `kanban_create` + `kanban_link` and stepping back" -- "A
+well-behaved orchestrator does not do the work itself." A canonical
+orchestrator turn fans a goal into parallel research cards that both
+gate a downstream synthesis card via `parents=[...]`, then calls
+`kanban_complete` on its own decomposition task without ever touching an
+implementation tool -- enforced not by a runtime permission check but by
+the orchestrator profile's own toolset configuration simply never
+including `terminal`/`file`/`code`/`web` in the first place, the same
+capability-omission-over-runtime-refusal design already documented for
+OpenCode's `permission.task` (§3.2). The docs state a design rule
+directly worth quoting for how it differs from every scripted-workflow
+mechanism elsewhere on this page: "**Decide before you fan out.** Design
+decisions belong to the orchestrator, not to the workers... Workers cannot
+see sibling cards, so every child card body must carry every decision it
+depends on" -- because Kanban tasks are independent rows with no shared
+context window or script-scoped variable the way Claude Code's Workflow
+script (§1.2) or a batched `Task` call (§3.3) would give siblings, the
+orchestrator's decomposition step has to *serialize* every cross-cutting
+decision into each child's own task body up front.
+
+A second decomposition path exists alongside the profile-driven one:
+VERIFIED, an **auto-decompose** dispatcher behavior (`kanban.auto_decompose`,
+default `true`) runs "the built-in decomposer on tasks that land [in
+triage]... reads your installed profiles + their descriptions, and asks
+the LLM to produce a JSON task graph: which tasks to spawn, who they go
+to, and which depend on which" -- this is an LLM call the dispatcher
+itself makes (via a configurable `auxiliary.kanban_decomposer` model
+slot), independent of any orchestrator *profile*'s own conversational
+turn, closer in shape to Copilot CLI's own agent-driven `/fleet`
+decomposition step (§2.2) than to anything else on this page, except that
+the decomposing call here is triggered by the dispatcher's polling loop
+rather than by a user's own prompt to the main agent.
+
+### 5.3 `a2a_orchestrate`: capability-based fan-out across process and machine boundaries
+
+VERIFIED (`.../docs/user-guide/messaging/a2a`): Hermes ships an outbound
+`a2a` toolset (off by default, enabled per surface with `hermes tools
+enable a2a --platform <name>`) implementing the Linux-Foundation-stewarded
+A2A protocol, and among its tools is `a2a_orchestrate(capability, message,
+mode?)`, documented plainly as: "Fan a task out to every peer advertising
+a capability (`all` / `first` / `best`)." Peers are configured with their
+own advertised capabilities (`capabilities: [web_search, research]` in
+`a2a_agents` config) and discovered/addressed by capability name rather
+than by a hard-coded agent identifier, so the calling agent's own model
+decides which capability to invoke and the fan-out mode (broadcast to
+every matching peer, race the first responder, or select the best) --
+this is orchestration whose participants are **independently-running
+Hermes processes on separate machines, or any other A2A-compliant agent
+framework** ("another Hermes, LangChain, CrewAI, Google ADK agents, or
+anything built on the official `a2a-sdk`"), a boundary the docs draw
+explicitly against the two mechanisms above: "When you want multiple
+agents on the **same machine**, prefer [delegation] (in-process
+subagents) or the [kanban board] (durable multi-profile work queue) --
+A2A is for crossing process/machine/framework boundaries." None of
+Claude Code, Copilot CLI, OpenCode, or pi documents an equivalent
+capability-addressed, cross-process/cross-organization fan-out primitive
+anywhere this book has sourced; each of their own coordination layers
+(§1-§4) is scoped to agents the same process spawned.
+
+### 5.4 A boundary worth naming: Mixture of Agents is not a task-decomposition orchestrator
+
+VERIFIED (`.../docs/user-guide/features/mixture-of-agents`), included
+here only to close off a plausible misreading of Hermes' own "orchestrate"
+vocabulary: Mixture of Agents ("MoA") is "a virtual model provider,"
+selected the same way any other model is selected (`/model default
+--provider moa`), where "reference models run first and provide analysis"
+that an "aggregator" model then folds into the single response it writes
+for that turn -- "Use MoA when a hard task benefits from multiple model
+perspectives but still needs Hermes' normal agent loop." This is an
+ensemble of parallel model *calls* contributing advisory text to one
+turn of one agent, with no separate task list, no spawned child session,
+no result that "rejoins" a parent the way every mechanism in §5.1-§5.3
+does -- it does not answer this page's own question ("who holds the
+plan when multiple agents work one task") at all, because there is only
+ever one agent and one turn's worth of plan. It is named here, briefly,
+for the same reason this page's §3.3 and pi's §4.5 draw their own
+scope boundaries: a reader encountering "aggregator," "reference models,"
+and Hermes' own comparative-perspectives framing could otherwise mistake
+it for a fourth coordination layer that belongs beside §5.1-§5.3, and it
+is not one.
+
+---
+
+## 6. Synthesis
+
+| Dimension | Claude Code (turn-by-turn) | Claude Code (Workflow tool) | Copilot CLI (`/fleet`) | OpenCode (Task + `permission.task`) | pi (reference `subagent` extension, opt-in) | Hermes Agent (`delegate_task`/Kanban/A2A) |
+|---|---|---|---|---|---|---|
+| Who plays the orchestrator role | Claude itself, or the team lead | A JS script, run by a separate runtime | An explicitly named "orchestrator agent" (the main Copilot agent) | The primary agent invoking `Task`, scoped by its own `permission.task` config | The top-level session's own model, turn by turn -- no distinct lead/orchestrator agent at all | Three separate answers depending on layer: the calling model itself (`delegate_task`, optionally `role="orchestrator"` self-nesting); a named Kanban profile whose toolset is scoped to `kanban` only, stepping back from implementation; or the calling model choosing an `a2a_orchestrate` fan-out mode across independently-running peers |
+| Decomposition mechanism | Model judgment, turn by turn | Claude writes the script once; the script's own logic (loops, `pipeline()`) decomposes at run time | Model judgment (dependency/nature analysis of the prompt) at `/fleet` invocation | Model judgment, encouraged toward batching via the tool's own prompt text | Model judgment, optionally nudged by a canned natural-language prompt template (§4.5) | Model judgment for `delegate_task`/A2A; for Kanban, either an orchestrator profile's own `kanban_create`/`kanban_link` calls or the dispatcher's own scheduled `auxiliary.kanban_decomposer` LLM call on triage-column tasks |
+| Coordination/state artifact | Claude's context window (subagents/skills) or a shared file-locked task list (agent teams) | Script variables in an isolated runtime; run state tracked for resumability | SQL-backed todo state machine (`pending/in_progress/done/blocked`) with a `todo_deps` table (SDK-page detail, not CLI-page-confirmed) | No dedicated state store found; ordinary session/subagent-session records only | An in-memory `SingleResult[]`/`SubagentDetails` array, scoped to one `execute()` call; nothing persists past the tool call returning | `delegate_task`: none beyond the calling turn. Kanban: durable SQLite rows (`~/.hermes/kanban.db`) with a `task_links` dependency table, outliving the conversation that created them and surviving process restart. A2A: per-peer `context_id`-keyed conversation state, external to any single Hermes process |
+| Concurrency ceiling | No documented numeric cap (subagents), no cap for teams | 16 concurrent, 1,000 total agents per run (hard runtime limits) | Conditional on dependency analysis; no numeric cap documented | No enforced cap found; model is encouraged, not limited, to batch calls | Hard-coded in the extension: 8 tasks max, 4 concurrent (`MAX_PARALLEL_TASKS`/`MAX_CONCURRENCY`), not a core-runtime limit | `delegate_task`: 3 concurrent children per batch by default, no hard ceiling (`max_concurrent_children`); nested trees bounded by `max_spawn_depth` (1-3, no upper ceiling -- 3x3x3 = 27 leaves at depth 3). Kanban: bounded only by however many profiles the dispatcher can spawn; `auto_decompose_per_tick` caps triage decompositions to 3/tick |
+| Dependency handling between subtasks | Not applicable at this granularity | Script's own control flow (sequential `await`, or `pipeline()` for independent items) | Explicit: "assess... whether these can be efficiently executed... in parallel," `todo_deps` table (SDK-page detail) | Not applicable -- no dependency-aware scheduler documented | Flat linear chain only, with a `{previous}` string-substitution placeholder; no DAG | `delegate_task`: none (parallel batch or sequential nesting only). Kanban: explicit `task_links` parent-child edges; dispatcher promotes `todo -> ready` only once every parent is `done` -- a documented, first-party dependency DAG, not an adjacent-surface inference |
+| Result aggregation | One final message per subagent/teammate, read by Claude/lead | Script's own return value; only that final value reaches Claude's context | Not detailed on the CLI's own `/fleet` page | Last text part of each child session's final message (per handoff-mechanism.md 3.3) | Final assistant text per subprocess, capped 50 KB/task for parallel/chain modes; full transcript kept only in a TUI-only `details` object | `delegate_task`: consolidated summary posted back as a new message (top-level) or synthesized in-turn (orchestrator children). Kanban: `kanban_complete(summary, metadata)` -- a durable row any profile can later read, not a value returned to a caller |
+| Resumability of the orchestration itself | Subagents/teammates individually resumable; no run-level resume concept | Yes -- run-level resume with documented start-order replay semantics | Undocumented | Individual subagent sessions resumable via `task_id`; no fleet-level run object | None -- child processes run `--no-session` (ephemeral) and are killed outright on abort; no persisted run state | `delegate_task`: background completions are durably queued (survive a Hermes restart for delivery, though a running child does not resume after a crash). Kanban: fully resumable by design -- a crashed/stale worker's task is reclaimed and re-dispatched; the board itself is the persistence layer |
+| Declared vs. runtime-enforced boundary | Runtime permission-mode check per action | Fixed `acceptEdits` posture for all workflow agents, set once at launch | Undocumented | Declarative: denied subagents omitted from the Task tool schema itself, pre-empting the request entirely | Project-local agent definitions gated by an explicit `ctx.ui.confirm()` prompt when the project isn't yet trusted; otherwise no declared allow/deny surface | Declarative depth/kill-switch config (`max_spawn_depth`, `orchestrator_enabled: false`) overrides whatever `role` the model requests; Kanban's orchestrator/worker split is enforced by the profile's own toolset configuration simply omitting `terminal`/`file`/`code`/`web`, not a runtime check |
+| Ships active by default | Yes | Yes (opt-in per-workflow approval, but the primitive itself is core) | Yes | Yes | **No** -- the capability exists only as an example extension bundled in the npm package but not auto-loaded; a user must manually install it | `delegate_task`: yes, core. Kanban: requires `hermes kanban init` plus a running gateway (`hermes gateway start`) to dispatch; the toolset itself ships core but is inert until a board exists. A2A: off by default, `hermes tools enable a2a` required per surface |
+| Verifiability | Docs-only | Docs-only, but unusually mechanistic (concrete limits, exact resume algorithm) | CLI docs-only; deeper mechanism only on the separate SDK surface (flagged) | Docs-only for `permission.task`; Task tool mechanics themselves are source-verified (handoff-mechanism.md 3) | Fully source-verified (the example extension's own TypeScript, read in full) -- but source-verifying an opt-in example, not a core-runtime guarantee | Docs-only, but unusually mechanistic for a first-party CLI product (explicit depth-cap arithmetic, dispatcher tick interval, state-machine transitions all stated directly, not inferred from an adjacent SDK) |
 
 **The design lesson.** All four products name or imply the same
 orchestrator/worker role from section 0, but they diverge on where that
@@ -704,12 +931,48 @@ orchestrator agent), find only a permission config and a prompt-text
 convention on OpenCode, and find nothing at all on a fresh pi install --
 only an extension a user has to go and turn on themselves.
 
+**Hermes Agent breaks this page's own implicit assumption that a harness
+has *one* coordination layer to look for.** Every other product in this
+table gives one primary answer to "who holds the plan" (a conversational
+model, a script, a permission config, an inert extension); Hermes gives
+three simultaneously-shipped answers scoped to three different lifetimes.
+`delegate_task`'s `role="orchestrator"` flag reproduces §1.1's and
+§2.1's turn-by-turn, model-decides authority almost exactly, but adds a
+depth cap and a global kill switch neither Claude Code's nor Copilot
+CLI's own turn-by-turn cases document -- a declarative ceiling laid over
+model-requested recursion, closer in spirit to OpenCode's
+`permission.task` (§3.2) than to anything either turn-by-turn harness
+does. The Kanban board is this page's first fully first-party-documented
+instance of the durable, SQL-backed, dependency-DAG coordination shape
+that §2.2 could previously only source as adjacent SDK-surface background
+for Copilot CLI's Fleet mode -- and it goes further than that shape by
+running its dispatcher inside a persistent gateway process rather than
+inside the lifetime of any single delegation call, so the coordination
+artifact (the task board) outlives the conversation that created it in a
+way no other mechanism on this page does; the closest structural cousin
+elsewhere in this book is not another harness's subagent primitive at all
+but a durable external work queue, closer to a job scheduler than to a
+context-window-bound Task tool. A2A's `a2a_orchestrate` is this page's
+only sourced example of orchestration reaching *outside* a single running
+process to fan a task across independently-operated peers by advertised
+capability, a coordination boundary (process/machine/organization) none
+of Claude Code, Copilot CLI, OpenCode, or pi's own documented mechanisms
+attempt to cross. Read together, Hermes' own documentation draws its
+three layers' boundaries explicitly rather than leaving a reader to infer
+them -- `delegate_task` for a same-process reasoning answer with no
+human in the loop, Kanban for work that must survive restarts or wait on
+a human, A2A for anything outside the local process -- which is itself a
+data point this page had not previously sourced from any harness: an
+explicit statement, in the product's own docs, of *which* coordination
+primitive to reach for and why, rather than one primitive presented as
+the only option.
+
 ---
 
 ## Sources
 
-All fetched 2026-07-31, except the pi sources below (fetched fresh
-1 September 2026).
+All fetched 2026-07-31, except the pi and Hermes Agent sources below
+(both fetched fresh 1 September 2026).
 
 **Claude Code (authoritative for Claude Code's documented behavior only):**
 - `https://code.claude.com/docs/en/workflows` -- the subagents/skills/agent-teams/workflows
@@ -792,6 +1055,52 @@ from `github.com/earendil-works/pi`, `main` branch):**
   isolation model, model/thinking-level inheritance, abort propagation,
   agent-definition discovery and project-trust gating, and the
   natural-language chain prompt.
+
+**Hermes Agent (Nous Research) (authoritative for its own documented
+behavior; fetched fresh 1 September 2026 from
+`hermes-agent.nousresearch.com`):**
+- `docs/assets/files/llms-full-*.txt` (the docs site's own bundled
+  full-export file, linked from `/docs`) -- the primary text this
+  section's quotes are drawn from, cross-checked against the live pages
+  below.
+- `.../docs/user-guide/features/delegation` -- §5.1 in full: the
+  flat-by-default depth model, `role="leaf"`/`role="orchestrator"`,
+  `delegation.max_spawn_depth` and `delegation.orchestrator_enabled`,
+  the top-level-background-vs-orchestrator-waits synchronization split,
+  the 3x3x3=27 cost-multiplication warning, and the "frontier planner,
+  inexpensive workers" cost-strategy guidance; spot-verified live this
+  session (HTTP 200, `role="orchestrator"`/`max_spawn_depth` text
+  diffed against the bundle and matching verbatim).
+- `.../docs/user-guide/features/kanban` -- §5.2 in full: the
+  `delegate_task`-vs-Kanban comparison table, the task/link/comment/
+  workspace/dispatcher/tenant core-concepts glossary, the
+  `triage/todo/ready/running/blocked/review/done/archived` state
+  machine and `task_links` dependency-gated promotion, the
+  orchestrator-profile-lane behavior ("does not do the work itself,"
+  "decide before you fan out"), and the auto-decompose dispatcher
+  behavior (`kanban.auto_decompose`, `auxiliary.kanban_decomposer`).
+- `.../docs/user-guide/features/kanban-worker-lanes` -- the "Orchestrator
+  profile lane" definition (toolset scoped to `kanban`, excluding
+  `terminal`/`file`/`code`/`web`) quoted in §5.2, and the worker-lane
+  contract (assignee string, spawn mechanism, lifecycle terminator)
+  used for background only, not re-quoted in full.
+- `.../docs/user-guide/features/mixture-of-agents` -- §5.4 in full: the
+  virtual-model-provider framing, the reference-models-then-aggregator
+  mechanism, and the explicit "still needs Hermes' normal agent loop"
+  scoping used to draw MoA outside this page's own coordination-layer
+  question.
+- `.../docs/user-guide/messaging/a2a` -- §5.3 in full: the
+  `a2a_orchestrate(capability, message, mode?)` tool description, the
+  `a2a_agents`/`capabilities` peer-configuration shape, and the docs'
+  own explicit same-machine-vs-cross-machine boundary statement against
+  `delegate_task` and Kanban.
+- This book's own prior Hermes coverage, cross-referenced but not
+  re-fetched this session: [fan-out.md](fan-out.md) §5 (`delegate_task`'s
+  isolated-context/terminal-session shape, Bot Mode) and
+  [permissions-and-sandboxing.md](permissions-and-sandboxing.md) §6
+  (the wider architectural introduction to the harness), both fetched
+  24 August 2026 -- noted in this section's own opening as an earlier
+  documentation snapshot than this session's fetch.
 
 **General-concepts source (authoritative for shared agent-engineering
 vocabulary only, never for any one harness's specific behavior):**

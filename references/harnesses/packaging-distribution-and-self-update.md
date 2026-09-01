@@ -38,14 +38,16 @@ flowchart TD
 ```
 
 Claude Code, Copilot CLI, and OpenCode arrived at the diagram above
-independently -- see §5's synthesis for exactly how each one's own docs,
+independently -- see §6's synthesis for exactly how each one's own docs,
 changelog, or source confirms its own piece of it. pi (§4) is the one
 harness in this book that does **not** fit this diagram for its primary
 npm package -- its own docs describe it as "distributed as an npm
 package" outright, with no per-platform `optionalDependencies` binary
-swap in the main package at all; §4.2 and §5's synthesis both return to
+swap in the main package at all; §4.2 and §6's synthesis both return to
 exactly where pi's own distribution shape diverges from the other
-three's.
+three's. Hermes Agent (§5) is a second, differently-shaped outlier again:
+it ships no npm/pip package for the harness itself at all, distributing
+instead as a git checkout inside a managed Python virtual environment.
 
 ---
 
@@ -1192,17 +1194,275 @@ flowchart TD
   simply discarded, leaving whatever release was previously active
   untouched. This is the one design in this section that reads like a
   genuine forward-update safety net beyond simple version pinning
-  (§5's closing synthesis returns to this point), though its
+  (§6's closing synthesis returns to this point), though its
   `PI_EXPERIMENTAL=1` gate and macOS/Linux-only scope mean it is not
   (yet, as of this session's fetch) pi's default install/update
   behavior for most users.
 
 ---
 
-## 5. Cross-harness synthesis
+## 5. Hermes Agent (Nous Research)
 
-Six real, independently-arrived-at convergences-or-divergences and one
-open gap, none of them re-derived past what §1-§4 actually sourced:
+Sources for this section: VERIFIED, fetched 1 September 2026 directly from
+`hermes-agent.nousresearch.com/docs/getting-started/installation`,
+`.../getting-started/platform-support`, `.../getting-started/updating`,
+`.../user-guide/docker`, and `.../reference/cli-commands` (all via `curl`
+this session, Hermes' Docusaurus site pre-renders full markdown content
+into static HTML server-side, so a plain HTTP fetch returns the complete
+prose rather than an empty JS shell); the repository's own release history
+and metadata fetched via `gh api repos/NousResearch/hermes-agent` and
+`gh api repos/NousResearch/hermes-agent/releases` this session. Hermes
+Agent is a fifth, independent, self-hosted product -- see [Permissions &
+sandboxing architecture](permissions-and-sandboxing.md) §6 for this book's
+fuller architectural introduction to the harness itself (three entry
+points funnelled into one `AIAgent` class, seven sandboxed terminal
+execution backends), not repeated here.
+
+### 5.1 Distribution mechanism: a git checkout inside a managed venv, not an npm/pip package
+
+Hermes is the one harness in this book's packaging coverage that ships
+**no package-registry artifact for the CLI harness itself at all** --
+neither an npm package (Claude Code, Copilot CLI, OpenCode, pi, §1-§4
+above) nor a PyPI package, despite being a Python-and-Node hybrid
+codebase. The documented primary install path is a shell/PowerShell
+installer piped directly from the project's own domain -- `curl -fsSL
+https://hermes-agent.nousresearch.com/install.sh | bash` on Linux/macOS/
+WSL2/Termux, or `iex (irm https://hermes-agent.nousresearch.com/install.ps1)`
+on native Windows -- and the Installation page states plainly what that
+script does: "The installer handles everything automatically -- all
+dependencies (Python, Node.js, ripgrep, ffmpeg), the repo clone, virtual
+environment, global `hermes` command setup, and LLM provider
+configuration." Concretely, this is a `git clone` of
+`NousResearch/hermes-agent` into `~/.hermes/hermes-agent/` (per-user
+install) or `/usr/local/lib/hermes-agent/` (root-mode, an explicit FHS
+layout for shared-machine deployments), a `uv`-managed Python virtual
+environment built from that checkout, and a `hermes` launcher symlinked
+onto the user's `PATH` (`~/.local/bin/hermes` per-user, `/usr/local/bin/
+hermes` root-mode) -- the running artifact is source code plus a venv,
+never a compiled binary or a registry-resolved package the way Claude
+Code's, Copilot CLI's, OpenCode's, or pi's own npm packages are (§1.1,
+§2.1, §3.1, §4.1-§4.2 above). A packaged **Hermes Desktop** installer
+(macOS/Windows) wraps the same underlying CLI/venv install and adds a
+GUI chat client, invoked afterward with `hermes desktop`. **Docker** is
+the other Tier-1-supported distribution shape (§5.2, §5.5 below): a
+published image, `nousresearch/hermes-agent`, pulled from Docker Hub
+rather than built locally.
+
+Platform Support (VERIFIED, quoted directly) is explicit that this is a
+deliberate exclusion, not an oversight: PyPI installs ("`uv tool install
+hermes-agent`, `pip install hermes-agent`, etc.") and Homebrew installs
+(`brew install hermes-agent`) are both named under a dedicated
+**Unsupported** heading, alongside the Arch User Repository, with the
+stated policy that "PRs to fix them will *not* be accepted, and any code
+that keeps compatibility with them may be removed at any point." This is
+a materially different distribution philosophy from every other harness
+this page documents: Claude Code, Copilot CLI, and OpenCode all treat
+their npm packages as one first-class channel among several (§6's
+closing synthesis point 2, unchanged above), and pi's own docs state
+outright that "Pi is distributed as an npm package" (§4.2) with its curl
+installer merely wrapping `npm install -g` underneath; Hermes inverts
+that relationship entirely -- language-ecosystem package managers are
+the explicitly rejected path, and the project's own installer script is
+the one channel it commits to maintaining.
+
+### 5.2 A named, three-tier platform-support policy -- a documentation pattern this page has not previously sourced
+
+Distinct from any other harness on this page, Hermes' own docs name an
+explicit, three-tier support commitment rather than leaving platform
+coverage to be inferred from an install-methods list. **Tier 1**
+("we strive to never break installations and updates for these... take
+precedence over other platforms") covers macOS on Apple Silicon (Hermes
+Desktop or `install.sh`), Windows 10/11 on x86_64 and aarch64 (Hermes
+Desktop or `install.ps1`, with a named subset of features unavailable),
+Linux/WSL2 on x86_64 and aarch64 (`install.sh`, tested against "the
+latest Ubuntu and WSL2," with a documented informal requirement for
+glibc, systemd, and Filesystem-Hierarchy-Standard compliance on other
+distros), and the Docker container image on x86_64 and aarch64 -- the
+same table noting directly that "Docker installs do not support `hermes
+update`. Updating is done by running a new image," a distinction §5.4-
+§5.5 below return to. **Tier 2** ("maintained in-tree only as a best
+effort... releases may break them, and we can't promise we'll fix them
+promptly") covers Android via Termux and Nix/NixOS, the latter captioned
+bluntly: "Breaks often due to node.js packaging woes." **Unsupported**
+is the PyPI/Homebrew/AUR list from §5.1 above, plus macOS on Intel (x86)
+processors. No other harness this page has researched -- Claude Code,
+Copilot CLI, OpenCode, or pi -- publishes a comparably explicit,
+named-tier commitment distinguishing "we will never break this" from
+"best effort" from "we will actively remove compatibility code for
+this"; each of the other four instead documents a flat list of supported
+platforms/architectures (§1.2, §2.2, §3.2, §4.3) without grading its own
+support commitment by tier.
+
+### 5.3 Versioning: CalVer release tags, no registry dist-tag channel to pin against
+
+Hermes' own GitHub Releases (VERIFIED, fetched via `gh api
+repos/NousResearch/hermes-agent/releases` this session) use a
+**calendar-versioning** tag scheme, `vYYYY.M.D` with an optional
+`.<patch>` suffix for same-day re-releases -- for example `v2026.8.31`,
+`v2026.8.27`, `v2026.8.19`, `v2026.8.18`, `v2026.8.16.2`, `v2026.8.16`,
+running back to `v2026.5.7` and beyond -- rather than the semantic-
+versioning scheme (`major.minor.patch`) this book documents by inference
+for Claude Code's, Copilot CLI's, and OpenCode's own npm-published
+version numbers and pi's own `packages/coding-agent/CHANGELOG.md` (§4.4).
+The observed cadence across the releases fetched this session is roughly
+weekly to every few days -- nine tagged releases between 2026-08-03 and
+2026-08-31 alone -- markedly tighter than this page's own citations for
+Claude Code's and Copilot CLI's changelog-entry spacing, though this
+book has not independently instrumented either project's actual release
+cadence as a measured statistic, so the comparison is qualitative only.
+The repository itself (VERIFIED, `gh api repos/NousResearch/hermes-agent`)
+is MIT-licensed, created 2025-07-22, with a `pushed_at` timestamp from
+this same session confirming active, current development. Because there
+is no npm-registry or PyPI-registry distribution channel for the harness
+itself (§5.1), Hermes has no dist-tag-style "stable vs. latest vs.
+prerelease" channel concept to compare against Claude Code's
+`autoUpdatesChannel`, Copilot CLI's channel-argument-plus-dist-tag pair,
+or OpenCode's version-argument-only model (§6's closing synthesis point 3,
+unchanged above) -- the closest equivalent is pinning a git install to a
+specific release tag directly (§5.4) or pulling a specific Docker image
+tag (§5.5), not selecting a named channel.
+
+### 5.4 Self-update: `hermes update`, with more layered safety machinery than any other harness on this page
+
+```mermaid
+flowchart TD
+    Start["hermes update [flags]"] --> Detect{"Install-method\nauto-detection"}
+    Detect -->|"git checkout"| Snap["Pre-update snapshot\n(quick default / full --backup / off)"]
+    Detect -->|"Docker image"| Refuse["Refuse via image-provenance.json\nmarker -- exit 2, print\n'docker pull ...' instead"]
+    Detect -->|"Nix / apt"| RefuseOther["Refuse through the same gate;\nprint the matching external\nupdate command"]
+    Snap --> Branch{"Checkout on\nnon-default branch?"}
+    Branch -->|"clean tree, fully merged"| SwitchMain["Auto-switch to main,\nthen pull"]
+    Branch -->|"dirty tree"| SkipLoud["SKIP update, print exact\nresolve commands"]
+    Branch -->|"no"| Pull["git pull origin (branch)\n(stash-then-restore local edits)"]
+    SwitchMain --> Pull
+    Pull --> Validate{"Post-pull syntax\nvalidation of 9 critical files"}
+    Validate -->|"parse fails"| AutoRollback["git reset --hard (pre-pull sha)\n(auto-rollback)"]
+    Validate -->|"OK"| Deps["uv pip install -e '.[all]'"]
+    Deps --> Migrate["Config migration prompt\n(new options since last update)"]
+    Migrate --> Restart["Gateway auto-restart\n(systemd/launchd, or PID-mapped manual)"]
+    Restart --> Receipt["Write update receipt +\nfleet version-check matrix\n(~/.hermes/logs/update_receipts/)"]
+```
+
+`hermes update` is a single command, gated by a documented
+**install-method auto-detection** step that reads the install's own
+layout (a `~/.hermes/hermes-agent/` git checkout, a Docker image-baked
+provenance marker, or a Nix store path) rather than an environment
+variable, and prints the matching update command for whichever method it
+detects -- `hermes doctor` also surfaces the detected method under its
+own environment summary. For a git-checkout install, the documented
+sequence (Updating & Uninstalling page, quoted/paraphrased directly) is:
+a pre-update snapshot (`updates.pre_update_backup`: `quick` by default --
+pairing data, cron jobs, `config.yaml`, `.env`, `auth.json`, per-profile;
+`full` for a complete zip of `HERMES_HOME`; `off` to disable, or
+`--no-backup`/`--backup` per-run overrides), a `git pull` of the
+configured update branch (`origin/main` by default, `--branch <name>` for
+QA/release-candidate channels), **post-pull syntax validation** of the
+nine critical files every `hermes` invocation imports at startup with an
+**automatic `git reset --hard <pre-pull-sha>` rollback** if any fails to
+parse, a dependency reinstall (`uv pip install -e ".[all]"`), a config-
+migration prompt for options added since the user's last update, and a
+gateway auto-restart (systemd/launchd for service-managed gateways,
+PID-to-profile mapping for manually-launched ones, with a spawn-ledger-
+recorded bind address so a network-bound `hermes serve`/`hermes
+dashboard` backend relaunches on the same host and port a remote Desktop
+client was already pointed at). This auto-rollback-on-syntax-failure
+mechanism is a stronger, always-on safety net than anything this page
+documents for Claude Code, Copilot CLI, or OpenCode's own forward-update
+paths (§6's closing synthesis, unchanged above, already names the narrow
+Windows-specific exception for Claude Code) and closer in spirit to pi's
+own experimental stage-verify-atomically-activate managed install (§4.5)
+-- except Hermes' version is not gated behind an experimental flag; it is
+the default behavior of the one update path this harness ships.
+
+Beyond the default path, `hermes update` carries a materially larger flag
+surface than this page has sourced for any of the other four harnesses:
+**`--check`** (fetch-and-compare against the remote branch, no writes, no
+restarts -- for scripts/cron gating), **`--plan`** (a read-only "fleet
+preview" naming every running Hermes service across every profile on the
+machine, its supervisor, its currently-served code version, and the
+restart mechanism it will get, explicitly including manually-launched
+`serve`/`dashboard` backends discovered via a spawn ledger), **`--branch
+<name>`** (update against a non-default branch, with dirty-tree/branch-
+existence edge cases handled by an auto-stash-then-restore-on-failure
+guarantee so a user is never left stranded mid-switch), **`--force-venv`**
+(an explicit, narrower override than `--force` for Windows venv-recreation
+locks specifically, deliberately *not* subsumed by `--force`), and
+**`--keep-stash`** (used internally by the desktop-app updater so that
+locally stashed source edits are parked in `git stash` rather than
+silently auto-restored across a GUI-triggered update -- the update log
+prints the exact `git stash apply <ref>` command to recover them). A
+**fleet-version check** runs after every restart phase, comparing each
+live gateway's running code against the freshly updated checkout over
+that gateway's own local control socket where available, and the command
+exits non-zero if any profile is still serving pre-update code -- "so
+automation never treats a mixed-version fleet as healthy," in the docs'
+own words. Windows carries two additional, source-visible guards: a
+running-`hermes.exe`-holding-the-venv-executable check that blocks the
+update outright (bypassable with `--force`, which still retries the
+`.exe` rename with backoff and can schedule the replacement for next
+reboot via `MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT)`), and a second,
+`--force`-*immune* guard against any process still running from the
+venv's own Python interpreter, overridable only by the explicit
+`--force-venv` flag -- a two-tier override structure (one bypassable
+generically, one requiring a narrower, deliberate opt-in) this page has
+not sourced for Claude Code's, Copilot CLI's, or OpenCode's own Windows
+update-lock handling. Rollback for a git install is a manual, explicitly
+documented procedure -- `git checkout <commit-hash-or-tag>` followed by
+`uv pip install -e ".[all]"` and a gateway restart -- rather than an
+automated undo command, with the docs naming release tags directly as
+the rollback target ("a recent release like `v2026.5.16`, or any earlier
+tag from `git tag --sort=-version:refname`") and warning that config
+compatibility is not guaranteed across a rollback (`hermes config check`
+is the documented recovery step). `hermes update` can also be triggered
+remotely as `/update` from any connected messaging platform (Telegram,
+Discord, Slack, WhatsApp, Teams), running the identical pull-reinstall-
+restart sequence with the bot briefly offline (docs state "typically
+5-15 seconds") during the gateway restart.
+
+### 5.5 Docker: image-managed installs refuse `hermes update` by design, verified by an on-disk provenance marker
+
+Docker is Hermes' one distribution shape that deliberately does **not**
+route through §5.4's update path at all. The published image bakes a
+small, read-only marker file, `/etc/hermes/image-provenance.json`, that
+`hermes update`, `hermes update --check`, and the dashboard's own Update
+button all consult before touching anything: on an image-managed
+filesystem they refuse cleanly with **exit code 2**, print the actual
+correct command (`docker pull nousresearch/hermes-agent:latest`), and
+write a `refused` receipt into the same update-receipts directory §5.4
+describes so fleet tooling can see the attempt happened rather than
+silently no-op-ing. The refusal is keyed to "what the running filesystem
+*is*, not what it looks like" -- the docs state directly that the marker
+still wins even when a source checkout is bind-mounted into the
+container, and a damaged or missing marker still refuses rather than
+falling open (fail-closed, the same posture the docs use for Nix- and
+apt-managed installs routed through the identical detection gate). The
+documented upgrade sequence is instead `docker pull
+nousresearch/hermes-agent:latest` followed by a container recreate
+(`docker rm -f hermes && docker run ...`, or `docker compose pull &&
+docker compose up -d`); the image itself is explicitly stateless, with
+all user data (config, API keys, sessions, skills, memories) living on a
+host bind mount at `/opt/data`, and the container runs **non-interactive
+config-schema migrations** against the mounted `config.yaml` on startup,
+writing timestamped backups of `config.yaml` and `.env` first when a
+migration actually fires (`HERMES_SKIP_CONFIG_MIGRATION=1` opts out for
+manual inspection). This "pull a new image, mount the same data volume,
+let a startup migration reconcile config" pattern is architecturally the
+image/container-native analogue of Claude Code's, Copilot CLI's, and
+OpenCode's own npm-`optionalDependencies` binary-swap update mechanism
+(§6's synthesis point 1, unchanged above) -- a real, independently
+verified instance of "the running artifact's own packaging format
+decides who owns the update," the same underlying principle this book's
+synthesis already draws for install-method-determines-auto-update-
+ownership (§6's synthesis point 4), now confirmed a further time by a
+fifth harness whose Docker channel explicitly refuses to let its own
+git-native update command reach across that boundary at all.
+
+---
+
+## 6. Cross-harness synthesis
+
+Seven real, independently-arrived-at convergences-or-divergences and one
+open gap, none of them re-derived past what §1-§5 actually sourced:
 
 1. **Claude Code, Copilot CLI, and OpenCode independently converged on
    the identical npm distribution shape; pi's own main npm package does
@@ -1306,9 +1566,28 @@ open gap, none of them re-derived past what §1-§4 actually sourced:
    Claude Code, Copilot CLI, or OpenCode, whose own package names and
    repository ownership have been stable across every source this book
    has fetched for them.
+7. **Hermes Agent (§5) is the one harness on this page that rejects
+   language-ecosystem package-manager distribution for its own CLI
+   entirely, rather than merely demoting it (Claude Code, Copilot CLI,
+   OpenCode, point 2 above) or leading with it (pi, §4.2).**
+   PyPI and Homebrew installs are named explicitly as **Unsupported** in
+   Hermes' own Platform Support docs, with "any code that keeps
+   compatibility with them may be removed at any point" -- the opposite
+   stance from every other harness this page documents, each of which
+   maintains at least one package-registry channel as a first-class,
+   actively-supported install path. Hermes' own primary artifact is a
+   `git` checkout plus a `uv`-managed Python virtual environment (§5.1),
+   its version identifiers are CalVer release tags rather than the
+   semver-shaped version strings this page infers for the other four
+   harnesses' own npm-published releases (§5.3), and its self-update
+   command performs a real `git pull` plus dependency reinstall rather
+   than a package-manager-mediated binary/package swap -- a genuinely
+   different point on the distribution-mechanism spectrum from anything
+   §1-§4 document, not a fifth instance of the same npm-centric shape.
 
-**The one clear negative finding, now nuanced by pi's own experimental
-mechanism.** None of Claude Code's, Copilot CLI's, or OpenCode's own
+**The one clear negative finding, nuanced first by pi's own experimental
+mechanism and now a second time, differently, by Hermes' default
+behavior.** None of Claude Code's, Copilot CLI's, or OpenCode's own
 docs or changelog describe an automatic rollback-on-failed-update
 safety net as a *general* policy -- the closest documented example is
 Claude Code's narrow, Windows-specific fix ("failed updates now restore
@@ -1326,13 +1605,33 @@ gathered in §1.4 and §2.2-2.3, has gone overwhelmingly into making the
 streamed-not-buffered downloads, launcher-preservation, Windows-lock-
 race fixes) rather than into building a documented, general-purpose
 undo. pi's own experimental managed install (§4.5) is the one mechanism
-across all four harnesses that reads like an actual designed-in
+across the first four harnesses that reads like an actual designed-in
 forward-then-abort safety net beyond simple version pinning -- stage,
 smoke-test, and only then atomically activate, leaving a failed
 candidate release un-activated rather than needing a rollback at all --
 but it is gated behind `PI_EXPERIMENTAL=1`, restricted to macOS/Linux,
 and not (as of this session's fetch) pi's default update behavior, so
-it nuances this finding rather than overturning it.
+it nuances this finding rather than overturning it. Hermes Agent (§5.4)
+adds a third, distinct data point that nuances the finding differently
+again: its post-pull **syntax-validation-triggered `git reset --hard
+<pre-pull-sha>` auto-rollback** is not experimental or opt-in -- it is
+the documented, default behavior of the one update path Hermes ships --
+but it is deliberately narrow in scope, triggering only when one of the
+nine startup-critical files fails to parse after the pull, not as a
+general-purpose "this update introduced a regression, undo it" policy;
+a change that pulls cleanly, parses correctly, and still breaks Hermes'
+own runtime behavior is not caught by this mechanism and falls back to
+the same manual `git checkout <tag>` rollback procedure this page
+documents for the other four harnesses' own version-pinning-based
+recovery paths. Taken together, this page now has three structurally
+different answers to "what happens automatically when a self-update
+goes wrong beyond a targeted bug fix": none of it (Claude Code, Copilot
+CLI, OpenCode), an opt-in stage-verify-activate pipeline covering the
+whole update (pi, experimental), and an always-on but narrowly-scoped
+parse-failure trip-wire covering only one specific failure mode (Hermes,
+default) -- no harness on this page ships a general-purpose, default-on,
+"any regression, not just a syntax error, triggers automatic rollback"
+guarantee.
 
 ---
 
@@ -1491,6 +1790,53 @@ applies the way it does for OpenCode above):**
   independently cross-checked against a second primary source this
   session.
 
+**Hermes Agent (authoritative for its own documented behavior only; this
+repo ships no implementation source, and Hermes' underlying codebase is
+not independently inspected in this section beyond what its own docs
+state):**
+- `https://hermes-agent.nousresearch.com/docs/getting-started/installation`,
+  fetched via `curl` this session (the site is a Docusaurus build that
+  server-renders full markdown content into static HTML, so the fetch
+  returns complete prose, not an empty client-side shell) -- the primary
+  source for §5.1's installer commands (`install.sh`/`install.ps1`),
+  install-layout table (per-user vs. root-mode FHS layout), dependency
+  list (`uv`, Python 3.11, Node.js v26, ripgrep, ffmpeg), and the
+  install-method auto-detection statement quoted in §5.4.
+- `https://hermes-agent.nousresearch.com/docs/getting-started/platform-support`,
+  fetched via `curl` this session -- the primary source for §5.2's full
+  Tier 1/Tier 2/Unsupported platform table, including the verbatim
+  PyPI/Homebrew/AUR-unsupported language quoted in §5.1 and §5.2.
+- `https://hermes-agent.nousresearch.com/docs/getting-started/updating`,
+  fetched via `curl` this session -- the primary source for §5.4's full
+  `hermes update` mechanism: the pre-update snapshot modes
+  (`updates.pre_update_backup`), the post-pull syntax-validation-plus-
+  `git reset --hard` auto-rollback, `--branch`/parked-branch handling,
+  `--check`/`--plan`/`--backup`/`--force-venv`/`--keep-stash`, the
+  Windows running-process/venv-lock guards, the SIGHUP-immunity and
+  `update.log` mirroring behavior, the manual rollback-to-tag procedure,
+  the Docker image-provenance-marker refusal mechanism, the Nix
+  `nix flake update`/`nix profile rollback` path, and the `/update`
+  messaging-platform command.
+- `https://hermes-agent.nousresearch.com/docs/user-guide/docker`, fetched
+  via `curl` this session -- the primary source for §5.5's Docker
+  distribution account: the stateless-image-plus-`/opt/data`-bind-mount
+  model, the `docker pull`/container-recreate upgrade sequence, the
+  non-interactive config-schema migration on startup, and the
+  `image-provenance.json` marker mechanics (cross-referenced from
+  §5.4's updating-docs citation above, confirmed a second time in this
+  page).
+- `https://hermes-agent.nousresearch.com/docs/reference/cli-commands`,
+  fetched via `curl` this session -- the source for §5.4's authoritative
+  `hermes update` flag table (`--gateway`, `--check`, `--plan`,
+  `--no-backup`, `--backup`, `--yes`) and exit-code semantics (`0`/`1`/`2`),
+  and for `hermes uninstall`'s own `--full`/`--gui`/`--dry-run`/`--yes`
+  flags.
+- `gh api repos/NousResearch/hermes-agent` and
+  `gh api repos/NousResearch/hermes-agent/releases --paginate`, fetched
+  this session -- the source for §5.3's MIT license, repository creation
+  date, active-development confirmation, and the CalVer (`vYYYY.M.D[.patch]`)
+  release-tag scheme and observed release cadence.
+
 **Cross-references within this book, not re-derived:**
 [llm-api-contract.md](llm-api-contract.md) (§3.5's own, independently
 correct citation of `@earendil-works/pi-ai`, confirmed rather than
@@ -1505,4 +1851,6 @@ the Copilot CLI 1.0.55/1.0.57 release-API rate-limit entries reused in
 whose own auto-update mechanism §1.4/§2.3/§3.4 each explicitly
 distinguish from binary self-update), and
 [permissions-and-sandboxing.md](permissions-and-sandboxing.md) (cited in
-passing in §1.2 for the native-Windows-vs-WSL sandboxing distinction).
+passing in §1.2 for the native-Windows-vs-WSL sandboxing distinction, and
+the source of §5's own architectural introduction to Hermes Agent as a
+harness, not repeated in §5).

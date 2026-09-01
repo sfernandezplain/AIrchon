@@ -657,7 +657,7 @@ a local filesystem path -- and none of the three carries any pi-run identity che
 checksum pin, or code-safety scan comparable to §4.1's registry-level DNS/GitHub-OAuth
 namespace proof: an npm source is "pinned" only in the sense that a version-qualified spec
 is not silently bumped by `pi update`, and a git source is "pinned" only to a ref, not to a
-content hash. **This is the same Q1/Q2 gap this page's synthesis in §9 below already
+content hash. **This is the same Q1/Q2 gap this page's synthesis in §10 below already
 finds across every harness researched, reached independently by pi's own docs rather than
 inferred by this page:** pi proves nothing about who published a package or whether its
 code is safe; it only records which literal spec string a user typed.
@@ -715,7 +715,206 @@ sandboxing architecture](permissions-and-sandboxing.md) §5 already documents fo
 tool execution generally, not a new, MCP-specific mitigation this page's research
 surfaced.
 
-## 9. Synthesis
+## 9. Hermes Agent (Nous Research)
+
+Sources fetched fresh this session (1 September 2026): `hermes-agent.nousresearch.com/docs/user-guide/features/mcp`
+and `hermes-agent.nousresearch.com/docs/user-guide/security` (both WebFetch), cross-checked
+directly against `github.com/NousResearch/hermes-agent`, `main` branch: the repository's own
+`optional-mcps/` directory listing (confirmed live, over fifty entries spanning first-party
+vendor integrations from Airtable to WordPress.com) and three of its manifests read in full
+via `gh api repos/NousResearch/hermes-agent/contents/optional-mcps/<name>/manifest.yaml` --
+`linear/manifest.yaml`, `semgrep/manifest.yaml`, and `context7/manifest.yaml`. Cross-referenced
+against this book's own prior Hermes coverage in [MCP integration](mcp-integration.md) §4
+(discovery, config, transports, tool namespacing, per-server filtering, dynamic runtime
+re-discovery, and tool-result sanitisation) and [Permissions & sandboxing
+architecture](permissions-and-sandboxing.md) §6 (the eight-layer defence-in-depth model, the
+Smart/Manual/Off approval modes, the hardline blocklist beneath even `--yolo`, and the
+container-isolation trade-off against the approval system for Hermes' own terminal-execution
+backends), neither re-derived here. VERIFIED unless flagged.
+
+### 9.1 A genuine registry-adjacent finding this page had not sourced for any other harness: a PR-reviewed catalog, not merely a curated listing
+
+Hermes ships a "curated catalog of MCP servers that Nous staff has reviewed and merged" --
+disabled by default, browsable and installable via `hermes mcp` (interactive picker),
+`hermes mcp catalog` (plain-text list), and `hermes mcp install <name>`. This session fetched
+one catalog manifest directly from source to check the docs' own framing against the actual
+file, rather than taking the docs page's characterization on faith: `optional-mcps/linear/manifest.yaml`
+opens with the comment "`# Nous-approved MCP catalog entry. # Presence in this directory =
+approval. Merged via PR review.`" -- confirmed verbatim, and confirmed again in the fetched
+`semgrep` and `context7` manifests, which open with the identical two-line header. Read against
+§4's registry-layer findings, this is a materially different mechanism from every registry this
+page has sourced so far: the official MCP Registry (§4.1) and GitHub's own registry (§4.2) both
+verify *namespace identity* (a domain proof, an OAuth/OIDC organization-owner check) while
+stating explicitly that they perform no code review of their own; Hermes' catalog instead gates
+on an actual, named organization's PR-review step before a manifest is merged into a public
+repository Nous itself maintains. The docs state this closure of the self-service path directly:
+"There is no community submission tier; entries are added by merging a PR" -- the opposite of
+the official registry's own stated "no curation" design goal (§4.1) and a stricter bar than
+GitHub's own preview registry, whose criteria this page's earlier research found nowhere
+published (§6.2).
+
+This is a real, but narrow, divergence from the Q1-not-Q2 line every other source in this page
+draws, and the docs are careful to say so themselves rather than let a reader over-read the
+review step's reach: "Manifests are gated by PR review into the hermes-agent repo, so Nous has
+reviewed each entry before it shipped -- **but you should still read the manifest before
+installing**, especially the `source:` field's repository, the `install.bootstrap:` commands,
+and any `transport.command:` invocation." Read precisely, Nous' own review is asserted as a
+real first pass -- stronger than a bare namespace-identity check, because it is a human
+reading an actual manifest before merge -- but the docs explicitly decline to claim it
+substitutes for the user's own review of what a manifest's bootstrap or transport fields
+actually invoke, the same first-pass-not-warranty framing Claude Code's connector review
+states for its own narrower surface in §5.1 ("doesn't security-audit or manage any MCP
+server"), now independently reconfirmed for a fourth, differently-designed vetting mechanism.
+The install-time picker and the web dashboard's MCP page both surface the manifest's `source:`
+field as a clickable link specifically so a user can "quickly verify the upstream repo" before
+installing -- a concrete UI affordance supporting exactly the second, human-performed check the
+docs ask for, and one this page's research did not find described for Claude Code's, Copilot
+CLI's, or OpenCode's own consent flows in §5-§7.
+
+```mermaid
+flowchart TD
+    A["Contributor opens a PR against\noptional-mcps/<name>/manifest.yaml"] --> B["Nous staff reviews the PR\n(source repo, install.bootstrap,\ntransport.command/url)"]
+    B -->|"merged"| C["Manifest ships in\nhermes-agent's own repo --\n'presence = approval'"]
+    C --> D["Catalog entry appears in\nhermes mcp / hermes mcp catalog,\ndisabled by default"]
+    D --> E["User runs hermes mcp install <name>"]
+    E --> F["Docs' own second-check instruction:\n'still read the manifest before installing'"]
+    F --> G["Install-time tool checklist +\nsource: link shown in picker/dashboard"]
+```
+
+### 9.2 Tool-level allowlisting and stdio credential isolation as containment-adjacent, not identity- or code-safety, controls
+
+[MCP integration](mcp-integration.md) §4.2 already documents Hermes' own per-server
+`tools.include`/`tools.exclude` glob-pattern filtering generally; the security docs restate the
+same mechanism explicitly as a security control rather than a mere convenience one: "disable
+dangerous tools you do not want the model to see," "expose only a minimal whitelist for a
+sensitive server." A catalog manifest can pre-encode this judgment for a whole class of users --
+`semgrep/manifest.yaml`, fetched this session, declares `tools.default_excluded: [security_check,
+supported_languages, semgrep_rule_schema]` with an inline comment explaining the exclusions as
+"static metadata and schema probes," a Nous-curated default a user inherits automatically at
+install time rather than having to discover and write themselves.
+
+A second, independent control found only in Hermes' own security docs among the harnesses this
+page has researched: stdio MCP subprocesses receive a filtered environment by default, not the
+user's full shell environment. The docs state the allowlist precisely: "Only these variables are
+passed through from the host to MCP stdio subprocesses: `PATH, HOME, USER, LANG, LC_ALL, TERM,
+SHELL, TMPDIR`. Plus any `XDG_*` variables. All other environment variables (API keys, tokens,
+secrets) are stripped," with anything a server actually needs added explicitly via that server's
+own `env:` block in `~/.hermes/config.yaml` -- the same `env:` mechanism §4.2 above documents for
+ordinary server configuration, here doing double duty as a default-deny credential boundary. This
+narrows a malicious or rug-pulled MCP server's ability to exfiltrate host secrets through its own
+process environment specifically, and is complemented by a narrower, output-side mitigation --
+credential redaction on tool-result error messages, replacing GitHub PATs (`ghp_...`), OpenAI-style
+keys (`sk-...`), and `token=`/`key=`/`password=`-shaped parameters with `[REDACTED]` before an MCP
+tool's error text reaches the model. **Neither control answers this page's Q1 or Q2 questions**
+(the manifest process reviewed in §9.1 does not vouch for a plain, non-catalog `.mcp.json`-style
+entry a user adds directly, and env-filtering says nothing about whether the server's own code is
+safe): both are containment-adjacent controls narrowing what a server can *exfiltrate*, not
+verification controls establishing what a server *is* or *does*.
+
+### 9.3 Continuity (Q3): two Hermes-specific update pathways, cutting in opposite directions
+
+This page's Q3 question -- does an original approval decision still mean anything after the
+approved thing changes -- resolves two different ways depending on which of Hermes' own two MCP
+"update" surfaces is in play, and the divergence is worth stating precisely rather than folded
+into one verdict.
+
+**(a) Live runtime tool-list changes are auto-accepted, not re-confirmed.** [MCP
+integration](mcp-integration.md) §4.2 already documents, as a novel capability not found for
+Claude Code or Copilot CLI, that Hermes honours `notifications/tools/list_changed`: "MCP servers
+can notify Hermes when their available tools change... Hermes automatically re-fetches the
+server's tool list and updates the registry" -- explicitly "no manual `/reload-mcp` required."
+Read against this page's own Q3 framing, this is the sharpest instance of "approval bound to a
+name, not to current content" (the pattern named generically in §1 and traced for every other
+harness in §10 below) found anywhere in this page's research across six harnesses: it is not
+merely an *absence* of re-verification the way §5.3 and §7.1 document for Claude Code and
+OpenCode by finding no stated mechanism either way -- Hermes actively built and ships a mechanism
+that *automatically accepts* a live change to an already-approved server's tool surface, silently
+merging new or altered tool definitions into the running registry with no re-approval step of any
+kind. A server a user approved once, for one set of tools with one set of descriptions, can
+change what it offers on a subsequent connection and Hermes will adopt the new definitions
+without asking again -- the textbook shape of the rug-pull mechanism ReversingLabs' research
+describes generically (§3, §10), here confirmed as an explicit, engineered behavior rather than a
+documentation gap.
+
+**(b) Catalog-sourced install state is explicitly *not* auto-updated.** The docs state this in
+direct contrast to (a): "MCPs are never auto-updated. Re-run `hermes mcp install <name>` to
+refresh after a Hermes update if a manifest version changed." A `manifest_version` field pins
+each manifest's own schema generation, and a newer manifest than the installed Hermes release
+understands surfaces a visible warning in the picker (`⚠ '<name>' requires a newer Hermes`)
+rather than silently applying or silently hiding the entry. This is a real, narrow mitigation of
+the *install-time* supply-chain question specifically: a locally-cloned bootstrap/build step
+backing a catalog entry cannot silently change under a user without a new, human-triggered
+`hermes mcp install`.
+
+**These two findings do not contradict each other, but they do not cover the same ground, and
+conflating them would overstate Hermes' own continuity protection.** The majority of catalog
+entries this session found by listing `optional-mcps/` and sampling three manifests (`linear`,
+`semgrep`, `context7`) are `transport: {type: http}` remote services authenticated via OAuth or
+left open, not locally-bootstrapped stdio servers -- meaning finding (b)'s install-time pinning
+protects the manifest that told Hermes *where to connect*, while finding (a)'s auto-accept
+behavior governs *everything that server's live endpoint serves on every subsequent connection*,
+regardless of how carefully Nous' own PR review in §9.1 vetted the original manifest. Nous'
+review vouches for the URL a manifest points Hermes at on the day it was merged; it cannot vouch
+for -- and the fetched docs make no claim that it vouches for -- what that same URL serves a
+year, a month, or a connection later.
+
+### 9.4 Prompt-injection-shaped mitigations layered around, not inside, the MCP client
+
+[MCP integration](mcp-integration.md) §4.3 already documents Hermes' own tool-result
+sanitisation -- stripping invisible Unicode TAG characters (U+E0000-U+E007F) from tool results,
+resource content, and tool descriptions while preserving legitimate emoji-flag sequences -- and
+this page restates it specifically against its own brief because it is squarely a
+supply-chain-adjacent mitigation, not a general hygiene feature: it defends against a malicious
+or already-rug-pulled MCP server using an invisible-to-the-human, visible-to-the-model channel to
+smuggle instructions into what otherwise looks like ordinary tool output, which is precisely the
+delivery mechanism (not the identity or code-safety question) §3's attack taxonomy names "tool
+poisoning" for. A second, narrower control in the same fetched page governs `_meta`: keys under
+protocol-reserved prefixes (`modelcontextprotocol.io/...`, `tools.mcp.com/...`-shaped labels) are
+dropped before reaching the model while vendor `_meta` namespaces pass through -- a control over
+a metadata side-channel this page has not previously sourced for any other harness.
+
+Two further mitigations found in the security docs are worth naming precisely because of where
+their boundary actually falls, to avoid crediting them to the MCP surface specifically. **Context
+File Injection Protection** scans `AGENTS.md`/`.cursorrules`/`SOUL.md` for prompt-injection
+patterns -- instructions to ignore prior instructions, hidden HTML comments, credential-read or
+`curl`-exfiltration attempts, invisible Unicode -- before the file's content reaches the system
+prompt, blocking with a visible `[BLOCKED: ... contained potential prompt injection]` warning.
+This protects the *project-context ingestion path*, a different surface from the *MCP
+tool-result ingestion path* the paragraph above documents; the two are complementary controls,
+not one mechanism restated twice. **Tirith pre-exec scanning** (homograph URL spoofing,
+pipe-to-interpreter patterns such as `curl | bash`, terminal-injection detection; the binary
+itself SHA-256-and-optionally-cosign-verified at auto-install) gates *shell command execution*
+generically, including a command an MCP tool call might itself indirectly trigger, but this
+session found no fetched source describing it as an MCP-specific control -- it is named here as
+adjacent defense-in-depth, not folded into this page's MCP-vetting findings proper. None of these
+four mitigations answers this page's Q1 (identity) or Q3 (continuity, beyond §9.3(b)'s narrow
+install-time carve-out) as defined in §1: each narrows what a server already inside the tool
+registry can smuggle through *content*, the same distinction §10 below draws between a sandbox
+containing *behavior* and a mitigation containing *content*.
+
+### 9.5 No OS-level containment specific to MCP server processes -- confirming the pattern already found for Claude Code, OpenCode, and pi
+
+This session's fetch of the security docs found the container-isolation section's own "What Each
+Sandbox Filters" table listing five rows -- `execute_code`, `terminal (local)`, `terminal
+(Docker)`, `terminal (Modal)`, and `MCP` -- and the `MCP` row describes only the environment-
+variable filtering already documented in §9.2 above ("Blocks everything except safe system vars +
+explicitly configured env... Not affected by passthrough"), not an OS-level process, filesystem,
+or network boundary. [Permissions & sandboxing architecture](permissions-and-sandboxing.md) §6.2
+already documents Hermes' own Docker/Singularity/Modal container-isolation layer
+(`--cap-drop ALL`, `--security-opt no-new-privileges`, `--pids-limit 256`, size-restricted
+`nosuid` temporary filesystems) as scoped to Hermes' own terminal-execution backends; this
+session found no fetched source stating that a locally-spawned MCP stdio server process is
+placed inside any of those same containment backends. The practical consequence, stated
+precisely: on a default Hermes install, a locally-spawned MCP server runs directly on the host
+with the same process, filesystem, and network reach as Hermes itself, mitigated only by the
+env-var allowlist and credential-redaction controls in §9.2, not by a second, OS-enforced
+containment layer -- the same structural gap this page already finds for Claude Code's default
+posture (§5.4), for OpenCode's total absence of OS-level containment (§7.2), and for pi's
+full-process-privilege extension model (§8.4). Copilot CLI's default-on per-server MCP sandbox
+toggle (§6.3) remains the sole exception among the five harnesses this page's own MCP-process
+containment research now covers.
+
+## 10. Synthesis
 
 ```mermaid
 flowchart TD
@@ -724,16 +923,19 @@ flowchart TD
         CCid["Claude Code: none for plain\n.mcp.json; Anthropic Directory\nreview for connectors only"]
         GHid["Copilot CLI: GitHub MCP\nRegistry preview, criteria\nnot published; custom registry\nis admin-owned"]
         OCid["OpenCode: none found"]
+        Hid["Hermes Agent: PR-reviewed catalog\n(optional-mcps/, 'presence = approval')\nfor catalog entries; none for a\nplain, self-added mcp_servers entry"]
         Piid["pi: N/A -- no built-in MCP\nclient at all; MCP arrives only\nvia an ordinary third-party\npi package/extension"]
     end
     subgraph Q2["Q2 -- Code safety: is it benign?"]
         RegQ2["Official Registry: explicitly\ndelegated to npm/PyPI/Docker Hub\nand downstream aggregators"]
         AllQ2["Claude Code / Copilot CLI / OpenCode:\nno harness-run code review found;\nadministrator/user judgment only"]
+        HQ2["Hermes: catalog gets a real Nous\nPR-review first pass, but docs say\n'still read the manifest yourself'"]
         PiQ2["pi: same, one level down --\n'review source code before\ninstalling third-party packages'\nis pi's own stated policy"]
     end
     subgraph Q3["Q3 -- Continuity: still true after an update?"]
         RegQ3["Official Registry: no documented\nre-review on version publish"]
         AllQ3["Claude Code / Copilot CLI / OpenCode:\napproval is a name/URL/command-scoped,\npoint-in-time event -- no\nre-verification found on change"]
+        HQ3["Hermes: catalog installs pinned\n(never auto-updated) BUT live\ntools/list_changed is auto-accepted,\nno re-approval, on every server"]
         PiQ3["pi: package spec is version- or\nref-pinned, but never content-hash\npinned -- same point-in-time gap,\none layer removed from MCP itself"]
     end
     Q1 --> Q2 --> Q3
@@ -750,12 +952,21 @@ specifically ("doesn't security-audit or manage any MCP server"); the official r
 says it about every server it hosts metadata for ("relying on the broader ecosystem for
 security scanning of actual server code"); GitHub's custom-registry feature says it by
 omission (no security-review language found anywhere in the fetched pages). Three
-independently-governed sources reach the identical division of responsibility. **pi sits
-outside this comparison on a different axis entirely** -- it has no MCP-facing identity
-question to answer at all, having shipped no MCP client to begin with (§8.2); the closest
-analogue is the ordinary npm/git-source identity question §8.3 already found unanswered
-for pi's own package-installation mechanism, which is the general package-supply-chain
-problem every language ecosystem has, not an MCP-specific one.
+independently-governed sources reach the identical division of responsibility. **Hermes
+Agent's own catalog (§9.1) is the one identity-adjacent mechanism this page found that goes
+further than a bare namespace proof** -- presence in `optional-mcps/` on GitHub means a
+named organization, Nous, actually reviewed the manifest's source repository and bootstrap
+commands before merging it, a real, if narrow, code-review gate rather than a domain-proof
+substitute -- but Hermes' own docs are explicit that this is a first pass, not a warranty
+("you should still read the manifest before installing"), and it applies only to catalog
+entries: a plain, user-added `mcp_servers` entry in `~/.hermes/config.yaml` carries no
+identity check of any kind, the same posture Claude Code's plain `.mcp.json` and OpenCode's
+own `mcp_servers` config carry for the vast majority of servers any user actually runs.
+**pi sits outside this comparison on a different axis entirely** -- it has no MCP-facing
+identity question to answer at all, having shipped no MCP client to begin with (§8.2); the
+closest analogue is the ordinary npm/git-source identity question §8.3 already found
+unanswered for pi's own package-installation mechanism, which is the general
+package-supply-chain problem every language ecosystem has, not an MCP-specific one.
 
 **Code safety is uniformly delegated, never owned.** No harness researched this session
 runs its own static or dynamic analysis of an MCP server's source before a user can add
@@ -773,7 +984,15 @@ not a code review you can rely on. pi's own docs state the identical delegation 
 words, applied one layer down to packages generally rather than to MCP servers
 specifically: "review source code before installing third-party packages" (§8.3) is pi
 telling its own user to be the code-safety check, precisely the role every other harness
-and the official registry leave to "the ecosystem" in the abstract.
+and the official registry leave to "the ecosystem" in the abstract. **Hermes' own catalog
+review (§9.1) narrows, but does not close, this gap for the one slice of servers it
+covers** -- Nous' PR review is an actual human reading actual code before a catalog entry
+ships, a genuinely different act from "the ecosystem" or "a domain-proof" vouching for
+nothing about the code -- but the docs' own "still read the manifest before installing"
+instruction is Hermes independently reaching the same conclusion pi's docs state directly:
+one organization's review, however real, is a first pass a user is still asked to
+supplement with their own, and it says nothing at all about the much larger set of servers
+a Hermes user adds outside the catalog.
 
 **Continuity -- surviving a rug pull -- is the least-addressed axis of the three, and
 the one where this session found the most consistent negative result.** No registry
@@ -790,12 +1009,24 @@ ReversingLabs' research describes generically ("approval is an event, not a cont
 state... trust [is bound] to the tool's name, not its actual content," in this page's own
 words built directly on that finding) and precisely the mechanism the ETDI paper's
 cryptographic-tool-authentication proposal exists to fix -- a proposal this session found
-no evidence any of the three production harnesses has adopted. pi's own package-pinning
+no evidence any harness researched in this page has adopted. pi's own package-pinning
 model (§8.3) shows the identical shape one layer removed: a version-qualified npm spec or
 a pinned git ref is stable against silent upgrade, but neither is a content hash, so a
 package publisher able to push a new release under the same pinned reference faces no
 re-verification step pi itself performs -- the same rug-pull shape, applied to the
-package bridging MCP in rather than to an MCP server directly.
+package bridging MCP in rather than to an MCP server directly. **Hermes Agent is the one
+harness this page found that moves past mere silence on this question, in both directions
+at once (§9.3).** Its catalog-install pinning is a genuine, narrow positive: catalog
+entries are "never auto-updated," and a `manifest_version` mismatch surfaces a visible
+warning rather than silently applying, so a locally-bootstrapped catalog entry's install
+state cannot drift under a user without an explicit, human-triggered `hermes mcp install`.
+But its live runtime behavior is a genuine, and more consequential, negative: Hermes
+actively honours `notifications/tools/list_changed` by auto-re-fetching and silently
+adopting an already-approved server's changed tool definitions into the running registry,
+with no re-approval step at all -- not an absence of a check the way this page finds for
+Claude Code, Copilot CLI, and OpenCode, but an engineered mechanism that performs the
+rug-pull-enabling behavior ReversingLabs' research warns against by design, on every MCP
+server Hermes connects to, catalog-sourced or not.
 
 **The one axis where the harnesses meaningfully diverge is OS-level containment, and it
 tracks [Permissions & sandboxing architecture](permissions-and-sandboxing.md)'s existing
@@ -805,18 +1036,25 @@ between that call and the host: Copilot CLI sandboxes locally-spawned MCP server
 independent, default-on toggle; Claude Code leaves MCP servers unconstrained by default
 and requires a separate, explicitly-beta opt-in (`@anthropic-ai/sandbox-runtime`) or a
 container/VM to close that gap; OpenCode provides no OS-level containment for anything,
-MCP servers included; pi likewise provides no OS-level containment for anything,
-including whatever a third-party MCP-bridging extension does once loaded, naming the same
-container/VM/micro-VM escape hatch OpenCode's own gap is left to (§8.4). None of these,
-and no layer of the registry infrastructure surveyed in §4, addresses Q1-identity-fraud or
-Q3-rug-pull risk through that sandbox at all -- a sandbox contains what an already-
+MCP servers included; Hermes Agent's own container-isolation layer (`--cap-drop ALL`,
+`--security-opt no-new-privileges`, `--pids-limit 256`) is scoped to its terminal-execution
+backends and, per §9.5, was not found to extend to spawned MCP server subprocesses either
+-- leaving Hermes' own env-var allowlist and credential-redaction controls (§9.2) as the
+only mitigation between a locally-spawned MCP server and the host, a containment posture
+structurally the same as Claude Code's default; pi likewise provides no OS-level
+containment for anything, including whatever a third-party MCP-bridging extension does
+once loaded, naming the same container/VM/micro-VM escape hatch OpenCode's own gap is left
+to (§8.4). None of these, and no layer of the registry infrastructure surveyed in §4,
+addresses Q1-identity-fraud or Q3-rug-pull risk through that sandbox at all -- a sandbox
+contains what an already-
 approved, already-running server can *do* to the host, it does not detect or prevent the
 server *lying* about what it does or *changing* what it does after approval. Those two
 problems, per every source fetched this session, remain open at the protocol level,
-unaddressed at the registry level beyond namespace-identity proof, and left to the same
-one-time human judgment call at approval time across every harness researched here --
-pi's variant of that judgment call happening one step earlier, at "should I install this
-extension at all," rather than at "should I trust this MCP server," because pi never
+unaddressed at the registry level beyond namespace-identity proof (Hermes' own catalog
+review in §9.1 being the one partial, and explicitly self-limited, exception), and left to
+the same one-time human judgment call at approval time across every harness researched
+here -- pi's variant of that judgment call happening one step earlier, at "should I install
+this extension at all," rather than at "should I trust this MCP server," because pi never
 presents the latter question as a distinct decision in the first place.
 
 ---
@@ -897,12 +1135,16 @@ as a harness's or the MCP project's own documentation):**
 **Cross-referenced from this book's own prior research, not re-fetched this session:**
 [MCP integration](mcp-integration.md) (config scopes, the project-server approval-prompt
 gate, `anthropic/requiresUserInteraction`, tool-calling semantics for both closed-source
-harnesses), [Permissions & sandboxing architecture](permissions-and-sandboxing.md) (the
+harnesses, and §4's own prior Hermes coverage of discovery, config, transports, tool
+namespacing, per-server filtering, dynamic runtime re-discovery, and tool-result
+sanitisation), [Permissions & sandboxing architecture](permissions-and-sandboxing.md) (the
 full enforcement-architecture treatment this page deliberately does not repeat, including
 OpenCode's source-verified `Permission.Service` and its source-verified absence of any
-OS-level sandbox, and Copilot CLI's default-on per-server MCP/LSP sandbox toggle), [Tool
-schema / interface design](tool-schema-and-interface-design.md) §4.1 (the MCP
-specification's tool-annotation "treat as untrusted" caveat), and [Built-in
+OS-level sandbox, Copilot CLI's default-on per-server MCP/LSP sandbox toggle, and §6's own
+prior Hermes coverage of the eight-layer defence-in-depth model, the Smart/Manual/Off
+approval modes, the hardline blocklist, and the container-isolation trade-off against the
+approval system), [Tool schema / interface design](tool-schema-and-interface-design.md)
+§4.1 (the MCP specification's tool-annotation "treat as untrusted" caveat), and [Built-in
 tools](built-in-tools.md) §2.3 (the GitHub MCP server's curated-for-context, not
 curated-for-security, default tool list).
 
@@ -916,6 +1158,35 @@ prior source-verified findings plus a fresh docs fetch):**
 - `https://opencode.ai/docs/permissions` -- §7.1's confirmation that MCP tool calls are
   governed by the same general permission schema as every other tool, with no
   MCP-specific vetting step described.
+
+**Hermes Agent (Nous Research) (authoritative for its own documented behavior and its own
+public catalog manifests; fetched fresh this session, 1 September 2026):**
+- `https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp` (WebFetch) --
+  §9.1's catalog description, install-time tool-selection checklist, and "There is no
+  community submission tier; entries are added by merging a PR" quote; §9.2's
+  `tools.include`/`tools.exclude` glob-filtering restatement; §9.3(a)'s
+  `notifications/tools/list_changed` auto-re-fetch quote and §9.3(b)'s "MCPs are never
+  auto-updated" and `manifest_version` compatibility-warning quotes; §9.4's tool-result
+  Unicode-TAG-stripping and protocol-reserved-`_meta`-key restatement (both already cited
+  from this same page in [MCP integration](mcp-integration.md) §4.3).
+- `https://hermes-agent.nousresearch.com/docs/user-guide/security` (WebFetch) -- §9.2's
+  stdio env-variable allowlist quote (`PATH, HOME, USER, LANG, LC_ALL, TERM, SHELL,
+  TMPDIR` plus `XDG_*`) and credential-redaction description; §9.4's Context File
+  Injection Protection and Tirith pre-exec-scanning descriptions; §9.5's "What Each
+  Sandbox Filters" table row for `MCP` and its scoping of the Docker/Singularity/Modal
+  container-isolation layer to terminal-execution backends.
+- `github.com/NousResearch/hermes-agent`, `main` branch, fetched via `gh api`: the
+  `optional-mcps/` directory listing (§9.1's "over fifty entries" count, confirmed live)
+  and three manifests read in full --
+  `optional-mcps/linear/manifest.yaml` (§9.1's "Nous-approved MCP catalog entry...
+  Presence in this directory = approval. Merged via PR review" quote, verified verbatim
+  from the manifest's own header comment, not merely from the docs page's paraphrase of
+  it), `optional-mcps/semgrep/manifest.yaml` (§9.2's `tools.default_excluded` example and
+  its inline rationale comment), and `optional-mcps/context7/manifest.yaml` (confirming
+  the same two-line "Nous-approved... Merged via PR review" header across a third,
+  independently-sampled entry, and that most catalog entries observed this session are
+  `transport: {type: http}` remote services rather than locally-bootstrapped stdio
+  servers, cited in §9.3's closing paragraph).
 
 **pi (authoritative for its own documented behavior and package.json manifests; fetched
 fresh this session directly from `github.com/earendil-works/pi`, `main` branch, via `gh api`):**
