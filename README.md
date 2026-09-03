@@ -42,15 +42,21 @@ fire was never actually locked away, just scattered and under-read.
 
 **What's actually been tested and holds up:** asking `airchon-mentor`
 about your own harness's real, current tool surface, rather than
-trusting a model's memory of it. A model's own knowledge of the tool
-it's running inside is a documented blind spot -- training data goes
-stale fast for a CLI that ships continuously, and a model will fill
-gaps with plausible-sounding invented behavior rather than admit it
-doesn't know. Checking a claim against the actual current docs, live,
-catches that. It matters most exactly where getting it wrong is
-expensive -- e.g. not knowing your harness already ships a built-in
-capability and reaching for an unnecessary third-party tool with its
-own security exposure instead.
+trusting a model's memory of it. That memory fails for two distinct
+reasons, not one. The obvious one is staleness -- training data goes
+stale fast for a CLI that ships continuously. The sharper one: an
+ungrounded model is optimizing for *plausible given its training
+distribution*, not *true* -- on any topic with a lot of noisy internet
+discussion (outdated tutorials, confident wrong answers, blog posts
+about the wrong tool version), the popular-but-wrong content can
+simply outnumber the correct-but-sparse official source, and the model
+will return the popular answer with full confidence, independent of
+how recent its training is. Forcing a live citation to one specific,
+authoritative source -- not just "a" source, *the* source -- overrides
+both failure modes at once. It matters most exactly where getting it
+wrong is expensive -- e.g. not knowing your harness already ships a
+built-in capability and reaching for an unnecessary third-party tool
+with its own security exposure instead.
 
 **What this builds: AI-engineer fluency, specifically.** Across all
 five domains, this is the actual working knowledge of someone building
