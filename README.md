@@ -106,13 +106,18 @@ claim about how people learn. It's currently a solo-tested tool: the
 person building it is deliberately going through it from the bottom
 tier as its first real learner, not a second, independent person. That
 makes a tier badge a practice signal you can act on today, not yet an
-external credential someone else should take on faith. Separately: the
-sources-of-truth audit above is a snapshot, not a subscription --
-nothing re-runs it on a schedule yet, so a page's **VERIFIED** tag is
-only as current as the last time someone actually re-ran that check
-against it. The audit mechanism is real and working; the automation
-that would run it monthly without being asked is the next piece to
-build, not something this project has claimed to have already.
+external credential someone else should take on faith. Separately: a
+real mechanism to re-run the sources-of-truth audit now exists
+(`airchon-sync`, below) -- but it's invoked by name, not scheduled, so
+a page's **VERIFIED** tag is still only as current as the last time
+someone actually ran it. Building `airchon-sync` surfaced a real
+reason not to rush straight to unattended scheduling: a confirmed,
+non-trivial share of doc-page hash "drift" turned out to be CDN cache
+noise on SPA-rendered sites, not real content change. The check-and-
+handoff mechanism is real and working; knowing when its signal is
+trustworthy enough to act on without a human watching is the next
+thing to earn, not something this project has claimed to have
+already.
 
 ---
 
@@ -120,8 +125,9 @@ build, not something this project has claimed to have already.
 
 AIrchon is a conversational mentor, not a wizard with hidden
 subcommands -- backed by three specialist agents behind one thin
-router. You ask it a real question, in plain language, and it answers
-in prose, citing exactly where the answer came from.
+router, plus a fourth, standalone maintenance skill. You ask it a real
+question, in plain language, and it answers in prose, citing exactly
+where the answer came from.
 
 - **`airchon-mentor` answers, read-only.** Every factual claim is
   tagged, explicitly or by the shape of the answer: **VERIFIED**
@@ -159,6 +165,19 @@ in prose, citing exactly where the answer came from.
   honesty note above on what a tier signals before treating it as more
   than a practice tool -- that's a caveat on the exam's construct
   validity, not on how much the course actually covers.
+- **`airchon-sync` closes the staleness loop, on request.** A
+  standalone, FORCED-only skill (never triggers from ambient
+  conversation -- invoke it by name) that re-checks every source in
+  `resources/sources-of-truth.json` against its live current state,
+  hands the ones that actually changed off to `airchon-author` with
+  concrete evidence (a GitHub compare diff for a moved commit, a
+  changed-hash note for a doc page), and mechanically rebaselines the
+  tracked files afterward -- never by hand-editing them. Built via
+  `/genesis`; real-task testing while building it found that a
+  meaningful share of doc-page "drift" is CDN cache noise on
+  SPA-rendered sites, not real content change (see its own `SKILL.md`)
+  -- it works, but isn't yet recommended for unattended scheduling
+  until that's been watched across a few manual runs.
 
 ---
 
@@ -210,14 +229,15 @@ apm install
 ```
 
 This deploys all three agents -- `airchon-mentor`, `airchon-author`,
-`airchon-teacher` -- to Claude Code, Copilot CLI, and OpenCode, and the
-thin router skill (`airchon`) to Claude Code only, for `/airchon` and
-natural-language discovery. Skills have no Copilot CLI or OpenCode
-deploy path; the agents are what keep both covered either way. **Known
-gap:** the OpenCode deploy currently fails to load -- its `tools:`
-frontmatter is written as a list, and OpenCode requires a
-tool-name-to-boolean mapping instead. `apm install` will warn about
-this; it isn't silently broken, but it isn't fixed yet either.
+`airchon-teacher` -- to Claude Code, Copilot CLI, and OpenCode, and both
+skills (`airchon`, the router; `airchon-sync`, the source-drift checker)
+to Claude Code only, for `/airchon`, `/airchon-sync`, and natural-
+language discovery. Skills have no Copilot CLI or OpenCode deploy
+path; the agents are what keep both covered either way. **Known gap:**
+the OpenCode deploy currently fails to load -- its `tools:` frontmatter
+is written as a list, and OpenCode requires a tool-name-to-boolean
+mapping instead. `apm install` will warn about this; it isn't silently
+broken, but it isn't fixed yet either.
 
 Then just ask it something, for example:
 
@@ -234,13 +254,18 @@ write up KTransformers' operator-injection mechanism in the wiki-book
 assess my proficiency / take the exam
 teach me / continue my course
 review my project's own skills and agent files for guardrail gaps
+/airchon-sync                                  (explicit only -- see below)
 ```
 
 No fixed command set to memorize -- if the question fits one of the
-five reference areas, ask it the way you'd ask a person. The two
-exceptions are the exam and the course: once you're in either, it
-paces one question or one topic at a time, asking whether you want to
-continue or pick back up later -- instead of free-form back-and-forth.
+five reference areas, ask it the way you'd ask a person. Three things
+don't work like free-form chat: the exam and the course pace one
+question or one topic at a time once you're in them, asking whether
+you want to continue rather than taking open-ended follow-ups; and
+`/airchon-sync` never triggers on its own from a related-sounding
+question -- it makes real network calls and can trigger real rewrites,
+so it only runs when named explicitly (`/airchon-sync`, or "run the
+source sync").
 
 ---
 
@@ -253,6 +278,9 @@ apm.lock.yaml                                  Resolved/locked dependency versio
 .apm/agents/airchon-author.agent.md            The only writer, across all five reference areas
 .apm/agents/airchon-teacher.agent.md           Lean router body for the teacher's own procedures -- read-only on all reference areas
 .apm/skills/airchon/SKILL.md                   Thin router skill (Claude Code only)
+.apm/skills/airchon-sync/                      Source-drift checker skill (Claude Code only, FORCED -- invoke by name).
+                                                Bundles scripts/check_drift.py (the actual hash/commit checks --
+                                                deterministic, never LLM-recalled) and its own handoff-prompt template
 references/harnesses/                          Wiki-book: AI agent harness internals -- mentor reads, author writes
 references/sdlc/                               Agentic SDLC Handbook digest
 references/rag/                                RAG definitions and techniques
@@ -262,11 +290,12 @@ resources/airchon-teacher/                     Teacher's own procedures (exam, c
                                                 the curriculum, and the session-pacing files for each course
 resources/path-resolution.md                   Shared path-resolution fallback used by all three agents
 resources/sources-of-truth.md, .json           Live snapshot of every source cited across all five
-                                                reference areas -- commit SHA or content hash, not yet auto-synced
+                                                reference areas -- commit SHA or content hash. Re-checkable now via
+                                                airchon-sync (invoked by name); not yet scheduled/unattended
 ~/.airchon/level, ~/.airchon/qualify-exam.md,
 ~/.airchon/course-progress.md, ~/.airchon/exercises/,
 ~/.airchon/session-{N}.exam.md                 Teacher's own state -- your machine, outside this repo
-.claude/, .github/, .opencode/, .agents/       Deployed copies of the agents and skill (gitignored, regenerated by `apm install`)
+.claude/, .github/, .opencode/, .agents/       Deployed copies of the agents and skills (gitignored, regenerated by `apm install`)
 ```
 
 For the full architecture rationale -- why the read/write split, why
