@@ -1,6 +1,6 @@
 ---
 name: airchon
-description: Use this skill when the user asks how an AI agent harness works internally -- Claude Code, GitHub Copilot CLI, or OpenCode, or harnesses generally -- covering memory, compaction, tools, MCP, context compression, caching, orchestration, fan-out, inter-agent messaging, retries, or configuration. Also trigger on harness comparisons, going deep on one mechanism, "how would I build a harness like this", writing or updating a wiki-book page at references/harnesses/, reviewing the user's OWN project agent-harness setup (skills, agent files, hooks, permissions, orchestration), or anything about classes, courses, formation, proficiency level or tier, continuing a lesson, or exercise correction.
+description: Use this skill when the user asks how an AI agent harness works internally -- Claude Code, GitHub Copilot CLI, or OpenCode, or harnesses generally -- covering memory, compaction, tools, MCP, context compression, caching, orchestration, fan-out, inter-agent messaging, retries, or configuration. Also covers AI model classification (task types, parameter scale, MoE, quantization) and local/self-hosted inference engines (llama.cpp, Ollama, KTransformers). Also trigger on harness comparisons, going deep on one mechanism, "how would I build a harness like this", writing or updating a wiki-book page at references/harnesses/, references/models/, references/inference-engines/, or the other reference areas, reviewing the user's OWN project agent-harness setup (skills, agent files, hooks, permissions, orchestration), or anything about classes, courses, formation, proficiency level or tier, continuing a lesson, or exercise correction.
 user-invocable: true
 disable-model-invocation: false
 allowed-tools:
@@ -34,10 +34,12 @@ when the host gives it one.
      one sub-flow ("take/retake the exam") that is a multi-call
      pipeline rather than a single call.
    - AUTHORING intent -- the user asks to write up, add, document,
-     update, or persist a topic into the wiki-book ("write this up",
-     "add this to references/harnesses", "update the page on X",
-     "document this in the wiki-book", or names a page that needs
-     creating/updating) -> call `airchon-author`.
+     update, or persist a topic into any wiki-book ("write this up",
+     "add this to references/harnesses" (or references/models,
+     references/inference-engines, or another reference area),
+     "update the page on X", "document this in the wiki-book", or
+     names a page that needs creating/updating) -> call
+     `airchon-author`.
    - Otherwise (the default) -- the user is asking a question, wants
      something explained, wants a comparison, or wants their OWN
      project's agent-harness setup reviewed/critiqued -> call
