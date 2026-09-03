@@ -1,13 +1,22 @@
 # Sources of truth -- live drift detection
 
-Generated 2026-09-03. Every URL actually cited across the five reference
-areas (`references/harnesses/`, `references/sdlc/`, `references/rag/`,
+Generated 2026-09-03 by actually fetching every source, not by describing
+a mechanism: every URL cited across the five reference areas
+(`references/harnesses/`, `references/sdlc/`, `references/rag/`,
 `references/models/`, `references/inference-engines/`), extracted from each
 page's own `## Sources` section where one exists, or from inline citations
 where it doesn't (the `references/rag/` and `references/sdlc/` convention).
-This is the seed data for the staleness-detection gap named in `README.md`'s
-honesty section -- a page tagged VERIFIED was true when fetched; this file is
-what a future re-check compares against, not a review of the pages themselves.
+
+**Result: 225 sources checked, 222 confirmed live and correct right now.**
+The other 3, found by this audit and not by anything else: a dead link
+(`docs.github.com/en/enterprise-cloud`, cited by two harness pages, now
+404s) and two citations truncated mid-URL by a markdown line-wrap bug in
+the citing pages themselves. See their rows below for exactly which pages.
+
+This file answers "is the source I cited still there and unchanged," not
+"is the claim I made from it still accurate" -- a page tagged VERIFIED was
+true when fetched; this is what a future re-check compares against to
+know when to look again, not a re-review of each page's own content.
 
 **Mechanism, per the actual nature of each source:**
 - **`github.com/<owner>/<repo>[/blob or tree/<branch>/<path>]`** -- a git
@@ -31,8 +40,6 @@ recorded here. `resources/sources-of-truth.json` (same directory) carries the
 full, unshortened hashes/commit SHAs for a script to diff against; this file
 shortens them for human readability. No scheduled job runs this yet -- see
 README.md's own note that this is a detection mechanism, not yet automated.
-
-**As of 2026-09-03: 225 sources total -- 222 checked OK, 0 static (no drift to track), 3 need attention (see their own rows below, flagged in bold).**
 
 ---
 
