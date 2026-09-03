@@ -1,3 +1,53 @@
+## 2026-09-03 -- Added `resources/sources-of-truth.md`, a live-fetched snapshot of every cited source
+
+A README review session had already surfaced the gap this closes: a
+page tagged VERIFIED is only true as of when it was fetched, and
+nothing detects if the underlying source changed since. Discussion
+sharpened *why* that matters beyond simple staleness -- an ungrounded
+model optimizes for plausible-given-training-distribution, not true,
+so on noisy topics popular-but-wrong content can outvote correct-but
+-sparse content regardless of recency -- and separately worked out a
+concrete mechanism: hash the source, sync monthly, but recognize a
+byte-diff only signals "the page changed," not "the cited claim broke."
+
+Built the first concrete piece of that: extracted every URL actually
+cited across all 88 pages in the five reference areas (from each
+page's own `## Sources` section where one exists, or from inline
+citations in `references/rag/` and `references/sdlc/`, which don't use
+that convention) -- 225 unique sources after removing one regex
+false-positive. Classified each by what it actually is, per the
+operator's own instruction: a `github.com/<owner>/<repo>` URL gets the
+latest commit SHA that touched the cited path (via `gh api
+repos/.../commits -f sha=<branch> -f path=<path>`) as its precise,
+free version identifier -- a hash would only approximate what a commit
+SHA states exactly; a `github.com/.../issues|pull|releases/...` link
+is marked static (immutable once filed, nothing to track); everything
+else gets a SHA-256 hash of the actually-fetched page body. All 225
+were live-checked this session (19 git sources sequentially via `gh
+api`, 206 doc pages in parallel via a thread pool) -- not just a
+mechanism description, real current values.
+
+That live check already earned its keep once: it found `references
+/harnesses/caching.md` and `retries.md` both cite
+`docs.github.com/en/enterprise-cloud`, which now 404s (a genuine dead
+link), and that `evals-and-testing-a-harness.md` and `retries.md` each
+contain a hermes-agent.nousresearch.com citation truncated mid-URL by
+a markdown line-wrap in the source page itself -- both real defects a
+static, never-re-checked page could never have surfaced on its own.
+Neither was fixed in this pass (out of scope -- that's `airchon
+-author`'s job on those specific pages); both are flagged in the new
+file's own status column instead.
+
+Wrote `resources/sources-of-truth.md` (human-readable, grouped by
+reference area, shortened hash/commit display) and a companion
+`resources/sources-of-truth.json` (full unshortened values, for a
+future diff script). This is a one-time seed, explicitly not an
+automated sync -- README.md's own honesty section was updated to say
+so plainly rather than imply more than what was actually built. Not
+owned by any single agent; not wired into any agent's read/write
+boundary, since it's a maintainer-facing artifact about the reference
+areas, not reference content itself.
+
 ## 2026-09-03 -- Extended the Gnostic->Demiurge course with sessions for Clusters 9-10 (models, inference engines)
 
 The prior two entries below left a documented gap: `knowledge-path
