@@ -53,15 +53,25 @@ capability and reaching for an unnecessary third-party tool with its
 own security exposure instead.
 
 **What this is not:** a way to become a better software engineer in
-the general sense. This teaches fluency with three specific AI
-coding-agent harnesses -- their control loop, memory, tools,
-permissions, orchestration -- not testing discipline, debugging
-methodology, or code quality. Someone can master everything in this
-project's curriculum and still ship code they never reviewed; harness
-fluency and engineering discipline are different skills, and this
-project only claims to build the first one. The tier system's own
-top-tier note already says as much: Archon tier is *necessary but not
-sufficient* for actually building something better than what exists.
+the fully general sense -- it won't teach you algorithms, data
+structures, or how to design a database schema. What it does teach,
+across all five domains, is real engineering discipline specifically
+as it applies to building and operating agentic systems: a 19-item
+anti-pattern taxonomy for failures that "don't crash, they produce
+plausible wrong output" (SDLC), the package/lockfile model and
+dependency-pinning discipline behind a set of agentic primitives
+(SDLC), building and scoring a RAG evaluation pipeline with
+critique-agent filtering and LLM-as-judge comparison (RAG), and
+capstones graded specifically on whether the artifact you produced
+actually runs and does what you claimed, not on how well you described
+it (every domain). That's genuine testing and debugging methodology --
+just scoped to agentic-system engineering, not to arbitrary application
+code. Someone can go through all of it and still ship unrelated
+business logic they never reviewed; harness/agentic-systems fluency
+and general engineering discipline overlap but aren't the same thing.
+The tier system's own top-tier note already says as much: Archon tier
+is *necessary but not sufficient* for actually building something
+better than what exists.
 
 **What's still unproven:** the tier rubric and the multi-session
 courses under it are original pedagogical design, authored and graded
