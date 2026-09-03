@@ -761,3 +761,473 @@ three-implementations-of-one-mechanism:
    claimed, and the comparison note keeps the two epistemic registers
    (this book's VERIFIED tagging vs. the chosen cluster's single-source
    attribution) visibly distinct rather than blurred together.
+
+---
+
+## Extension (2026-09-03): Clusters 9-10 session additions
+
+**Why this section exists, appended rather than folded in above.**
+`knowledge-path-curriculum.md`'s own note under its "Session breakdown
+(agenda only), Gnostic -> Demiurge" pointer paragraph has read, since
+2026-08-24, that this file's session count "was set before Clusters 6,
+7, 9, and 10 below existed and covers only the original
+five-cluster/21-module band." That was accurate in full on 2026-08-24
+itself -- Clusters 9 and 10 did not exist yet, and the "Extension
+(2026-08-24)" section above closed the Clusters-6/7 half of the gap the
+same day -- but the note has been stale on its Clusters-6/7 half ever
+since that same 2026-08-24 extension shipped, and stale on its
+Clusters-9/10 half from the moment those two clusters were later added
+to the curriculum page. This section closes the remaining, real gap:
+Cluster 9 (AI model classification, `references/models/`) and Cluster 10
+(local/self-hosted inference engines, `references/inference-engines/`).
+Per this file's operating rule -- preserve existing session numbering,
+never renumber or rewrite a session once taught from -- the fix is again
+additive: Sessions 1-45 above are untouched, and the two new clusters
+get their own sessions numbered 46 onward, continuing the sequence
+rather than being spliced in before the existing Session 45 capstone
+variant. A course already in progress against the first 45 sessions is
+unaffected; a course starting fresh now runs all 68 sessions straight
+through.
+
+**Grounding-status reminder, restated per `knowledge-path-curriculum.md`'s
+own instruction not to drop it when teaching from this page.** Every
+item in Cluster 9's sessions below is sourced from `references/models/`
+pages, which attribute their own claims to the Hugging Face Hub
+/`transformers`/Optimum documentation and Maxime Labonne's frankenMoE
+blog post, applying that same-shaped VERIFIED/BEST-CURRENT-UNDERSTANDING
+discipline internally but scoped to that named corpus, not to this
+wiki-book's own `references/harnesses/` sources. Every item in Cluster
+10's sessions below is sourced from `references/inference-engines/`
+pages, which attribute their own claims to each named inference engine's
+own documentation or repository (llama.cpp's, Ollama's, KTransformers')
+the same way. Say so explicitly when teaching either cluster, the same
+distinction `knowledge-path-curriculum.md`'s Cluster 9 and Cluster 10
+overviews each restate inline.
+
+**Why 23 more sessions, not fewer or more.** Cluster 9 carries 5 modules
+(`model-terminology.md` through `quantization.md`) and Cluster 10
+carries 14 (`model-file-formats.md` through `ktransformers.md`), for 19
+modules total -- fewer than either original band, but Cluster 10 alone
+is nearly as large as the original five-cluster/21-module band by module
+count. The same three session-count failure modes rejected twice above
+apply again here:
+
+- **One session per cluster (2 sessions)** would force 28 (Cluster 9) or
+  55 (Cluster 10) key-concept items -- five and fourteen modules
+  respectively, each already requiring source-specific concrete detail
+  -- into a single sitting apiece, many times over the 3-6-item ceiling
+  established as the point past which a sitting stops being absorbable.
+- **One session per module with no synthesis at all (19 sessions)**
+  would teach every module's key concepts but leave the
+  comprehension-check-and-exercise-selection practice this file's other
+  clusters group into their own synthesis session with nowhere to
+  happen.
+- **Splitting any individual module's already-short 3-6-item
+  key-concepts list across two sessions** would produce sittings of one
+  or two items each, reproducing the "so thin it's pointless" failure
+  this file's opening rationale already named.
+
+**19 module-content sessions** -- one per module, sized to that module's
+own key-concepts granularity (Cluster 9's own Task-and-pipeline
+-classification and Parameter-count-and-scale modules being the thinnest
+at 5 items apiece, and its Model-terminology, Mixture-of-Experts-and
+-frankenMoE, and Quantization modules the richest at 6; Cluster 10's own
+Batching-and-continuous-batching, CPU/GPU-heterogeneous-offloading, and
+Multi-GPU-inference modules being the thinnest at 3 items apiece, and its
+llama.cpp and Ollama modules the richest at 5), no combining and no
+further splitting, plus **2 cluster-synthesis sessions** (one per
+cluster, immediately after that cluster's own module sessions, walking
+every module's own comprehension check plus selecting one representative
+exercise to actually run -- Cluster 10's synthesis session necessarily
+carries 15 items rather than the smaller clusters' 5-6-item norm,
+continuing this file's own precedent, set by Session 37's 10-item
+Cluster-6 synthesis, of scaling a synthesis session's size to its own
+cluster's module count rather than capping every synthesis session at a
+fixed ceiling), plus **2 capstone-variant sessions** -- one more than the
+single Session 45 the prior extension needed, because
+`knowledge-path-curriculum.md`'s revision adding Clusters 9 and 10 also
+split what had been a single "Cluster 6/7 variant" into a three-way
+"Cluster 6/7/9 variant" (Session 45 above already executes this variant
+in full for whichever of Clusters 6 or 7 a learner chose when that
+session was taught from, so Cluster 9 needs its own session extending
+that same variant's scope rather than a rewrite of Session 45 itself,
+per this file's hard rule against rewriting a taught session) plus a
+wholly separate "Cluster 10 variant" the curriculum page explicitly does
+not fold into the combined 6/7/9 shape and so cannot share a session
+with it -- is the smallest count avoiding all three failure modes,
+continuing the numbering as Sessions 46-68.
+
+```mermaid
+flowchart TB
+    subgraph C9["Cluster 9: AI model classification (Sessions 46-52)"]
+        U46["S46 Model terminology (6)"] --> U47["S47 Task/pipeline classification (5)"]
+        U47 --> U48["S48 Parameter count and scale (5)"]
+        U48 --> U49["S49 MoE and frankenMoE (6)"]
+        U49 --> U50["S50 Quantization (6)"]
+        U50 --> U51["S51 Cluster 9 synthesis (6)"]
+        U51 --> U52["S52 Cluster 6/7/9 capstone contribution (4)"]
+    end
+    subgraph C10["Cluster 10: Local inference engines (Sessions 53-68)"]
+        U53["S53 Model file formats (4)"] --> U54["S54 Memory-mapped loading (4)"]
+        U54 --> U55["S55 Quantization at inference time (4)"]
+        U55 --> U56["S56 KV cache/context window (4)"]
+        U56 --> U57["S57 Sampling/decoding params (4)"]
+        U57 --> U58["S58 Batching (3)"]
+        U58 --> U59["S59 CPU/GPU offloading (3)"]
+        U59 --> U60["S60 Multi-GPU inference (3)"]
+        U60 --> U61["S61 Speculative decoding (4)"]
+        U61 --> U62["S62 Server/API modes (4)"]
+        U62 --> U63["S63 Model mgmt/distribution (4)"]
+        U63 --> U64["S64 llama.cpp (5)"]
+        U64 --> U65["S65 Ollama (5)"]
+        U65 --> U66["S66 KTransformers (4)"]
+        U66 --> U67["S67 Cluster 10 synthesis (15)"]
+        U67 --> U68["S68 Cluster 10 capstone variant (4)"]
+    end
+    C9 --> C10
+```
+
+---
+
+## Cluster 9: AI model classification (Sessions 46-52)
+
+**Session 46 -- Model terminology.** Items to cover, in order:
+1. The pretrained/fine-tuned/LLM distinction.
+2. Encoder, decoder, and encoder-decoder (seq2seq) architectures.
+3. Causal vs. masked language modeling.
+4. Tokens, input IDs, and attention masks.
+5. A model's backbone vs. its task-specific head.
+6. Feature-extraction and multimodal terminology.
+
+**Session 47 -- Task and pipeline classification.** Items to cover, in
+order:
+1. The Hub's task/pipeline-tag taxonomy across NLP/Vision/Audio
+   /Multimodal/Tabular/RL categories.
+2. `text-generation` as an agent's own reasoning loop.
+3. `feature-extraction`/`sentence-similarity` for embeddings, RAG, and
+   semantic routing/caching.
+4. `summarization` for context compaction.
+5. `text-classification`/`token-classification` for routing, guardrails,
+   and entity extraction.
+
+**Session 48 -- Parameter count and scale.** Items to cover, in order:
+1. What a parameter is.
+2. The `7B`/`13B`/`70B` naming convention.
+3. The verified `~4*X GB` (float32)/`~2*X GB` (bfloat16/float16) VRAM
+   rule of thumb.
+4. The KV cache as a second, context-length-dependent memory cost
+   distinct from weight VRAM (MQA/GQA as mitigations).
+5. Small/mid-scale/frontier-hosted capability-tier tradeoffs.
+
+**Session 49 -- Mixture of Experts and frankenMoE.** Items to cover, in
+order:
+1. Sparse MoE layers and the gate/router network.
+2. `num_local_experts` vs. `num_experts_per_tok`.
+3. The frankenMoE-vs-native-MoE training-methodology distinction.
+4. MergeKit's three router-initialization methods (random, cheap_embed,
+   hidden).
+5. The memory-vs-speed-vs-knowledge-preservation tradeoffs.
+6. The worked Beyonder-4x7B-v3 example.
+
+**Session 50 -- Quantization.** Items to cover, in order:
+1. The definition and motivation for quantization.
+2. float16/bfloat16/int16/int8 formats.
+3. The affine and symmetric int8 quantization schemes.
+4. Per-tensor vs. per-channel granularity.
+5. The three calibration approaches (dynamic PTQ, static PTQ, QAT).
+6. The worked VRAM example (29 GB to 15 GB to 9.5 GB across bf16/int8
+   /int4) and its accompanying inference-speed tradeoff.
+
+**Session 51 -- Cluster 9 synthesis.** No new material -- every item
+here is integration of Sessions 46-50, not a new concept:
+1. Walk model-terminology.md's comprehension check: the difference
+   between a model's backbone and a task-specific head, and why swapping
+   a head for a new task does not require retraining the backbone from
+   scratch.
+2. Walk task-and-pipeline-classification.md's comprehension check: which
+   Hub task tag you would reach for to build a semantic cache or a RAG
+   retriever, and why that is a different task type than the one
+   powering the agent's own reasoning loop.
+3. Walk parameter-count-and-scale.md's comprehension check: roughly how
+   much VRAM a 13B-parameter model needs at bfloat16 using this page's
+   rule of thumb, and why a growing session context adds a second,
+   separate memory cost on top of that number.
+4. Walk mixture-of-experts-and-frankenmerging.md's comprehension check:
+   what `num_experts_per_tok` actually bounds, and why a sparse MoE
+   model's active-parameter count at inference time differs from its
+   total parameter count.
+5. Walk quantization.md's comprehension check: the practical difference
+   between per-tensor and per-channel quantization granularity, and
+   which one this page documents as generally preserving more accuracy
+   at the same bit-width.
+6. Run one representative exercise from this cluster (recommended:
+   quantization.md's -- pick a real model you have access to, quantize
+   it at two of the three precisions this page compares, and record the
+   actual or computed memory and speed difference).
+
+**Session 52 -- Cluster 9's contribution to the Cluster 6/7/9 capstone
+variant.** No new material -- every item here is execution of
+`knowledge-path-curriculum.md`'s "Cluster 6/7/9 variant" of the
+Transition-2 capstone, scoped to Cluster 9's own contribution to that
+now-three-way-combined variant. Session 45 above already executed this
+variant's full two-artifact structure for whichever of Clusters 6 or 7 a
+learner chose at the time that session was taught from, per this file's
+own hard rule against rewriting a taught session -- this session extends
+that same variant's scope to Cluster 9, the third cluster
+`knowledge-path-curriculum.md`'s later revision folded into the combined
+variant after Session 45 was already written:
+1. Choose one working artifact you already produced in Cluster 9's own
+   exercises above (a real classification worked through on an actual
+   model's card or config) -- one you actually checked and can show the
+   output of.
+2. Produce a short comparison note, with citations, of how Cluster 9's
+   mechanism (a model's parameter-count-driven VRAM cost) differs from
+   the closest analogous mechanism in Clusters 1-5 (e.g.
+   `context-compression.md`'s own context-length-driven memory
+   pressure), per the curriculum page's own worked example of that
+   comparison.
+3. Explicitly flag, in the note's own text, that Cluster 9's cited
+   findings carry its own single-source grounding status (attributed to
+   the Hugging Face Hub/`transformers`/Optimum documentation and Maxime
+   Labonne's frankenMoE blog post) rather than this wiki-book's own
+   VERIFIED/BEST-CURRENT-UNDERSTANDING tagging -- the same discipline
+   Session 45's own item 3 already applied to Clusters 6 and 7.
+4. Self-check (or peer-review) this session's own artifact and note
+   against the same grading criteria Session 45's item 4 names, applied
+   to Cluster 9's material specifically: the artifact actually runs
+   /works as claimed, and the note keeps the two epistemic registers
+   (this book's VERIFIED tagging vs. Cluster 9's own single-source
+   attribution) visibly distinct rather than blurred together.
+
+---
+
+## Cluster 10: Local/self-hosted inference engines (Sessions 53-68)
+
+**Session 53 -- Model file formats for inference.** Items to cover, in
+order:
+1. Why a training-checkpoint format and an inference-serving format
+   solve different problems.
+2. GGUF's predecessors (GGML/GGMF/GGJT) and the architecture
+   -identification failure they had.
+3. GGUF's four-section layout (header, typed/namespaced metadata KV
+   pairs, tensor infos, tensor data).
+4. The per-tensor `ggml` type enumeration.
+
+**Session 54 -- Memory-mapped model loading.** Items to cover, in order:
+1. `mmap`-based loading trading a full-file copy for lazy, page-cache
+   -backed loading.
+2. GGUF's alignment requirement as the structural precondition that
+   makes it possible.
+3. The `auto`/`mmap`/`mlock`/`mmap+mlock`/`dio` load-mode surface.
+4. The load-speed-vs-pageout-risk tradeoff each mode makes.
+
+**Session 55 -- Quantization as an inference-engine-level concern.**
+Items to cover, in order:
+1. How an engine consumes, rather than produces, an already-quantized
+   tensor (cross-linking Cluster 9's own quantization module, Session
+   50).
+2. Why dequantization happens inline, per weight block, at compute time
+   rather than once at load time.
+3. GGUF's mixed-per-tensor-precision consequence.
+4. KV-cache quantization and offload placement as runtime knobs that
+   compose with a fixed weight quantization.
+
+**Session 56 -- The KV cache and context-window management.** Items to
+cover, in order:
+1. Why KV-cache cost scales with context length rather than model size.
+2. Context-window sizing as an explicit, VRAM-aware setting.
+3. The documented call-out that agentic workloads need a larger-than
+   -default window.
+4. KV-cache quantization as a precision axis independent of weight
+   quantization.
+
+**Session 57 -- Sampling and decoding parameters.** Items to cover, in
+order:
+1. The shared core parameter set (`temperature`, `top_k`, `top_p`,
+   `repeat_penalty`/`repeat_last_n`, `seed`, `num_predict`, `stop`).
+2. Grammar-constrained decoding (GBNF) as a token-masking mechanism
+   distinct from reweighting.
+3. Its automatic JSON-Schema-to-grammar conversion.
+4. Why this mechanism, not the chat template alone, is what makes a
+   `tools` array reliably yield parseable `tool_calls`.
+
+**Session 58 -- Batching and continuous batching.** Items to cover, in
+order:
+1. Why memory-bandwidth-bound single-token decoding makes batching
+   valuable.
+2. The slot-based continuous-batching design (`--parallel`/`--batch-size`
+   /`--ubatch-size`).
+3. Why continuous batching, not a static batch, is what actually
+   captures that benefit under real, staggered request arrival.
+
+**Session 59 -- CPU/GPU/heterogeneous offloading, and expert
+offloading.** Items to cover, in order:
+1. Layer-granularity `--gpu-layers`/`--device` hybrid inference as the
+   general-purpose default.
+2. Why that granularity cannot avoid holding every MoE expert in memory
+   at once (cross-linking Cluster 9's own MoE module, Session 49).
+3. Arithmetic-intensity-guided offloading (the ~512-vs-~0.075 MLA-vs
+   -expert figures) as the finer-than-layer strategy that makes a
+   671B-parameter MoE model locally deployable at all.
+
+**Session 60 -- Multi-GPU inference.** Items to cover, in order:
+1. `--split-mode layer` (throughput-oriented, tolerant of slow
+   interconnects) vs. `--split-mode tensor` (experimental, latency
+   -oriented, needs a fast interconnect).
+2. The `--tensor-split`/`--main-gpu` configuration surface.
+3. How this composes with, rather than replaces, expert-placement
+   strategy.
+
+**Session 61 -- Speculative decoding.** Items to cover, in order:
+1. The draft-then-verify-in-one-batch mechanism as a pure latency
+   optimization with no output-distribution change.
+2. The model-based (draft model, EAGLE-3, DFlash, DSpark) and
+   pattern-based (n-gram family) drafter taxonomy.
+3. Why payoff is entirely acceptance-rate-dependent.
+4. The two agent-harness workload shapes that line up well with it
+   (context-echoing generation; an already-resident small model
+   repurposed as a draft model).
+
+**Session 62 -- Server/API modes.** Items to cover, in order:
+1. One-shot CLI invocation vs. a persistent server process.
+2. What "OpenAI-compatible" concretely covers and where each engine's
+   own documented compatibility gaps are.
+3. Native implementation of the same endpoint family.
+4. Why concurrency-aware serving (batching, Session 58), not the API
+   shape alone, is what actually delivers the throughput a harness
+   integration is really after.
+
+**Session 63 -- Model management and distribution.** Items to cover, in
+order:
+1. Direct-file-path/Hugging-Face-reference model loading.
+2. A name/manifest/Modelfile-build layer on top of the same GGUF
+   ecosystem (`pull`/`create`/`show`/`rm`, Modelfile-as-Dockerfile
+   -analogue).
+3. A curated registry for a run-shortcut command.
+4. Which of the documented responsibility splits best fits reproducible,
+   inspectable per-persona model configuration.
+
+**Session 64 -- llama.cpp.** Items to cover, in order:
+1. Project goals and hardware-backend breadth (Apple Silicon, x86,
+   RISC-V, CUDA/HIP/MUSA/Vulkan/SYCL and more).
+2. The `llama cli`/`llama serve` binaries.
+3. The K-quant/I-quant GGUF quantization-type naming families and the
+   `Q4_K_M` default recommendation.
+4. Ollama's own documented dependency on llama.cpp as its backend.
+5. The convenience-vs-hardware-breadth tradeoff of choosing it directly.
+
+**Session 65 -- Ollama.** Items to cover, in order:
+1. The confirmed llama.cpp dependency, held alongside Ollama's newer,
+   directly-`ggml`-based Go engine built for multimodal architectures.
+2. The full Modelfile instruction set.
+3. Documented GPU-vendor support and VRAM-based automatic scheduling.
+4. The dual native-REST and OpenAI-compatible API surfaces.
+5. First-party integrations with named coding-agent harnesses.
+
+**Session 66 -- KTransformers.** Items to cover, in order:
+1. What the project is today (`kt-kernel`/`sglang-kt` serving,
+   LLaMA-Factory-integrated LoRA fine-tuning), held explicitly apart from
+   its upstream repository's own documented YAML operator-injection
+   mechanism (`match`/`replace` rules, `optimize_and_load_gguf`,
+   `generate_device`/`prefill_device` placement).
+2. Its own architecture-coupled precision/backend naming.
+3. Its curated large-MoE model list up to DeepSeek R1's 671B parameters.
+4. Why it is the answer for a harness builder specifically wanting a
+   frontier-scale open-weight model running on local hardware.
+
+**Session 67 -- Cluster 10 synthesis.** No new material -- every item
+here is integration of Sessions 53-66, not a new concept:
+1. Walk model-file-formats.md's comprehension check: what specific
+   failure GGUF's predecessor formats had that GGUF's own metadata
+   section fixes, and why that failure matters for a harness that treats
+   "swap the local model" as a cheap operation.
+2. Walk memory-mapped-model-loading.md's comprehension check: why
+   mmap-based loading specifically requires GGUF's alignment guarantee to
+   work correctly, and what risk `mlock` exists to close.
+3. Walk quantization-at-inference-time.md's comprehension check: why
+   "the model file is quantized" does not automatically mean "inference
+   is faster," per this page's own account of when dequantization
+   actually happens.
+4. Walk kv-cache-and-context-window-management.md's comprehension check:
+   why this page treats KV-cache size as a per-session cost distinct
+   from the model's own weight VRAM cost, and what documented setting
+   controls it directly.
+5. Walk sampling-and-decoding-parameters.md's comprehension check: the
+   mechanistic difference between a sampling parameter like `top_p` and
+   a grammar constraint like GBNF, and why only the latter guarantees
+   syntactically valid output.
+6. Walk batching-and-continuous-batching.md's comprehension check: why a
+   static batch fails to capture the same throughput benefit continuous
+   batching does, under real, staggered request arrival.
+7. Walk cpu-gpu-heterogeneous-offloading.md's comprehension check: why a
+   plain layer-granularity offloading scheme cannot avoid loading every
+   expert of an MoE model into memory at once, and what finer-grained
+   strategy this page documents to get around that.
+8. Walk multi-gpu-and-tensor-parallelism.md's comprehension check: which
+   of this page's two split modes you would choose for a throughput
+   -seeking multi-agent harness fanning out many concurrent requests, and
+   which for a single latency-critical interactive loop, and why.
+9. Walk speculative-decoding.md's comprehension check: why this page
+   insists speculative decoding changes no output distribution, only
+   latency, and what property of the verify step guarantees that.
+10. Walk server-api-modes.md's comprehension check: why this page argues
+    an OpenAI-compatible API surface alone is not what delivers
+    throughput to a harness integration, and what mechanism from an
+    earlier module actually does.
+11. Walk model-management-and-distribution.md's comprehension check:
+    what this page's Modelfile-as-Dockerfile analogy actually means, and
+    what specifically a Modelfile lets you version that a bare model
+    file path does not.
+12. Walk llama-cpp.md's comprehension check: what choosing llama.cpp
+    directly, rather than a wrapper built on top of it, trades away and
+    what it gains, per this page's own account.
+13. Walk ollama.md's comprehension check: why Ollama maintains two
+    separate backends (llama.cpp and its own Go engine) rather than one,
+    per this page's own account of what each is for.
+14. Walk ktransformers.md's comprehension check: what problem
+    KTransformers' operator-injection mechanism (`match`/`replace`
+    rules) actually solves, and why a harness builder wanting a
+    671B-parameter model running locally reaches for KTransformers rather
+    than llama.cpp's own layer-granularity offloading.
+15. Run one representative exercise from this cluster (recommended:
+    cpu-gpu-heterogeneous-offloading.md's -- using a model too large for
+    your available VRAM, configure layer-granularity offloading to split
+    it across CPU and GPU, and record which layer count is the largest
+    you can offload to GPU before running out of memory; this exercise is
+    the natural capstone of the cluster's own build-up since it draws
+    directly on the file-format, mmap, quantization, and KV-cache
+    material from Sessions 53-56).
+
+**Session 68 -- Cluster 10's own capstone variant.** No new material --
+every item here is execution of `knowledge-path-curriculum.md`'s own
+"Cluster 10 variant" of the Transition-2 capstone, broken into its
+concrete deliverable steps. This variant is explicitly distinct from the
+combined Cluster 6/7/9 variant Sessions 45 and 52 above execute, because
+Cluster 10 has three real, named engines (llama.cpp, Ollama,
+KTransformers) that genuinely can be compared, closer in shape to the
+original Session 27 capstone (Clusters 1-5) than to Clusters 6/7/9's
+single-source shape:
+1. Choose shape (a) or shape (b) per `knowledge-path-curriculum.md`'s own
+   "Cluster 10 variant" instructions, and state explicitly which you
+   chose and why the cluster's own material did or did not support a
+   three-engine tabulation for the mechanism you picked.
+2. If shape (a): produce a comparison table with one row per engine
+   (llama.cpp, Ollama, KTransformers) naming the specific flag
+   /environment variable/config surface each uses for one mechanism (e.g.
+   context-window sizing, or GPU/CPU placement), with citations, plus a
+   real, working configuration for at least one engine that you actually
+   ran and can show the output of. If shape (b): produce the same
+   two-artifact structure Session 52 above used for Cluster 9 (a working
+   artifact from one of Cluster 10's own exercises, plus a comparison
+   note against the closest analogous Clusters-1-5 mechanism), scoped to
+   Cluster 10's own material instead.
+3. Explicitly flag, in whichever artifact you produce, that Cluster 10's
+   cited findings carry their own single-source-per-engine grounding
+   status (attributed to each named engine's own documentation or
+   repository) rather than this wiki-book's own VERIFIED/BEST-CURRENT
+   -UNDERSTANDING tagging.
+4. Self-check (or peer-review) both artifacts against the capstone
+   variant's own grading criteria: the artifact(s) actually run/work as
+   claimed, and the two epistemic registers (this book's VERIFIED tagging
+   vs. Cluster 10's own single-source-per-engine attribution) stay
+   visibly distinct rather than blurred together.

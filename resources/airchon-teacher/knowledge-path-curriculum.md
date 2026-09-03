@@ -373,10 +373,10 @@ flowchart TB
 
 ### Session breakdown (agenda only), Gnostic -> Demiurge
 
-A pacing layer chunking this transition's 21 modules into 27
-schedulable teaching sessions (organized around the five clusters
-above: one session per module, plus one per-cluster synthesis session,
-plus a final capstone session) now lives at
+A pacing layer chunking this transition's modules into schedulable
+teaching sessions (organized around the clusters above: one session per
+module, plus one per-cluster synthesis session, plus capstone-variant
+sessions) now lives at
 `resources/airchon-teacher/gnostic-to-demiurge-sessions.md`
 -- scoped to `airchon-teacher`'s own domain rather than kept as general
 wiki-book content, the same reasoning and the same day's precedent as
@@ -384,14 +384,16 @@ Transition 1's session breakdown (see that transition's own pointer
 paragraph above and `CHANGELOG.md`). This page's learning objectives,
 clusters, modules, comprehension checks, exercises, and capstone below
 remain the authoritative source that file's agendas point back to -- it
-adds pacing, not new content. **Note (2026-08-24, still current
-2026-09-03):** that pacing file's 27-session count was set before
-Clusters 6, 7, 9, and 10 below existed and covers only the original
-five-cluster/21-module band; a future pacing pass on that file (out of
-scope for this page, per `airchon-teacher`'s own domain boundary) is
-needed to fold in session agendas for the RAG, Agentic-SDLC-mechanics,
-AI-model-classification, and local-inference-engine clusters this page
-now documents.
+adds pacing, not new content. **Note (2026-09-03):** that pacing file's
+original 27-session count was set before Clusters 6, 7, 9, and 10 below
+existed; its own "Extension (2026-08-24)" section folded in Clusters 6
+and 7 (Sessions 28-45) the same day those two were added here, and its
+"Extension (2026-09-03)" section now folds in Clusters 9 and 10
+(Sessions 46-68) as well, including a dedicated session for Cluster 9's
+share of this page's combined "Cluster 6/7/9" capstone variant and
+another for Cluster 10's own separate capstone variant. All ten clusters
+in this transition now have session agendas in that file, for 68
+sessions total.
 
 ### Cluster 1: Memory & Context
 

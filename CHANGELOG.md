@@ -1,3 +1,45 @@
+## 2026-09-03 -- Extended the Gnostic->Demiurge course with sessions for Clusters 9-10 (models, inference engines)
+
+The prior two entries below left a documented gap: `knowledge-path
+-curriculum.md`'s own pointer paragraph for the Gnostic->Demiurge
+pacing file explicitly flagged that its 27-session count (later 45,
+once Clusters 6-7 were folded in on 2026-08-24) predated Clusters 9
+(AI model classification) and 10 (local inference engines). The
+operator asked for that gap closed: new session content for both
+clusters in `resources/airchon-teacher/gnostic-to-demiurge-sessions.md`,
+matching the existing Cluster 6/7 extension's structure and rigor
+exactly (rationale paragraph, grounding-status reminder, an explicit
+"why N sessions" rationale rejecting the same three failure modes,
+a mermaid flowchart, then per-module and per-cluster-synthesis
+sessions).
+
+`airchon-author` appended a new "Extension (2026-09-03)" section,
+Sessions 46-68 (23 sessions total, purely additive -- Sessions 1-45
+verified untouched, 0 deletions in the diff): 5 module sessions + 1
+synthesis for Cluster 9 (Sessions 46-51), 14 module sessions + 1
+synthesis for Cluster 10 (Sessions 53-67 with the synthesis at 67,
+Session 52 reserved for the capstone item below), and two
+capstone-related sessions. That last part required resolving a real
+design tension: `knowledge-path-curriculum.md`'s own capstone section
+now defines a combined "Cluster 6/7/9 variant" (grouped because none
+of the three has a comparable second implementation to compare
+against) alongside a separate, distinct "Cluster 10 variant" (three
+real engines -- llama.cpp, Ollama, KTransformers -- genuinely can be
+compared, closer to the original Clusters 1-5 shape) -- but the
+existing Session 45 was titled "Clusters 6/7 capstone variant,"
+written before Cluster 9 existed. Per this file's own hard rule
+(never rewrite or renumber a session once taught from), `airchon
+-author` left Session 45 exactly as-is and added Session 52 as
+Cluster 9's own contribution extending Session 45's artifact rather
+than duplicating it, then gave Cluster 10 its fully separate Session
+68 per the curriculum's own distinct instructions for it.
+
+`knowledge-path-curriculum.md`'s own stale note (which still claimed,
+after the 2026-08-24 Cluster 6/7 extension had already resolved half
+of it, that the pacing file needed all of Clusters 6/7/9/10 folded in)
+was corrected to state that all ten clusters now have session agendas,
+naming the final 68-session count.
+
 ## 2026-09-03 -- Relocated `knowledge-path-curriculum.md` out of the wiki-book to sit alongside `reader-proficiency-tiers.md`
 
 Immediately after the relocation below, the operator asked for
