@@ -47,17 +47,19 @@ stateDiagram-v2
 
     LoadTracker --> InitTracker: no course-progress.md,<br/>or it names a different tier
     LoadTracker --> ResumeTracker: course-progress.md matches current tier
-    InitTracker --> EstablishHarness
-    ResumeTracker --> EstablishHarness: resume at first not-done session,<br/>at its first uncovered or<br/>pending-confirmation item
+    InitTracker --> LoadTaskList
+    ResumeTracker --> LoadTaskList: resume at first not-done session,<br/>at its first uncovered or<br/>pending-confirmation item
+
+    LoadTaskList --> EstablishHarness: load ALL session items into<br/>task list, mark taught items<br/>completed, next uncompleted<br/>item is the entry point
 
     EstablishHarness --> AdministerSession: harness known<br/>(asked once per course, persisted)
 
     AdministerSession --> TeachItems: this session's agenda,<br/>item by item, tracker written only<br/>after the reader's own confirmation
-    TeachItems --> AwaitConfirm: one item's full masterclass<br/>explanation completed -- PAUSE here,<br/>ask reader if ready to continue
-    AwaitConfirm --> TeachItems: reply isn't an explicit<br/>continue/pause signal -- keep<br/>teaching this same item, no write
-    AwaitConfirm --> MarkCovered: explicit "ok"/"continue"/"next"/<br/>"got it"/"understood" (or equivalent)
-    AwaitConfirm --> MarkCovered: reader explicitly chooses to<br/>pause instead of continuing now
-    MarkCovered --> TeachItems: item persisted covered by<br/>name+number -- more items remain,<br/>reader signaled continue
+    TeachItems --> ManualGate: one item's full masterclass<br/>explanation completed -- PAUSE here,<br/>ask reader if ready to continue<br/>NO INFERRED ADVANCEMENT
+    ManualGate --> TeachItems: reply isn't an explicit<br/>affirmative continue/pause signal<br/>-- keep teaching this same<br/>item, no write, no task update
+    ManualGate --> MarkCovered: explicit "yes"/"ok"/"continue"/"next"/<br/>"got it"/"understood" (or equivalent)<br/>-- mark task completed
+    ManualGate --> MarkCovered: reader explicitly chooses to<br/>pause instead of continuing now
+    MarkCovered --> TeachItems: item persisted covered --<br/>more items remain,<br/>reader signaled continue
     MarkCovered --> PauseSession: item persisted covered --<br/>reader signaled pause
     MarkCovered --> ScaffoldCheck: item persisted covered --<br/>was the session's last item,<br/>reader signaled continue
     PauseSession --> [*]: resume later via CD8 --<br/>re-derived from tracker, by item name<br/>(or by re-asking a still-open gate)
@@ -100,9 +102,9 @@ deliver) instead of inventing a course that doesn't exist.
 Map the current tier to its course file:
 
 - **Slumberer** -> `resources/airchon-teacher/slumberer-to-gnostic-sessions.md` (3 sessions)
-- **Gnostic** -> `resources/airchon-teacher/gnostic-to-demiurge-sessions.md` (45 sessions,
-  as of the 2026-08-24 Cluster 6/7 (RAG, Agentic-SDLC-mechanics) extension --
-  see that file's own "Extension (2026-08-24)" section)
+- **Gnostic** -> `resources/airchon-teacher/gnostic-to-demiurge-sessions.md` (68 sessions,
+  as of the 2026-09-03 Cluster 9/10 (Models, Inference Engines) extension --
+  see that file's own "Extension" sections)
 - **Demiurge** -> `resources/airchon-teacher/demiurge-to-archon-sessions.md` (24 sessions,
   as of the 2026-08-24 Cluster 8 (Agentic-SDLC design-space) extension --
   see that file's own "Extension (2026-08-24)" section)
@@ -124,6 +126,17 @@ Check `~/.airchon/course-progress.md`:
   item is instead recorded pending confirmation, re-ask that item's
   gate per CD8 rather than starting a new item -- never at the
   session's start; an already-covered item is never re-taught.
+
+**Load all items into the task list** (added 2026-09-03). Whether
+initializing a fresh tracker or resuming an existing one, use the task
+list tool to populate every session's items as tasks -- one task per
+agenda item within each session, titled by session number + item name
+(e.g. "S1 Item 3 -- Reactive vs. deliberative agents"). Mark items the
+tracker already records as covered as completed. Leave all uncovered
+items pending. The next item to teach is the first uncompleted task in
+the current session. This task list is the visible progress indicator
+for the reader throughout the course -- update it only when CD4's
+manual gate is satisfied, never ahead of it.
 
 ## CD3: Establish the Reader's Harness (Once Per Course)
 
@@ -198,22 +211,31 @@ message" constraint.
      want to sit with this a bit longer?" is enough. Then actually wait
      for a reply; the item is not covered, and you do not advance to the
      next item's content or the exercise, until that reply arrives.
-   - **Only an explicit, affirmative reply satisfies the gate.** A short
-     acknowledgement that plainly signals the reader is done with this
-     item and wants to move forward -- "ok," "continue," "next," "got
-     it," "understood," or an unambiguous equivalent -- satisfies it. An
-     explicit choice to pause instead ("let's stop there for today," "I
-     want a break") also satisfies it -- it is still the reader
-     confirming they're finished with this item, just choosing not to
-     continue into another one right now. A reply that is noncommittal,
-     still asks about the item's own content, opens an in-scope tangent,
-     or is otherwise not actually a go-ahead does **not** satisfy the
-     gate -- treat it as more teaching of this same item (still governed
-     by the first bullet's "however many turns it takes"), never as the
-     cue to persist or advance. Never assume readiness just because the
-     last sentence of an explanation landed, and never infer a "continue"
-     from silence or from the conversation simply moving on to something
-     else -- the reader has to actually say it.
+    - **Only an explicit, affirmative reply satisfies the gate.** A short
+      acknowledgement that plainly signals the reader is done with this
+      item and wants to move forward -- "ok," "continue," "next," "got
+      it," "understood," "yes," or an unambiguous equivalent -- satisfies
+      it. An
+      explicit choice to pause instead ("let's stop there for today," "I
+      want a break") also satisfies it -- it is still the reader
+      confirming they're finished with this item, just choosing not to
+      continue into another one right now. A reply that is noncommittal,
+      still asks about the item's own content, opens an in-scope tangent,
+      or is otherwise not actually a go-ahead does **not** satisfy the
+      gate -- treat it as more teaching of this same item (still governed
+      by the first bullet's "however many turns it takes"), never as the
+      cue to persist or advance. **No inferred advancement: even if the
+      conversation context seems to imply readiness -- even if the
+      reader's follow-up question sounds like agreement, even if the
+      explanation's last sentence landed perfectly, even if you have
+      remaining items queued and the context suggests you should keep
+      going -- you may NOT advance to the next item, mark the current
+      item covered, or move toward the exercise without an explicit,
+      affirmative reply from the reader. There is no exception to this
+      rule.** Never assume readiness just because the
+      last sentence of an explanation landed, and never infer a "continue"
+      from silence or from the conversation simply moving on to something
+      else -- the reader has to actually say it.
    - **Only once that explicit reply arrives, persist the item as
      covered by name AND number, then act on what they said.** Write the
      tracker update (per the Item Naming note in
@@ -562,6 +584,15 @@ not a nicety).
   from teaching straight into an exercise without waiting (CD4). This
   bounds ordering, not duration -- a single item, or a whole session,
   may legitimately span several conversation turns (CD4 step 2).
+- **No inferred advancement.** Even if context seems to imply readiness,
+  you may NOT advance to the next item, mark the current item covered,
+  or move toward the exercise without an explicit, affirmative reply
+  ("yes"/"ok"/"continue"/"next"/"understood" or equivalent). No
+  exception, ever (CD4 step 2).
+- **Load all items into the task list on course init or resume** (CD2).
+  Mark items the tracker records as covered as completed. Progress from
+  the next uncompleted item. Update the task list only when CD4's
+  manual gate is satisfied, never ahead of it.
 - An agenda item is only "covered" once (a) genuinely taught through in
   full, (b) that full explanation has actually been shown to the
   reader, AND (c) the reader has explicitly replied with a "ready to
