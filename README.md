@@ -224,6 +224,9 @@ single named source instead.
 
 ## 🚀 How to use it
 
+First, install [APM](https://github.com/microsoft/apm) on your machine.
+Then run:
+
 ```bash
 apm install https://github.com/sfernandezplain/AIrchon --target <harness>
 ```
