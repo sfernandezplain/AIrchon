@@ -27,8 +27,11 @@ guarding it.
 The Promethean framing is the honest ambition, not a claim already
 earned: AIrchon does not know anything the internet doesn't already
 know. Claude Code's docs, Copilot CLI's docs, OpenCode's own source,
-the HuggingFace Cookbook, the Agentic SDLC Handbook -- all of it is
-already public. The actual problem is that it's scattered across
+Hermes Agent's, pi's, DeepSeek Harness's, LangGraph's, Microsoft
+Conductor's, GitHub Agentic Workflows' -- nine distinct agent
+harnesses and orchestration frameworks -- plus the HuggingFace
+Cookbook and the Agentic SDLC Handbook for the two adjacent domains.
+All of it already public. The actual problem is that it's scattered across
 dozens of pages, changelogs, and repos, written for different
 audiences, and most of it goes unread end to end. AIrchon's job is
 narrower than "reveal hidden truth": fetch it live, cite it plainly,
@@ -129,10 +132,14 @@ in prose, citing exactly where the answer came from.
   agent-harness setup and advise on guardrails, control flow, or
   performance -- but it never writes to any reference area, even when
   its own live research fills a gap.
-- **No authority overreach.** Claude Code, Copilot CLI, and OpenCode
-  are different products from different companies. A mechanism
-  confirmed for one is never quietly assumed to hold for another --
-  every harness gets its own citation.
+- **No authority overreach.** `references/harnesses/` covers nine
+  distinct systems in comparative, per-mechanism depth -- Claude Code,
+  GitHub Copilot CLI, OpenCode, pi, Hermes Agent, and DeepSeek Harness
+  as coding-agent harnesses, plus LangGraph, Microsoft Conductor, and
+  GitHub Agentic Workflows as deterministic-orchestration frameworks --
+  each a different product from a different company or project. A
+  mechanism confirmed for one is never quietly assumed to hold for
+  another; every one gets its own citation.
 - **`airchon-author` is the only writer**, across five reference
   areas -- harness internals, Agentic SDLC technique, RAG technique,
   AI model classification, and local inference engines (see the table
@@ -182,7 +189,7 @@ toward your next tier, session by session.
 
 | Reference area | Primary sources | Grounding standard |
 | :--- | :--- | :--- |
-| `references/harnesses/` | `code.claude.com/docs`, `docs.github.com/copilot`, `github.com/anthropics/claude-code`, `github.com/github/copilot-cli`, `github.com/anomalyco/opencode` (+ `opencode.ai/docs`), HuggingFace's agent-engineering courses for general vocabulary | Independently cross-verified per source, tagged VERIFIED / BEST CURRENT UNDERSTANDING |
+| `references/harnesses/` | Nine systems, each from its own official docs/repo: `code.claude.com/docs` + `github.com/anthropics/claude-code` (Claude Code), `docs.github.com/copilot` + `github.com/github/copilot-cli` (Copilot CLI), `github.com/anomalyco/opencode` + `opencode.ai/docs` (OpenCode), `github.com/earendil-works/pi` (pi), `hermes-agent.nousresearch.com/docs` + `github.com/NousResearch/hermes-agent` (Hermes Agent), `github.com/deepseek-ai/deepseek-harness` (DeepSeek Harness), `github.com/langchain-ai/langgraph` + `docs.langchain.com` (LangGraph), `github.com/microsoft/conductor` (Microsoft Conductor); plus HuggingFace's agent-engineering courses for general vocabulary | Independently cross-verified per source, tagged VERIFIED / BEST CURRENT UNDERSTANDING |
 | `references/sdlc/` | The Agentic SDLC Handbook (Daniel Meppiel) | Attributed "the handbook says" -- single-source, not independently cross-verified |
 | `references/rag/` | HuggingFace Cookbook notebooks, Lewis et al. (2020) and related papers | Attributed to the specific notebook or paper |
 | `references/models/` | Hugging Face's Hub docs, the `transformers` glossary, the Optimum quantization guide, named community writeups | Attributed to the specific source |
@@ -219,6 +226,8 @@ Then just ask it something, for example:
 how would I build a multi-agent harness like this one?
 what's the actual difference between OpenCode's and Claude Code's tool loop?
 walk me through how MCP servers get discovered and invoked
+how does Hermes Agent's memory architecture compare to Claude Code's
+what does LangGraph's StateGraph actually get you over a plain agent loop
 what's the difference between a quantized and a MoE model, for an agent I'm serving locally
 how does llama.cpp's KV cache differ from Ollama's default context window
 write up KTransformers' operator-injection mechanism in the wiki-book
