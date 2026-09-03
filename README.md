@@ -66,14 +66,14 @@ sufficient* for actually building something better than what exists.
 **What's still unproven:** the tier rubric and the multi-session
 courses under it are original pedagogical design, authored and graded
 by the same kind of model that teaches from them -- not a researched
-claim about how people learn, and not independently validated by
-anyone but the person building it, who is deliberately using it while
-still classified at the bottom tier to find out whether the idea
-holds up at all. Treat a tier badge as a practice signal, not a
-credential. There is also, as of today, no mechanism that re-checks a
-wiki-book page against its source after it's written -- a page tagged
-**VERIFIED** was true when fetched; nothing yet detects if the
-underlying docs changed since.
+claim about how people learn. It's currently a solo-tested tool: the
+person building it is deliberately going through it from the bottom
+tier as its first real learner, not a second, independent person. That
+makes a tier badge a practice signal you can act on today, not yet an
+external credential someone else should take on faith. Separately,
+there is no mechanism yet that re-checks a reference page against its
+source after it's written -- a page tagged **VERIFIED** was true when
+fetched; nothing yet detects if the underlying docs changed since.
 
 ---
 
@@ -105,13 +105,17 @@ in prose, citing exactly where the answer came from.
   the same topic gets answered from what's already there, faster and
   just as grounded, until something changes underneath it.
 - **`airchon-teacher` assesses, then teaches.** A 40-question exam,
-  grounded in a curriculum built on top of the reference areas,
+  grounded in a curriculum spanning all five reference areas,
   classifies you into one of four tiers -- Slumberer, Gnostic,
   Demiurge, Archon -- and persists the result locally
   (`~/.airchon/level`), never uploaded. Once classified, it walks you
-  through the course toward your next tier, one session at a time --
-  see the honesty note above on what a tier actually signals before
-  treating it as more than a practice tool.
+  through the course toward your next tier session by session --
+  currently 3 sessions for Slumberer->Gnostic and 68 for
+  Gnostic->Demiurge across all five domains, teaching each item to
+  completion and grading a real exercise before moving on. See the
+  honesty note above on what a tier signals before treating it as more
+  than a practice tool -- that's a caveat on the exam's construct
+  validity, not on how much the course actually covers.
 
 ---
 
@@ -128,8 +132,8 @@ for the full rubric and its own honest ceiling note).
 | :---: | :--- | :--- | :--- |
 | 🌙 | **Slumberer** | The sleeper who hasn't yet woken up -- doesn't know there's a gate, let alone what's behind it. | You've used an AI coding agent, maybe a lot -- but "the model" and "the harness wrapping it" are still one undifferentiated blur. No vocabulary yet for tool calls, context windows, or hooks. |
 | 👁️ | **Gnostic** | The one who has acquired *gnosis* -- direct knowledge, not hearsay about it. | You can describe a harness's control loop and place it on its own axes -- reactive vs. deliberative, single-agent vs. multi-agent -- correctly and unprompted. Still map, not territory. |
-| 📐 | **Demiurge** | The craftsman-god who takes received forms and actually shapes matter with them. | You operate real harnesses at power-user depth: trace a request through actual config keys and documented limits, write hooks and permission rules, compare the same mechanism across harnesses. |
-| 👑 | **Archon** | Mastery over the created order -- authority earned by citation, not gatekeeping. | You can justify what a *new* harness should do instead of only explaining what ships today. Necessary, not sufficient, for actually building one. |
+| 📐 | **Demiurge** | The craftsman-god who takes received forms and actually shapes matter with them. | The largest transition, 55 modules across five domains: harness power-user depth (trace a request through actual config keys, write hooks and permission rules, compare mechanisms across Claude Code/Copilot CLI/OpenCode) *plus* real RAG pipeline construction, Agentic SDLC practitioner mechanics, AI model classification, and local inference-engine operation (llama.cpp/Ollama/KTransformers) -- each held to its own source's grounding standard, not blended into one undifferentiated claim. |
+| 👑 | **Archon** | Mastery over the created order -- authority earned by citation, not gatekeeping. | You can justify what a *new* harness should do instead of only explaining what ships today, and critique this book's own harness design-space surveys *and* the Agentic SDLC Handbook's design-space/methodology chapters as a starting position to argue with, not received fact. Necessary, not sufficient, for actually building one. |
 
 Ask "assess my proficiency" or "take the exam" to find out where you
 stand, via a 40-question exam grounded in the reference areas. Once
