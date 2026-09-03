@@ -3,9 +3,11 @@
 ## What this page is, and what it is not
 
 This page is a **curriculum scaffold**, not a research page. Every other
-page in this wiki-book (including
-[reader-proficiency-tiers.md](reader-proficiency-tiers.md), which this
-page directly expands) makes claims about how Claude Code, GitHub
+page in this wiki-book (plus
+[reader-proficiency-tiers.md](../../resources/airchon-teacher/reader-proficiency-tiers.md),
+which this page directly expands but which itself relocated out of this
+book on 2026-09-03 -- see this page's own revision note below) makes
+claims about how Claude Code, GitHub
 Copilot CLI, or OpenCode actually behave, each tagged VERIFIED or BEST
 CURRENT UNDERSTANDING, UNCONFIRMED per this book's grounding discipline.
 This page makes no new claims of that kind. It takes the three named
@@ -46,11 +48,36 @@ wiki-book's own VERIFIED/BEST-CURRENT-UNDERSTANDING grounding. That
 distinction is restated inline at each new cluster's overview and is not
 optional context to drop when teaching from this page.
 
+**2026-09-03 revision note.** `reader-proficiency-tiers.md` moved out of
+this wiki-book that same day, to
+`resources/airchon-teacher/reader-proficiency-tiers.md` (a relocation,
+not a re-scoping of what it covers -- see that page's own opening
+section and `references/harnesses/index.md`'s "Reader proficiency
+tiers" section for why), and was revisited again to fold two more
+reference areas, `references/models/` and `references/inference-engines/`,
+into its Demiurge-tier extension. This page was revised to match:
+Cluster 9 (AI model classification, 5 modules from `references/models/`)
+and Cluster 10 (Local/self-hosted inference engines, 14 modules from
+`references/inference-engines/`) were added to Transition 2, immediately
+after Clusters 6-7, using the same per-module key-concepts
+/comprehension-check/exercise shape as every prior cluster. Every module
+in Clusters 9-10 inherits its factual detail from `references/models/`
+or `references/inference-engines/` pages, which in turn attribute their
+own claims to Hugging Face's own documentation (Hub task pages, the
+`transformers` glossary, the Optimum quantization guide), Maxime
+Labonne's frankenMoE writeup, or each named inference engine's own
+docs/repo -- not to this wiki-book's own VERIFIED/BEST-CURRENT
+-UNDERSTANDING grounding, though both areas do apply that same two-tag
+discipline internally, scoped to their own sources. That distinction is
+restated inline at each new cluster's overview, the same discipline
+Clusters 6-8's own overviews already hold to, and is not optional
+context to drop when teaching from this page.
+
 ```mermaid
 stateDiagram-v2
     [*] --> Slumberer
     Slumberer --> Gnostic: 2 modules, sequential
-    Gnostic --> Demiurge: 21 modules, 5 core clusters + Clusters 6-7 (RAG, SDLC mechanics)
+    Gnostic --> Demiurge: 55 modules, 5 core clusters + Clusters 6-7 (RAG, SDLC mechanics) + Clusters 9-10 (Models, Inference Engines)
     Demiurge --> Archon: 10 modules, design-space band + Cluster 8 (SDLC design-space)
     Archon --> [*]: primary sources beyond this book
     note right of Slumberer
@@ -63,7 +90,7 @@ stateDiagram-v2
     note right of Demiurge
         capstone: cross-harness mechanism
         comparison + operator config
-        (or Cluster 6/7 variant)
+        (or Cluster 6/7/9/10 variant)
     end note
     note right of Archon
         capstone: from-scratch harness
@@ -182,14 +209,20 @@ power-user/administrator depth (hooks, permission rules, MCP servers)
 and compare the same mechanism across all three harnesses -- that
 cross-harness comparison is the band's defining exercise shape, not an
 optional extra. Per that same page's Demiurge-tier extension
-subsections (added 2026-08-24), this band also now includes two further
-clusters sourced from outside the wiki-book proper -- a RAG cluster
-(`references/rag/`) and an Agentic-SDLC practitioner-mechanics cluster
-(`references/sdlc/`) -- both held to the mechanics-depth bar this
-transition sets, but grounded "the source says"/"the handbook says"
-rather than this book's own VERIFIED/BEST-CURRENT-UNDERSTANDING tagging;
-see `reader-proficiency-tiers.md`'s grounding-status caveat for the exact
-wording this distinction should be taught with.
+subsections (added 2026-08-24, extended again 2026-09-03), this band
+also now includes four further clusters sourced from outside the
+wiki-book proper -- a RAG cluster (`references/rag/`), an
+Agentic-SDLC practitioner-mechanics cluster (`references/sdlc/`), an
+AI-model-classification cluster (`references/models/`), and a
+local/self-hosted-inference-engines cluster
+(`references/inference-engines/`) -- all four held to the
+mechanics-depth bar this transition sets, but grounded "the source
+says"/"the handbook says"/"the docs say" rather than this book's own
+VERIFIED/BEST-CURRENT-UNDERSTANDING tagging (the model-classification
+and inference-engines clusters apply that same two-tag shape
+internally, just scoped to their own named sources rather than this
+book's own); see `reader-proficiency-tiers.md`'s grounding-status
+caveat for the exact wording this distinction should be taught with.
 
 **Learning objectives.** By the end of this band, the learner can:
 - For any of the five core clusters below, name the specific config
@@ -219,11 +252,21 @@ wording this distinction should be taught with.
   Agentic SDLC Handbook's own four-phase Resolve/Materialize/Bind
   /Activate lifecycle and name which phase a given failure ("the skill
   never activated") actually occurred in (Cluster 7).
+- Classify a given model along all four of `references/models/`'s
+  classification axes (task/pipeline type, parameter count and scale,
+  dense vs. Mixture of Experts, quantization) and state one concrete
+  cost or capability consequence of each classification (Cluster 9).
+- Configure a named local inference engine's real CLI flags or
+  environment variables to change one of its documented runtime
+  behaviors (context-window size, GPU/CPU layer placement, batching
+  concurrency) and explain, at the config-key level, what the change
+  actually does (Cluster 10).
 
 The 21-page core-mechanics band is grouped into five thematic clusters
-below to make it navigable as a course, plus two extension clusters (6
-and 7) covering the RAG and Agentic-SDLC-mechanics material described
-above. The clusters are this page's own organizing device, not a
+below to make it navigable as a course, plus four extension clusters (6,
+7, 9, and 10) covering the RAG, Agentic-SDLC-mechanics, AI-model
+-classification, and local-inference-engine material described above.
+The clusters are this page's own organizing device, not a
 distinction drawn by the source pages themselves -- several pages
 (session-persistence.md, memory-management.md) explicitly
 cross-reference each other across cluster boundaries, and a course
@@ -283,7 +326,30 @@ flowchart TB
         S21["21-primitives-as-code.md"]
         SA["appendix-a-cross-harness-reference.md"]
     end
-    C1 --> C2 --> C3 --> C4 --> C5 --> C6 --> C7
+    subgraph C9["Cluster 9: AI model classification (references/models/)"]
+        MT["model-terminology.md"]
+        MTP["task-and-pipeline-classification.md"]
+        MPS["parameter-count-and-scale.md"]
+        MMOE["mixture-of-experts-and-frankenmerging.md"]
+        MQ["quantization.md"]
+    end
+    subgraph C10["Cluster 10: Local/self-hosted inference engines (references/inference-engines/)"]
+        IFF["model-file-formats.md"]
+        IML["memory-mapped-model-loading.md"]
+        IQ["quantization-at-inference-time.md"]
+        IKV["kv-cache-and-context-window-management.md"]
+        ISD["sampling-and-decoding-parameters.md"]
+        IB["batching-and-continuous-batching.md"]
+        IOF["cpu-gpu-heterogeneous-offloading.md"]
+        IMG["multi-gpu-and-tensor-parallelism.md"]
+        ISP["speculative-decoding.md"]
+        ISA["server-api-modes.md"]
+        IMD["model-management-and-distribution.md"]
+        ILC["llama-cpp.md"]
+        IOL["ollama.md"]
+        IKT["ktransformers.md"]
+    end
+    C1 --> C2 --> C3 --> C4 --> C5 --> C6 --> C7 --> C9 --> C10
 ```
 
 
@@ -300,12 +366,14 @@ Transition 1's session breakdown (see that transition's own pointer
 paragraph above and `CHANGELOG.md`). This page's learning objectives,
 clusters, modules, comprehension checks, exercises, and capstone below
 remain the authoritative source that file's agendas point back to -- it
-adds pacing, not new content. **Note (2026-08-24):** that pacing file's
-27-session count was set before Clusters 6 and 7 below existed and
-covers only the original five-cluster/21-module band; a future pacing
-pass on that file (out of scope for this page, per `airchon-teacher`'s
-own domain boundary) is needed to fold in session agendas for the RAG
-and Agentic-SDLC-mechanics clusters this page now documents.
+adds pacing, not new content. **Note (2026-08-24, still current
+2026-09-03):** that pacing file's 27-session count was set before
+Clusters 6, 7, 9, and 10 below existed and covers only the original
+five-cluster/21-module band; a future pacing pass on that file (out of
+scope for this page, per `airchon-teacher`'s own domain boundary) is
+needed to fold in session agendas for the RAG, Agentic-SDLC-mechanics,
+AI-model-classification, and local-inference-engine clusters this page
+now documents.
 
 ### Cluster 1: Memory & Context
 
@@ -960,12 +1028,390 @@ a primitive concept it does not cover, filling in the concrete
 file/config convention for at least three of the five harnesses,
 citing where you found or verified each cell.
 
+### Cluster 9: AI model classification (`references/models/`)
+
+**Cluster overview:** how a model is classified along four largely
+independent axes -- what it's for, how big it is, how its parameters
+are internally organized, and at what numeric precision it actually
+runs -- at the same specific, mechanics-grade depth as Clusters 1-5,
+but sourced from Hugging Face's own documentation and a named community
+writeup rather than from a shipped agent harness. Every module below
+cites `references/models/` pages directly; those pages attribute their
+own claims to the Hugging Face Hub/`transformers`/Optimum documentation
+and Maxime Labonne's frankenMoE blog post, applying that same-shaped
+VERIFIED/BEST-CURRENT-UNDERSTANDING discipline internally but scoped to
+that named corpus, not to this wiki-book's own `references/harnesses/`
+sources.
+
+#### Module: Model terminology ([../../references/models/model-terminology.md](../../references/models/model-terminology.md))
+
+**Key concepts:** the pretrained/fine-tuned/LLM distinction; encoder,
+decoder, and encoder-decoder (seq2seq) architectures; causal vs. masked
+language modeling; tokens, input IDs, and attention masks; a model's
+backbone vs. its task-specific head; feature-extraction and multimodal
+terminology.
+
+**Comprehension check:** What is the difference between a model's
+backbone and a task-specific head, and why does swapping a head for a
+new task not require retraining the backbone from scratch?
+
+**Exercise:** Take a text-generation model you have used and identify,
+from its model card or config, whether it is decoder-only, encoder-only,
+or encoder-decoder, and explain what causal vs. masked language modeling
+has to do with that architectural choice.
+
+#### Module: Task and pipeline classification ([../../references/models/task-and-pipeline-classification.md](../../references/models/task-and-pipeline-classification.md))
+
+**Key concepts:** the Hub's task/pipeline-tag taxonomy across
+NLP/Vision/Audio/Multimodal/Tabular/RL categories; `text-generation` as
+an agent's own reasoning loop; `feature-extraction`/`sentence-similarity`
+for embeddings, RAG, and semantic routing/caching; `summarization` for
+context compaction; `text-classification`/`token-classification` for
+routing, guardrails, and entity extraction.
+
+**Comprehension check:** Which Hub task tag would you reach for to build
+a semantic cache or a RAG retriever, and why is that a different task
+type than the one powering the agent's own reasoning loop?
+
+**Exercise:** For an agent-harness feature of your choosing (a
+context-compaction step, a routing/guardrail check, or a RAG retriever),
+name the specific Hub task/pipeline tag this page documents as the right
+fit, and explain why a different tag on this page's own list would be a
+worse fit.
+
+#### Module: Parameter count and scale ([../../references/models/parameter-count-and-scale.md](../../references/models/parameter-count-and-scale.md))
+
+**Key concepts:** what a parameter is; the `7B`/`13B`/`70B` naming
+convention; the verified `~4*X GB` (float32)/`~2*X GB` (bfloat16
+/float16) VRAM rule of thumb; the KV cache as a second,
+context-length-dependent memory cost distinct from weight VRAM
+(MQA/GQA as mitigations); small/mid-scale/frontier-hosted capability
+-tier tradeoffs.
+
+**Comprehension check:** Using this page's VRAM rule of thumb, roughly
+how much VRAM does a 13B-parameter model need at bfloat16, and why does
+an agent's growing session context add a second, separate memory cost on
+top of that number?
+
+**Exercise:** Pick a real model you could run locally and a target
+context length for an agent session, and compute, from this page's own
+worked examples, both its weight VRAM cost and roughly how its KV cache
+cost would grow as that context fills.
+
+#### Module: Mixture of Experts and frankenMoE ([../../references/models/mixture-of-experts-and-frankenmerging.md](../../references/models/mixture-of-experts-and-frankenmerging.md))
+
+**Key concepts:** sparse MoE layers and the gate/router network;
+`num_local_experts` vs. `num_experts_per_tok`; the frankenMoE-vs
+-native-MoE training-methodology distinction; MergeKit's three
+router-initialization methods (random, cheap_embed, hidden); the
+memory-vs-speed-vs-knowledge-preservation tradeoffs; the worked
+Beyonder-4x7B-v3 example.
+
+**Comprehension check:** What does `num_experts_per_tok` actually bound,
+and why does a sparse MoE model's active-parameter count at inference
+time differ from its total parameter count?
+
+**Exercise:** Using this page's three router-initialization methods,
+argue which one you'd choose for merging four already-fine-tuned dense
+models into a frankenMoE, and why the other two would serve that goal
+worse.
+
+#### Module: Quantization ([../../references/models/quantization.md](../../references/models/quantization.md))
+
+**Key concepts:** the definition and motivation for quantization;
+float16/bfloat16/int16/int8 formats; the affine and symmetric int8
+quantization schemes; per-tensor vs. per-channel granularity; the three
+calibration approaches (dynamic PTQ, static PTQ, QAT); a concrete worked
+VRAM example (29 GB to 15 GB to 9.5 GB across bf16/int8/int4) and its
+accompanying inference-speed tradeoff.
+
+**Comprehension check:** What is the practical difference between
+per-tensor and per-channel quantization granularity, and which one does
+this page document as generally preserving more accuracy at the same
+bit-width?
+
+**Exercise:** Using this page's own worked VRAM example as a template,
+pick a real model you have access to, quantize it (or work through the
+arithmetic if your hardware can't run it) at two of the three precisions
+this page compares, and record the actual or computed memory and speed
+difference.
+
+### Cluster 10: Local/self-hosted inference engines (`references/inference-engines/`)
+
+**Cluster overview:** how a model actually gets loaded, quantized,
+cached, batched, offloaded, and served once it is running on hardware
+you (rather than a hosted API provider) control -- eleven engine
+-agnostic mechanisms followed by three per-engine implementation pages
+(llama.cpp, Ollama, KTransformers), at the same specific, mechanics
+-grade depth as Clusters 1-5, but sourced from each engine's own
+documentation or repository. Every module below cites
+`references/inference-engines/` pages directly; several of those pages
+in turn cross-link Cluster 9's own quantization and Mixture-of-Experts
+pages rather than re-deriving those concepts, so this cluster assumes
+Cluster 9 has already been covered.
+
+#### Module: Model file formats for inference ([../../references/inference-engines/model-file-formats.md](../../references/inference-engines/model-file-formats.md))
+
+**Key concepts:** why a training-checkpoint format and an
+inference-serving format solve different problems; GGUF's predecessors
+(GGML/GGMF/GGJT) and the architecture-identification failure they had;
+GGUF's four-section layout (header, typed/namespaced metadata KV pairs,
+tensor infos, tensor data); the per-tensor `ggml` type enumeration.
+
+**Comprehension check:** What specific failure did GGUF's predecessor
+formats have that GGUF's own metadata section fixes, and why does that
+failure matter for a harness that treats "swap the local model" as a
+cheap operation?
+
+**Exercise:** Inspect a real GGUF file's metadata with a documented tool
+this page names or points to, and identify at least three distinct
+tensor precisions mixed within the same file.
+
+#### Module: Memory-mapped model loading ([../../references/inference-engines/memory-mapped-model-loading.md](../../references/inference-engines/memory-mapped-model-loading.md))
+
+**Key concepts:** `mmap`-based loading trading a full-file copy for
+lazy, page-cache-backed loading; GGUF's alignment requirement as the
+structural precondition that makes it possible; the `auto`/`mmap`
+/`mlock`/`mmap+mlock`/`dio` load-mode surface; the load-speed-vs
+-pageout-risk tradeoff each mode makes.
+
+**Comprehension check:** Why does mmap-based loading specifically
+require GGUF's alignment guarantee to work correctly, and what risk does
+`mlock` exist to close?
+
+**Exercise:** Load the same model twice under two different load modes
+this page documents, and compare the wall-clock time to first token and
+(if observable) memory behavior between the two runs.
+
+#### Module: Quantization as an inference-engine-level concern ([../../references/inference-engines/quantization-at-inference-time.md](../../references/inference-engines/quantization-at-inference-time.md))
+
+**Key concepts:** how an engine *consumes*, rather than produces, an
+already-quantized tensor (cross-linking Cluster 9's own quantization
+module); why dequantization happens inline, per weight block, at
+compute time rather than once at load time; GGUF's mixed-per-tensor
+-precision consequence; KV-cache quantization and offload placement as
+runtime knobs that compose with a fixed weight quantization.
+
+**Comprehension check:** Why does "the model file is quantized" not
+automatically mean "inference is faster," per this page's own account of
+when dequantization actually happens?
+
+**Exercise:** Run the same prompt against a model at two different
+KV-cache quantization settings this page documents, and record any
+difference in memory use, speed, or output quality you observe.
+
+#### Module: The KV cache and context-window management ([../../references/inference-engines/kv-cache-and-context-window-management.md](../../references/inference-engines/kv-cache-and-context-window-management.md))
+
+**Key concepts:** why KV-cache cost scales with context length rather
+than model size; context-window sizing as an explicit, VRAM-aware
+setting; the documented call-out that agentic workloads need a
+larger-than-default window; KV-cache quantization as a precision axis
+independent of weight quantization.
+
+**Comprehension check:** Why does this page treat KV-cache size as a
+per-session cost distinct from the model's own weight VRAM cost, and
+what documented setting controls it directly?
+
+**Exercise:** Configure a local engine's context-window size to a value
+this page's own documentation calls out as agent-workload-appropriate,
+and observe, via a memory/usage surface the engine exposes, how the KV
+cache's memory footprint changes as a long agent session fills that
+window.
+
+#### Module: Sampling and decoding parameters ([../../references/inference-engines/sampling-and-decoding-parameters.md](../../references/inference-engines/sampling-and-decoding-parameters.md))
+
+**Key concepts:** the shared core parameter set (`temperature`, `top_k`,
+`top_p`, `repeat_penalty`/`repeat_last_n`, `seed`, `num_predict`,
+`stop`); grammar-constrained decoding (GBNF) as a token-masking
+mechanism distinct from reweighting, and its automatic
+JSON-Schema-to-grammar conversion; why this mechanism, not the chat
+template alone, is what makes a `tools` array reliably yield parseable
+`tool_calls`.
+
+**Comprehension check:** What is the mechanistic difference between a
+sampling parameter like `top_p` and a grammar constraint like GBNF, and
+why does only the latter guarantee syntactically valid output?
+
+**Exercise:** Define a JSON Schema for a tool call, let the engine
+convert it to a grammar per this page's documented mechanism, and
+confirm decoding under that grammar never produces an unparseable
+tool-call payload across several runs.
+
+#### Module: Batching and continuous batching ([../../references/inference-engines/batching-and-continuous-batching.md](../../references/inference-engines/batching-and-continuous-batching.md))
+
+**Key concepts:** why memory-bandwidth-bound single-token decoding makes
+batching valuable; the slot-based continuous-batching design
+(`--parallel`/`--batch-size`/`--ubatch-size`); why continuous batching,
+not a static batch, is what actually captures that benefit under real,
+staggered request arrival.
+
+**Comprehension check:** Why does a static batch fail to capture the
+same throughput benefit continuous batching does, under real, staggered
+request arrival?
+
+**Exercise:** Fire several concurrent requests at a locally served model
+with continuous batching enabled, and compare observed throughput
+against the same requests sent one at a time.
+
+#### Module: CPU/GPU/heterogeneous offloading, and expert offloading ([../../references/inference-engines/cpu-gpu-heterogeneous-offloading.md](../../references/inference-engines/cpu-gpu-heterogeneous-offloading.md))
+
+**Key concepts:** layer-granularity `--gpu-layers`/`--device` hybrid
+inference as the general-purpose default; why that granularity cannot
+avoid holding every MoE expert in memory at once (cross-linking Cluster
+9's own MoE module); arithmetic-intensity-guided offloading (the ~512
+-vs-~0.075 MLA-vs-expert figures) as the finer-than-layer strategy that
+makes a 671B-parameter MoE model locally deployable at all.
+
+**Comprehension check:** Why can't a plain layer-granularity offloading
+scheme avoid loading every expert of an MoE model into memory at once,
+and what finer-grained strategy does this page document to get around
+that?
+
+**Exercise:** Using a model too large for your available VRAM, configure
+layer-granularity offloading to split it across CPU and GPU, and record
+which layer count is the largest you can offload to GPU before running
+out of memory.
+
+#### Module: Multi-GPU inference ([../../references/inference-engines/multi-gpu-and-tensor-parallelism.md](../../references/inference-engines/multi-gpu-and-tensor-parallelism.md))
+
+**Key concepts:** `--split-mode layer` (throughput-oriented, tolerant of
+slow interconnects) vs. `--split-mode tensor` (experimental,
+latency-oriented, needs a fast interconnect); the `--tensor-split`
+/`--main-gpu` configuration surface; how this composes with, rather than
+replaces, expert-placement strategy.
+
+**Comprehension check:** Which of this page's two split modes would you
+choose for a throughput-seeking multi-agent harness fanning out many
+concurrent requests, and which for a single latency-critical interactive
+loop, and why?
+
+**Exercise:** If you have access to two or more GPUs, run the same model
+under both split modes this page documents and compare tokens/sec and
+per-request latency between them.
+
+#### Module: Speculative decoding ([../../references/inference-engines/speculative-decoding.md](../../references/inference-engines/speculative-decoding.md))
+
+**Key concepts:** the draft-then-verify-in-one-batch mechanism as a pure
+latency optimization with no output-distribution change; the
+model-based (draft model, EAGLE-3, DFlash, DSpark) and pattern-based
+(n-gram family) drafter taxonomy; why payoff is entirely
+acceptance-rate-dependent; the two agent-harness workload shapes that
+line up well with it (context-echoing generation; an already-resident
+small model repurposed as a draft model).
+
+**Comprehension check:** Why does this page insist speculative decoding
+changes no output distribution, only latency -- what property of the
+verify step guarantees that?
+
+**Exercise:** Enable speculative decoding with a draft model or n-gram
+drafter this page documents, and measure the acceptance rate and latency
+improvement on a context-echoing task (e.g. summarizing a document
+already in context) versus a task with little textual overlap.
+
+#### Module: Server/API modes ([../../references/inference-engines/server-api-modes.md](../../references/inference-engines/server-api-modes.md))
+
+**Key concepts:** one-shot CLI invocation vs. a persistent server
+process; what "OpenAI-compatible" concretely covers and where each
+engine's own documented compatibility gaps are; native implementation of
+the same endpoint family; why concurrency-aware serving (batching), not
+the API shape alone, is what actually delivers the throughput a harness
+integration is really after.
+
+**Comprehension check:** Why does this page argue that an
+OpenAI-compatible API surface alone is not what delivers throughput to a
+harness integration, and what mechanism from an earlier module actually
+does?
+
+**Exercise:** Point a harness or client that speaks the OpenAI API shape
+at a locally served engine's OpenAI-compatible endpoint, and identify
+one documented compatibility gap you actually hit or would need to work
+around.
+
+#### Module: Model management and distribution ([../../references/inference-engines/model-management-and-distribution.md](../../references/inference-engines/model-management-and-distribution.md))
+
+**Key concepts:** direct-file-path/Hugging-Face-reference model loading;
+a name/manifest/Modelfile-build layer on top of the same GGUF ecosystem
+(`pull`/`create`/`show`/`rm`, Modelfile-as-Dockerfile-analogue); a
+curated registry for a run-shortcut command; which of the documented
+responsibility splits best fits reproducible, inspectable per-persona
+model configuration.
+
+**Comprehension check:** What does this page's Modelfile-as-Dockerfile
+analogy actually mean, and what specifically does a Modelfile let you
+version that a bare model file path does not?
+
+**Exercise:** Write a Modelfile, or the equivalent manifest this page
+documents, that pins a specific model, a specific system prompt, and
+specific sampling parameters together as one named, reproducible unit,
+and confirm two different invocations of that name produce the pinned
+configuration.
+
+#### Module: llama.cpp ([../../references/inference-engines/llama-cpp.md](../../references/inference-engines/llama-cpp.md))
+
+**Key concepts:** project goals and hardware-backend breadth (Apple
+Silicon, x86, RISC-V, CUDA/HIP/MUSA/Vulkan/SYCL and more); the `llama
+cli`/`llama serve` binaries; the K-quant/I-quant GGUF quantization-type
+naming families and the `Q4_K_M` default recommendation; Ollama's own
+documented dependency on llama.cpp as its backend; the convenience-vs
+-hardware-breadth tradeoff of choosing it directly.
+
+**Comprehension check:** What does choosing llama.cpp directly, rather
+than a wrapper built on top of it, trade away and what does it gain, per
+this page's own account?
+
+**Exercise:** Download or convert a model to GGUF, run it directly via
+llama.cpp's own CLI or server binary at the `Q4_K_M` quantization this
+page recommends as a default, and record the concrete command and flags
+you used.
+
+#### Module: Ollama ([../../references/inference-engines/ollama.md](../../references/inference-engines/ollama.md))
+
+**Key concepts:** the confirmed llama.cpp dependency, held alongside
+Ollama's newer, directly-`ggml`-based Go engine built for multimodal
+architectures; the full Modelfile instruction set; documented
+GPU-vendor support and VRAM-based automatic scheduling; the dual
+native-REST and OpenAI-compatible API surfaces; first-party integrations
+with named coding-agent harnesses.
+
+**Comprehension check:** Why does Ollama maintain two separate backends
+(llama.cpp and its own Go engine) rather than one, per this page's own
+account of what each is for?
+
+**Exercise:** Pull a model via Ollama, write a Modelfile that customizes
+its system prompt or parameters, and confirm which of the two backends
+this page documents actually served your request (or reason through
+which one should have, given the model's architecture).
+
+#### Module: KTransformers ([../../references/inference-engines/ktransformers.md](../../references/inference-engines/ktransformers.md))
+
+**Key concepts:** what the project is today (`kt-kernel`/`sglang-kt`
+serving, LLaMA-Factory-integrated LoRA fine-tuning), held explicitly
+apart from its upstream repository's own documented YAML
+operator-injection mechanism (`match`/`replace` rules,
+`optimize_and_load_gguf`, `generate_device`/`prefill_device` placement);
+its own architecture-coupled precision/backend naming; its curated
+large-MoE model list up to DeepSeek R1's 671B parameters; why it is the
+answer for a harness builder specifically wanting a frontier-scale
+open-weight model running on local hardware.
+
+**Comprehension check:** What problem does KTransformers' operator
+-injection mechanism (`match`/`replace` rules) actually solve, and why
+does a harness builder wanting a 671B-parameter model running locally
+reach for KTransformers rather than llama.cpp's own layer-granularity
+offloading?
+
+**Exercise:** Using this page's own curated model list, pick one large
+MoE model, and sketch (or, if hardware allows, actually configure) the
+`generate_device`/`prefill_device` placement this page documents for
+running it on a mixed CPU/GPU setup.
+
 ### Capstone: cross-harness mechanism comparison + operator configuration
 
 Choose one cluster above (Clusters 1-5 for a cross-harness mechanism
-comparison, or Cluster 6/7 for an equivalent artifact grounded in the
-RAG or Agentic-SDLC material instead -- see the variant instructions
-below). For that cluster's mechanism (e.g. "how context gets compressed
+comparison, or Cluster 6/7/9/10 for an equivalent artifact grounded in
+the RAG, Agentic-SDLC, model-classification, or inference-engine
+material instead -- see the variant instructions below). For that
+cluster's mechanism (e.g. "how context gets compressed
 mid-run," or "how a permission decision gets enforced"), produce two
 artifacts: (1) a comparison table with one row per harness (Claude Code,
 Copilot CLI, OpenCode) naming the specific config key/file path/tool
@@ -978,21 +1424,49 @@ against a live session and can show the output of. A grader checks that
 the table's cells are traceable to the cited page (not invented) and
 that the configuration artifact actually does what it claims when run.
 
-**Cluster 6/7 variant.** Clusters 6 and 7 have no second harness to
-compare against (RAG-the-technique and the SDLC handbook's
-instrumented-codebase discipline are each single-source, not
-three-implementations-of-one-mechanism like Clusters 1-5). A learner
+**Cluster 6/7/9 variant.** Clusters 6, 7, and 9 have no second harness
+(or, for Cluster 9, no comparable second *implementation* at all) to
+compare against -- RAG-the-technique, the SDLC handbook's
+instrumented-codebase discipline, and the Hub's own model-classification
+taxonomy are each a single conceptual source, not
+three-implementations-of-one-mechanism like Clusters 1-5. A learner
 choosing this variant instead produces: (1) a working artifact from one
 of that cluster's own exercises above (a real pipeline component for
-Cluster 6, a real primitive/lockfile pairing for Cluster 7) that you
-actually ran and can show the output of; and (2) a short comparison
-note, with citations, of how that cluster's mechanism differs from the
-closest analogous mechanism in Clusters 1-5 (e.g. RAG's semantic-cache
-placement vs. `caching.md`'s prompt-prefix caching; the SDLC handbook's
-load lifecycle vs. `instruction-context-budget.md`'s eager-load budget)
--- the point of the note is to keep the two epistemic registers (this
-book's own VERIFIED tagging vs. Clusters 6/7's single-source attribution)
-visibly distinct rather than blurred together.
+Cluster 6, a real primitive/lockfile pairing for Cluster 7, a real
+classification worked-through on an actual model's card or config for
+Cluster 9) that you actually ran or actually checked and can show the
+output of; and (2) a short comparison note, with citations, of how that
+cluster's mechanism differs from the closest analogous mechanism in
+Clusters 1-5 (e.g. RAG's semantic-cache placement vs. `caching.md`'s
+prompt-prefix caching; the SDLC handbook's load lifecycle vs.
+`instruction-context-budget.md`'s eager-load budget; a model's parameter
+-count-driven VRAM cost vs. `context-compression.md`'s own
+context-length-driven memory pressure) -- the point of the note is to
+keep the two epistemic registers (this book's own VERIFIED tagging vs.
+Clusters 6/7/9's attribution to their own named sources) visibly
+distinct rather than blurred together.
+
+**Cluster 10 variant.** Cluster 10 sits closer to Clusters 1-5's own
+shape than Clusters 6/7/9 do -- three real, named engines (llama.cpp,
+Ollama, KTransformers) genuinely exist to compare, per this cluster's
+own per-engine implementation pages -- but the cluster's engine-agnostic
+concept pages document each mechanism primarily against llama.cpp's own
+concrete flags, cross-referencing Ollama's and KTransformers' divergent
+behavior only where a page's own text calls it out (e.g. Ollama's
+VRAM-tiered automatic context-window default vs. llama.cpp's explicit
+`--ctx-size`), rather than tabulating all three side by side the way
+Clusters 1-5's own core-mechanics pages do for Claude Code, Copilot CLI,
+and OpenCode. A learner choosing this variant may produce either: (a)
+the same two-artifact structure as the main capstone above, but across
+engines instead of harnesses -- a comparison table with one row per
+engine naming the specific flag/environment variable/config surface each
+uses for one mechanism (e.g. context-window sizing, or GPU/CPU
+placement), with citations, plus a real, working configuration for at
+least one engine that you actually ran and can show the output of; or
+(b) the Cluster 6/7/9 variant's shape instead, if the mechanism you pick
+genuinely has no clean three-engine tabulation in this cluster's own
+pages -- state explicitly which shape you chose and why the cluster's
+own material did or didn't support the three-way table.
 
 ---
 

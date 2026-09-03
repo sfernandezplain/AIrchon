@@ -91,7 +91,7 @@ A course requires a classified tier. If `~/.airchon/level` doesn't
 exist yet, redirect to Step 1 in `airchon-teacher.agent.md` -- do not
 start teaching an unclassified reader. If the stored tier is already
 `Archon`, there is no fourth course: return the Ceiling note from
-[reader-proficiency-tiers.md](../../references/harnesses/reader-proficiency-tiers.md)
+[reader-proficiency-tiers.md](reader-proficiency-tiers.md)
 (primary-source fluency beyond this book, not a course this agent can
 deliver) instead of inventing a course that doesn't exist.
 

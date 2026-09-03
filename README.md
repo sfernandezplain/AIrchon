@@ -110,7 +110,7 @@ Four tiers, one arc: from not knowing you're asleep, to holding the
 crown. The names are borrowed on purpose -- mythic scaffolding lifted
 from Gnostic cosmology, purely for the fun of it and as a memory hook,
 not a claim about anything outside this project (see
-[reader-proficiency-tiers.md](references/harnesses/reader-proficiency-tiers.md)
+[reader-proficiency-tiers.md](resources/airchon-teacher/reader-proficiency-tiers.md)
 for the fine print on that distinction).
 
 | | Tier | The lore | What's expected of you |
@@ -130,7 +130,7 @@ starter-file scaffold or short session exam at the end of each session
 course to promote you. The full rubric, reading lists per tier, and
 this book's own honest ceiling note (it's necessary but not sufficient
 at Archon tier) live at
-[reader-proficiency-tiers.md](references/harnesses/reader-proficiency-tiers.md).
+[reader-proficiency-tiers.md](resources/airchon-teacher/reader-proficiency-tiers.md).
 
 ---
 

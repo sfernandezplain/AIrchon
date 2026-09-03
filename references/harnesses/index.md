@@ -15,35 +15,34 @@ not an oversight.
 
 ## Reader proficiency tiers
 
-[Reader proficiency tiers: Slumberer -> Gnostic -> Demiurge -> Archon](reader-proficiency-tiers.md) --
-written 2026-08-17, revised 2026-08-24, a meta-page rather than a
-harness-internals topic: classifies a reader into one of four named
-tiers from zero (Slumberer, clueless/vibecoding) to HERO (Archon,
-capable of building a harness that surpasses the existing ones), maps
-each tier's proven capacities to a concrete reading list drawn from the
-Topics table below (agent-topology.md + agent-loop.md for
-Slumberer->Gnostic; the 21-page core-mechanics band for
-Gnostic->Demiurge, extended by a 9-page RAG cluster and a 7-page
-Agentic-SDLC practitioner-mechanics cluster from `references/rag/` and
-`references/sdlc/`; the 10-page design-space/original-survey band for
-Demiurge->Archon, extended by a 10-item Agentic-SDLC design-space
-/methodology cluster from `references/sdlc/`), and explains how the
-rubric is meant to be used to calibrate explanation depth and
-self-assess before attempting a from-scratch harness build. The tier
-names and the zero-to-hero structure are the operator's own original
-framework authored that session, not a researched claim -- see the
-page's own opening section for how that is held apart from this
-book's usual VERIFIED/BEST-CURRENT-UNDERSTANDING tagging, and the
-2026-08-24 extension subsections for how the weaker "the source
-says"/"the handbook says" grounding of `references/rag/` and
-`references/sdlc/` is held apart from that same tagging in turn.
+**Relocated 2026-09-03.** The reader-proficiency-tiers rubric no longer
+lives in this wiki-book -- it moved to
+`resources/airchon-teacher/reader-proficiency-tiers.md`, the same
+relocation reasoning already applied to the session-pacing agenda files
+under Curriculum below (see that section and `CHANGELOG.md`): it is a
+meta/rubric page authored by the operator, classifying readers into
+tiers, not a `references/harnesses/` research page about harness
+internals, and belongs in `airchon-teacher`'s own tier domain instead.
+Read it directly at its new path for the current four-tier rubric
+(Slumberer -> Gnostic -> Demiurge -> Archon) and reading lists -- the
+21-page core-mechanics band plus the RAG, Agentic-SDLC, AI-model
+-classification, and local-inference-engine practitioner-mechanics
+clusters for Gnostic->Demiurge, and the 10-page design-space band plus
+the Agentic-SDLC design-space/methodology cluster for Demiurge->Archon
+(the last two clusters, covering `references/models/` and
+`references/inference-engines/`, were added the same day this page
+relocated). `knowledge-path-curriculum.md` immediately below still
+expands those reading lists into a teachable structure and links out to
+the relocated page from its own new location.
 
 ## Curriculum
 
 [Knowledge-path curriculum: a course skeleton for the three tier transitions](knowledge-path-curriculum.md) --
-written 2026-08-17, revised 2026-08-24, a curriculum scaffold (not a
-research page) expanding reader-proficiency-tiers.md's reading lists
-into a teachable structure: for each transition (Slumberer->Gnostic,
+written 2026-08-17, revised 2026-08-24 and again 2026-09-03, a
+curriculum scaffold (not a research page) expanding
+`resources/airchon-teacher/reader-proficiency-tiers.md`'s reading lists
+(relocated from this book, see above) into a teachable structure: for
+each transition (Slumberer->Gnostic,
 Gnostic->Demiurge, Demiurge->Archon), a transition overview, 3-5
 learning objectives, a per-source-page module (key concepts + one
 comprehension-check question + one applied exercise), and a capstone
@@ -52,13 +51,18 @@ into five thematic clusters (Memory & Context, Coordination &
 Multi-Agent, Transport & API, Config & Permissions, Skills & Tools),
 extended 2026-08-24 by Cluster 6 (Retrieval-Augmented Generation, 9
 modules from `references/rag/`) and Cluster 7 (Agentic SDLC
-practitioner mechanics, 6 modules from `references/sdlc/`); the
-Demiurge->Archon band was extended the same day by Cluster 8 (Agentic
+practitioner mechanics, 6 modules from `references/sdlc/`), and
+extended again 2026-09-03 by Cluster 9 (AI model classification, 5
+modules from `references/models/`) and Cluster 10 (Local/self-hosted
+inference engines, 14 modules from `references/inference-engines/`);
+the Demiurge->Archon band was extended 2026-08-24 by Cluster 8 (Agentic
 SDLC design-space and methodology, 9 modules from `references/sdlc/`).
 Every factual detail about what a source page covers is inherited from
 that page's own row below (or from `references/rag/index.md` /
-`references/sdlc/index.md` for Clusters 6-8), not re-verified on the
-curriculum page itself. A session-pacing agenda layer for Transition 1
+`references/sdlc/index.md` / `references/models/index.md` /
+`references/inference-engines/index.md` for Clusters 6-10), not
+re-verified on the curriculum page itself. A session-pacing agenda
+layer for Transition 1
 (Slumberer->Gnostic) -- three schedulable sessions, each listing only
 the agenda items to discuss, sized so no session runs thinner than
 three items or heavier than six -- was added 2026-08-17 and then
@@ -78,9 +82,10 @@ session), organized around a two-way design-space/original-survey vs.
 production-completeness split this band's own pages already draw for
 themselves in the Topics table below -- was written directly to
 `resources/airchon-teacher/demiurge-to-archon-sessions.md`
-the same way. **Note (2026-08-24):** neither pacing file yet accounts
-for Clusters 6-8 added this session; the curriculum page itself flags
-this as follow-up pacing work out of scope for `airchon-author`.
+the same way. **Note (2026-08-24, still current 2026-09-03):** neither
+pacing file yet accounts for Cluster 6, 7, 8, 9, or 10; the curriculum
+page itself flags this as follow-up pacing work out of scope for
+`airchon-author`.
 
 ## Topics
 

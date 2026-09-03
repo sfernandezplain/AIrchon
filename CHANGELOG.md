@@ -1,3 +1,100 @@
+## 2026-09-03 -- Relocated `reader-proficiency-tiers.md` out of the wiki-book into `resources/airchon-teacher/`; folded `references/models/` and `references/inference-engines/` into its tier bands
+
+The operator pointed out that `reader-proficiency-tiers.md` -- the
+Slumberer/Gnostic/Demiurge/Archon rubric page -- had never actually
+been a harness-internals research page; it lived in
+`references/harnesses/` only because that book existed first. It is a
+meta/rubric page scoped to `airchon-teacher`'s own tier domain, the
+same reasoning that already moved the session-pacing `*-sessions.md`
+files out of the wiki-book on 2026-08-17/18 (see those entries).
+`airchon-author` moved it to
+`resources/airchon-teacher/reader-proficiency-tiers.md` (same
+filename, ~106 internal links rewritten to the new relative depth),
+which its own BOUNDARY section already permitted as a named exception
+to its `references/`-only write scope -- this third kind of content
+under `resources/airchon-teacher/` stays `airchon-author`'s to author,
+unlike the router-logic files (`classification-flow.md` and siblings)
+maintained directly.
+
+At the same time, the operator asked for the page's tier reading lists
+to stop being harness-only and incorporate the newer reference areas
+added earlier the same session (`references/models/` and
+`references/inference-engines/` -- see the two entries below). Both
+were folded into the Gnostic->Demiurge/Demiurge-tier extension
+alongside the existing RAG and SDLC-mechanics clusters, not the
+Archon band -- both are mechanics-grade reports pinned to concrete
+config keys, CLI flags, and formulas, matching the RAG/SDLC bar rather
+than the Archon band's "original design-space survey with no shipped
+answer" character. `knowledge-path-curriculum.md` (which directly
+expands the tier page's reading lists into a teachable structure) was
+updated to match: Cluster 9 (AI model classification, 5 modules) and
+Cluster 10 (local inference engines, 14 modules) were added to
+Transition 2, with a revision note documenting the change.
+`references/harnesses/index.md`'s "Reader proficiency tiers" section
+was replaced with a relocation note, and the two `resources/
+airchon-teacher/` flow files that linked to the old path
+(`classification-flow.md`, `course-delivery-flow.md`) were updated to
+the new same-directory link. `CLAUDE.md` and `README.md` were updated
+directly to the new path and to record the relocation's rationale.
+
+## 2026-09-03 -- Added `references/inference-engines/`; wired it and `references/models/` into every agent's reference-area lists
+
+The operator asked for a wiki-book on local/self-hosted LLM inference
+engines, analogous to `references/harnesses/`: general engine-agnostic
+concepts extracted separately from how each concrete engine implements
+them. `airchon-author` researched three assigned sources live
+(`ktransformers.net/docs`, `docs.ollama.com`, and
+`github.com/ggml-org/llama.cpp`, following linked subpages and the
+upstream `ggml`/`ktransformers` repos where the top-level docs were
+thin) and wrote 11 engine-agnostic concept pages (model file formats,
+memory-mapped loading, quantization at inference time, KV cache and
+context-window management, sampling/decoding parameters, batching,
+CPU/GPU heterogeneous and MoE-expert offloading, multi-GPU/tensor
+parallelism, speculative decoding, server/API modes, model management)
+plus three per-engine pages (llama.cpp, Ollama, KTransformers), each
+calling back to the shared concept pages rather than re-deriving them
+and cross-linking `references/models/` for quantization and MoE. One
+correction along the way: the operator's original Ollama URL was a
+Google-search wrapper around the real docs domain; `docs.ollama.com`
+was fetched directly instead.
+
+Separately, `references/models/` (added earlier the same session, see
+below) had never been wired into any of the three agents' or the
+router's own reference-area lists, routing tables, or BOUNDARY
+sections -- an oversight from that session. Both gaps were closed
+together: `airchon-author.agent.md`, `airchon-mentor.agent.md`,
+`airchon-teacher.agent.md`, and `.apm/skills/airchon/SKILL.md` were
+all updated (their canonical `.apm/` sources, redeployed via `apm
+install`) to register both `references/models/` and
+`references/inference-engines/` consistently -- reading/writing scope,
+area-routing tables, and BOUNDARY sections all now list all five
+reference areas.
+
+## 2026-09-03 -- Added `references/models/` for AI model classification (task types, parameter scale, MoE, quantization)
+
+The operator asked for a new reference area explaining, in the context
+of Agentic AI Development, how models get classified -- task/pipeline
+type, parameter count, Mixture of Experts, and quantization -- with
+progressive/semantic navigation matching `references/harnesses/`'s own
+conventions, meant to be usable by `airchon-teacher` and
+`airchon-mentor` the same way as the existing wiki-books.
+`airchon-author` researched and wrote six pages grounded in four
+assigned Hugging Face sources fetched live (the Hub task-classification
+guide, the `transformers` glossary, the mlabonne frankenmoe blog post,
+and the Optimum quantization concept guide): `model-terminology.md`,
+`task-and-pipeline-classification.md`, `parameter-count-and-scale.md`,
+`mixture-of-experts-and-frankenmerging.md`, `quantization.md`, and an
+`index.md` ordering them progressively. Two sourcing gaps surfaced and
+are flagged inline on the affected pages: the assigned `models-tasks`
+URL turned out to be a contributor guide for proposing new Hub tasks
+rather than a task-definitions page (cross-verified against the
+individual `huggingface.co/tasks/<name>` pages instead), and
+`text2text-generation`'s own task page 404'd (covered via the
+glossary's seq2seq definition instead). One supplementary Hugging Face
+page (`llm_tutorial_optimization`) was cited explicitly where it
+grounds VRAM/parameter-count formulas none of the four assigned
+sources state directly.
+
 ## 2026-08-24 -- Made agenda-item completion in Course-Delivery Flow a manual, reader-triggered gate
 
 `course-delivery-flow.md`'s CD4 previously wrote an agenda item to

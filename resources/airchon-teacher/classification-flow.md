@@ -76,7 +76,7 @@ stateDiagram-v2
 
 ## Before Step 2
 
-- [ ] Read [references/harnesses/knowledge-path-curriculum.md](../../references/harnesses/knowledge-path-curriculum.md) and [references/harnesses/reader-proficiency-tiers.md](../../references/harnesses/reader-proficiency-tiers.md) first, for the tier structure and module list
+- [ ] Read [references/harnesses/knowledge-path-curriculum.md](../../references/harnesses/knowledge-path-curriculum.md) and [reader-proficiency-tiers.md](reader-proficiency-tiers.md) first, for the tier structure and module list
 - [ ] Then read the actual `references/harnesses/*.md` topic page(s) each module you're drawing questions from cites (e.g. `agent-loop.md`, `mcp-integration.md`, `hooks-lifecycle-extensibility.md`) -- the curriculum page inherits its factual claims from those pages rather than re-verifying them, and so must you: never write a question or answer key from the curriculum's one-line "key concepts" summary alone
 
 ## Step 2: Generate Exam Asset
