@@ -450,23 +450,35 @@ warning to v1.0.25 (2026-04-13).
 A separate, security-relevant storage detail is worth stating precisely: VERIFIED
 (`github/copilot-cli`'s `changelog.md`, fetched this session, v1.0.51, 2026-05-20):
 "Login prompt more clearly warns when token storage falls back to insecure plain text
-config file" -- confirming there is a documented fallback path where, presumably when a
-system keychain is unavailable, Copilot CLI stores the token in a plain-text config file
-rather than the platform keychain described above, and that this fallback is at least
-now surfaced to the user with a warning rather than happening silently. This session's
-research did not locate the specific doc page or condition that triggers the fallback
-beyond this changelog line, so treat the *trigger condition* itself (as opposed to the
-fact that the fallback exists and is now warned-about) as BEST CURRENT UNDERSTANDING,
-UNCONFIRMED.
+config file" -- confirming there is a documented fallback path where Copilot CLI stores
+the token in a plain-text config file rather than the platform keychain described above,
+and that this fallback is at least now surfaced to the user with a warning rather than
+happening silently. UPDATE (re-verified 3 September 2026 against
+`docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli`,
+re-fetched this session as part of a scheduled source-drift check): the trigger condition
+that this page previously flagged as unconfirmed is now VERIFIED, since the docs page has
+since been extended to state it directly -- "If the system keychain is unavailable -- for
+example, on a headless Linux server without `libsecret` installed -- the CLI prompts you
+to store the token in a plaintext configuration file at `~/.copilot/config.json`." This
+both names the concrete trigger condition (a missing keychain backend, illustrated with
+the `libsecret`-less headless Linux case already implied by the platform list in §2.1's
+opening paragraph) and the exact file path, neither of which this session's original
+research could locate beyond the changelog's bare acknowledgment that the fallback and its
+warning exist.
 
 ### 2.2 Premium requests: the unit Copilot bills usage in
 
 VERIFIED (`docs.github.com/copilot/concepts/copilot-billing/understanding-and-managing-requests-in-copilot`,
 fetched this session): GitHub Copilot denominates usage across all its surfaces,
 including the CLI, in **premium requests** rather than raw tokens or dollars. A request
-is "any interaction where you prompt Copilot to perform a task," and for agentic
-features specifically, "only the prompts you send count as premium requests; actions
-Copilot takes autonomously to complete your task, such as tool calls, do not." For
+is "any interaction where you ask Copilot to do something for you -- whether it's
+generating code, answering a question, or helping you through an extension" (wording
+re-verified 3 September 2026 against the same URL as part of a scheduled source-drift
+check; this is the docs' current phrasing, superseding an earlier, materially equivalent
+wording this page had quoted -- "any interaction where you prompt Copilot to perform a
+task" -- at the time of original research), and for agentic features specifically, "only
+the prompts you send count as premium requests; actions Copilot takes autonomously to
+complete your task, such as tool calls, do not." For
 Copilot Chat and Copilot CLI, the rate is one premium request per user prompt,
 multiplied by the selected model's own request multiplier (most models documented at 1x;
 this session's own changelog read finds the multiplier concept itself dated to v0.0.341,
@@ -475,11 +487,22 @@ this session's own changelog read finds the multiplier concept itself dated to v
 1st of each month at 00:00:00 UTC, and unused requests never carry over to the following
 month.
 
-VERIFIED (same source): when using **Auto model selection** (documented in full in
-[model-routing-and-selection.md](model-routing-and-selection.md) §2.3) in Copilot Chat,
-Copilot CLI, or Copilot cloud agent, the model routed to qualifies for a 10% multiplier
-discount -- so using Auto is, independent of anything else, a way to reduce premium-
-request consumption relative to pinning a specific model by hand.
+VERIFIED (`docs.github.com/en/copilot/concepts/models/auto-model-selection`, re-fetched
+this session 3 September 2026 as part of a scheduled source-drift check against the
+`understanding-and-managing-requests-in-copilot` page this page originally cited for the
+same fact): "If you are on a paid Copilot plan, you qualify for a 10% discount on model
+costs while using auto model selection," applying across Copilot Chat, Copilot CLI, the
+GitHub Copilot app, and Copilot cloud agent -- so using Auto is, independent of anything
+else, a way to reduce premium-request consumption relative to pinning a specific model by
+hand. CORRECTION: this session's re-check found the discount is no longer stated on the
+`understanding-and-managing-requests-in-copilot` page this fact was originally attributed
+to -- two independent, targeted re-fetches of that page this session found no mention of
+Auto model selection or a discount anywhere in its content -- so the citation is corrected
+here to the concepts page that does state it, which is also the same page
+[model-routing-and-selection.md](model-routing-and-selection.md) §2.3 already cites
+independently, alongside a GitHub Blog GA-announcement corroboration for the same figure.
+The fact itself is unchanged and still current; only its correct source attribution
+changed.
 
 A real, self-reported billing bug is worth flagging as a concrete instance of premium-
 request accounting going wrong in practice: this session's own read of
@@ -534,13 +557,23 @@ fetched this session): unlike Claude Code's in-product `budget` object (§1.5.2)
 SDK cap (§1.5.1), Copilot's actual spend-enforcement mechanism lives in GitHub's own
 billing platform, at four configurable levels -- user, cost centre, organization, and
 enterprise -- governing access to shared AI credits and metered overage charges
-together. **A budget set to $0 USD creates an immediate hard stop**: "A $0 USD budget
-blocks the user immediately," and the docs state that accounts created before 22 August
-2025 default to exactly this -- a $0 budget for Copilot premium requests -- so that
-premium requests over the included allowance are rejected outright unless an
-administrator edits or deletes that default budget. A separate toggle, "Stop usage when
-budget limit is reached," applies only to cost-centre, organization, and enterprise
-budgets (not user-level ones, which "always enforce a hard stop and do not have this
+together. **A budget set to $0 USD creates an immediate hard stop**: "Any budget set to
+$0 USD stops usage immediately for the users it applies to." UPDATE (re-verified
+3 September 2026, two independent targeted re-fetches of the same URL, as part of a
+scheduled source-drift check): the docs page no longer states the "accounts created
+before 22 August 2025 default to a $0 budget" provision this page previously cited from
+it -- neither re-fetch this session located that sentence or that date anywhere on the
+current page. Since that cutover date is now well over a year in the past relative to
+this re-check, the likeliest explanation is that GitHub has since removed the
+transition-period note as no longer operationally relevant (any account old enough to
+have been affected has long since had the chance to notice and adjust it) rather than
+that the underlying default ever applied differently than originally described; this
+session's research did not find a replacement page stating the current default
+explicitly, so treat "what a newly created account's default budget is today" as BEST
+CURRENT UNDERSTANDING, UNCONFIRMED going forward, distinct from the still-VERIFIED
+mechanical fact that a $0 budget blocks immediately once set. A separate toggle, "Stop
+usage when budget limit is reached," applies only to cost-centre, organization, and
+enterprise budgets (not user-level ones, which "always enforce a hard stop and do not have this
 setting") and is **off by default** at those three levels -- without it, "charges
 continue to accrue" past the configured limit with only a notification, not a block; the
 docs explicitly recommend enabling it on every budget an admin creates. Separately,

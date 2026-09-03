@@ -2,1398 +2,6 @@
   "generated": "2026-09-03",
   "sources": [
     {
-      "url": "https://arxiv.org/abs/2005.11401",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "8fe67b6e6cba908511e7a7bb688a6306cd15309ae9096b4e57970469dce23e55",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://arxiv.org/abs/2305.15334",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/system-prompt-design-as-craft.md"
-      ],
-      "type": "content-hash",
-      "value": "ec15f3a1f50f8f2ee136c9c464bb6b465610017450d7be1141c1feff10701538",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://arxiv.org/abs/2403.14720",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/system-prompt-design-as-craft.md"
-      ],
-      "type": "content-hash",
-      "value": "5f0530309edf74c4bdf28f68f366149238b1d5453579d7a24f48ce84b8df250e",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://arxiv.org/abs/2602.23368",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "2e81e230ca58e20f499d9a1f068382fc92dd84b45ba9330bd8eb13987ae6c77f",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://arxiv.org/pdf/2506.01333",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "dac92180371101714e141160cb822a7ec86ca3fb7ee849e49930a206c6abf46a",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "82888044d831c3bd18f03d87a846ce5d27e028bd67a095edc04ba377fc622163",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://claude.com/blog/building-agents-with-the-claude-agent-sdk",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/evals-and-testing-a-harness.md"
-      ],
-      "type": "content-hash",
-      "value": "23fb8acc3b0ab902cd807442c8673301861d0ed9b027f31e3444b392c7796c00",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://claude.com/blog/how-claude-code-works-in-large-codebases-best-practices-and-where-to-start",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "a0b902d314696573f720b149f35ff1e24413399db6f831146d1294d1ee630448",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/advisor",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/model-routing-and-selection.md"
-      ],
-      "type": "content-hash",
-      "value": "429fd184a4655b08adf5d1e88923b26a0e8c9a87c5050225c68e8f4a39721cf5",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/agent-sdk/agent-loop",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/auth-and-usage-accounting.md"
-      ],
-      "type": "content-hash",
-      "value": "ebdc66c65ac279f53437841abf0a50853ac8a02d7b80bf364d7868de82a7e301",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/agent-sdk/streaming-output",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/llm-api-contract.md"
-      ],
-      "type": "content-hash",
-      "value": "e0572024622260762685c08ac749e6d61e17a9de81a39feac18c55bfd13c507f",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/agent-sdk/todo-tracking",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "5772d0bffda6b0daf78d7d64e20c382f75a969888b8b7350af01615b64e08cd6",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/agent-teams",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/handoff-mechanism.md",
-        "references/harnesses/inter-agent-messaging.md"
-      ],
-      "type": "content-hash",
-      "value": "e6b822a9443ca4898df9bf25328d560591b8679a0d91a12ead7fac406a19100e",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/agent-view",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/fan-out.md"
-      ],
-      "type": "content-hash",
-      "value": "7a32e8c195927d79937a75be1b81305cc93bb2223c5a36a13d94dc0260c8e099",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/authentication",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/auth-and-usage-accounting.md"
-      ],
-      "type": "content-hash",
-      "value": "70a67c3b2e3be3b5f70533481420c338fd012196d0e95a459554a7e5857c2953",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/checkpointing",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "19de162a508482d5d17179e3d6721afe81d907e3b53f5b730edb2dd2574609ea",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/claude-directory",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "f83a8946827f8e525aea0e92c9d28f1418b61738d48a195c831d5741883a099a",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/cli-reference",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/streaming-and-incremental-rendering.md"
-      ],
-      "type": "content-hash",
-      "value": "ef8a850a0e5c0015b34f27562c5d7eba3ae9f19aeb13bbf7bafe2517ec96b395",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/context-window",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-compression.md",
-        "references/harnesses/instruction-context-budget.md",
-        "references/harnesses/memory-management.md"
-      ],
-      "type": "content-hash",
-      "value": "edbfbdda5cd854d7ce398f44e44e78f4ad0dfb8981e91b78112900efb6af18a9",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/costs",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/auth-and-usage-accounting.md",
-        "references/harnesses/caching.md"
-      ],
-      "type": "content-hash",
-      "value": "780a89ce9ed18459339294ad3b5a0c84239ba62299e2132bffaf6c170e68376b",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/errors",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/retries.md"
-      ],
-      "type": "content-hash",
-      "value": "6d6b4c1e1d63bb9d3042cb2d641955e990b32de1a23e624df631488cd715b2fc",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/fullscreen",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tui-cli-application-architecture.md"
-      ],
-      "type": "content-hash",
-      "value": "d4c20dce22585923d94286d3147ffc22bd55edf27e4ebb9c42f375e7f01fa538",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/headless",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/evals-and-testing-a-harness.md"
-      ],
-      "type": "content-hash",
-      "value": "361e8541050d8790a590183d8b9c87f8524441d943e497a5a0b896c6c5995f6a",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/hooks",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/hooks-lifecycle-extensibility.md",
-        "references/harnesses/inter-agent-messaging.md"
-      ],
-      "type": "content-hash",
-      "value": "0939c35caa8104af1e19d38c8224cca4aa96db128d0a3a68f793cb4d04d80aca",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/how-claude-code-works",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-compression.md",
-        "references/harnesses/memory-management.md",
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "193c9b77378732dc2eef8beda4546effceb99cfc58deeb89bf3ff52bd597eca3",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/interactive-mode",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tui-cli-application-architecture.md"
-      ],
-      "type": "content-hash",
-      "value": "9d8c6177932807855444a2fd456ba50044c549df180f8756c9d79ba94787f852",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/keybindings",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tui-cli-application-architecture.md"
-      ],
-      "type": "content-hash",
-      "value": "48d5a798b4623f99ae43d04eedb44ae40069c86c806e84dcdd9c28419f853c0e",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/large-codebases",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "df2e16e47f69a9abca7f55e90229a44e56c1349439d82015eeb59c986a2f64ca",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/managed-mcp",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "266e328e3b89e095414706f399d354653435a000b24b287753027187d41ea29d",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/memory",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/instruction-context-budget.md",
-        "references/harnesses/memory-management.md"
-      ],
-      "type": "content-hash",
-      "value": "a5dc9f1be38683abbeb986aa2a0bb8a2e96c023e83a487b33c67f7babfc8a4d2",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/model-config",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-compression.md",
-        "references/harnesses/model-routing-and-selection.md"
-      ],
-      "type": "content-hash",
-      "value": "7be618ee722aff4fbd8904fc7734761b6f289d5057923e792ffaf8f9edc62771",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/monitoring-usage",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/auth-and-usage-accounting.md"
-      ],
-      "type": "content-hash",
-      "value": "60b4be7eb10b8896f8e1c40ec317f9044ca3ab05e2414882351b4a1503ee3351",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/permission-modes",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/permissions-and-sandboxing.md"
-      ],
-      "type": "content-hash",
-      "value": "9646f7c1f16dd70adcf84dc60908196be0c85ed0c1f2f086f04b3bd873955113",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/permissions",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/permissions-and-sandboxing.md"
-      ],
-      "type": "content-hash",
-      "value": "c5bf3a41598202fb94cb9eaa447e90fde64d205d75cbc5f00365ec0d2185aefc",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/prompt-caching",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/caching.md"
-      ],
-      "type": "content-hash",
-      "value": "79c817d54b4cc47a569e1951ca593086c0b137a071e77dd1434742296cce8edb",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/sandbox-environments",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "a5f663b6e3fa6698971956491259678b2dd58dc872562d015e947d62bbcf14c3",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/sandboxing",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md",
-        "references/harnesses/permissions-and-sandboxing.md"
-      ],
-      "type": "content-hash",
-      "value": "2a1f0721b23ee69f9278b8be6de684bdc2e0ce3bda0aa5671b4294ae7aa3f8ea",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/security",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/permissions-and-sandboxing.md"
-      ],
-      "type": "content-hash",
-      "value": "d7ebe7a1ffc21170d14c974205ce3233c90cac3a832d22b6db70face91a275ca",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/sessions",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "a865c03be83462b8c65bfb58261197561b04177dac57f60e03b816ddf306d52f",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/settings",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/configuration.md"
-      ],
-      "type": "content-hash",
-      "value": "481e85b0cbf5e50d1f0b7004e49e2c8d9c8a8c10555c757872580254729f4843",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/setup",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "ac00fa19c698a6ac441889989b23dbe71fecc4831754c7bd6057a58bb1dff0c4",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/skills",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/instruction-context-budget.md"
-      ],
-      "type": "content-hash",
-      "value": "68b8f19df06116bac63576869f1a9fac6d0123c341999c2e0f62fc948f079cae",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/sub-agents",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/fan-out.md",
-        "references/harnesses/handoff-mechanism.md",
-        "references/harnesses/inter-agent-messaging.md",
-        "references/harnesses/model-routing-and-selection.md"
-      ],
-      "type": "content-hash",
-      "value": "84bafe3edd0bf4742bdf9b62b240bc08e456615932afff04b64bf2f6c93bbe93",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/terminal-config",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tui-cli-application-architecture.md"
-      ],
-      "type": "content-hash",
-      "value": "3270a8ddb4062556f02d5c8934a4efa151e6603e16bfe45495cda6f0c62fb236",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/third-party-integrations",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/auth-and-usage-accounting.md"
-      ],
-      "type": "content-hash",
-      "value": "50a8384a06a1a6920261864947364ec45498f8400c5c1a2af94cfe7436126551",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/tools-reference",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "20262b21213a153b08263b791c264b175d1ee4426fd9e67593cec3643afdb727",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/vs-code",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "c8f958b6c1b0524a55d613cc469a90cc348129bd31a238cd6ea9dc884f1aa99a",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.claude.com/docs/en/workflows",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/auth-and-usage-accounting.md",
-        "references/harnesses/model-routing-and-selection.md",
-        "references/harnesses/orchestration.md"
-      ],
-      "type": "content-hash",
-      "value": "606b9897fce706020016411490cdb5793a49df03306e6ca74c92c0028cbb1f80",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://code.visualstudio.com/docs/agent-customization/custom-agents",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/handoff-mechanism.md"
-      ],
-      "type": "content-hash",
-      "value": "e65223447401cb8147a1617c235244c1dfdba33b266f44fd6bc14c8d85431aa2",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://developers.openai.com/api/docs/guides/function-calling",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/llm-api-contract.md"
-      ],
-      "type": "content-hash",
-      "value": "0de11f60e19427806f5e3a8f7a83a1e288cb40e153697b3f000b154268504114",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.claude.com/en/api/messages",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/llm-api-contract.md"
-      ],
-      "type": "content-hash",
-      "value": "fef4f8de5da78032769b1049c35370bb58a8270a1e3fac52dacda3c81c3d6f6b",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/copilot/concepts/copilot-billing/understanding-and-managing-requests-in-copilot",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/auth-and-usage-accounting.md"
-      ],
-      "type": "content-hash",
-      "value": "e6938b7221e43d9c8758e526fb3f8302eefa5cbb99a6ad365dccb4a8d33e75bd",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/copilot/customizing-copilot/using-model-context-protocol/extending-copilot-chat-with-mcp",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "c5d71c024b99c1c21e0b61e061b24a6c97271028fd33e8963bcb4d5f78dc9dec",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/hooks-lifecycle-extensibility.md"
-      ],
-      "type": "content-hash",
-      "value": "978e5f7f4482aba60bc471642768c2dd133baa618bb0655ce14633ec443b823d",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/concepts/agents/about-agent-skills",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/instruction-context-budget.md"
-      ],
-      "type": "content-hash",
-      "value": "2c6766dfb858493af1af6c9f0bc255082ab6067e07400ca756fbb24a921a1697",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/about-copilot-cli",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "d9f0b08170e3ce2bd4e4ba7ed99367e7d76be3fcaa0f369b515d33bafd917a11",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/chronicle",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "6331740fd04f360802cce5d6af2a6be8fd57c09acdae3e666b1185980370d19f",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/fleet",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/fan-out.md",
-        "references/harnesses/inter-agent-messaging.md",
-        "references/harnesses/orchestration.md"
-      ],
-      "type": "content-hash",
-      "value": "0762b14e846eceb828c2e0a04bf35c633b03fddb6d06975eb73f26b15651cdb2",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/tool-search",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "357e47d48191553da727f06912a270ce71e4de1102bd2ef2a39b1576bd357b4f",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/concepts/agents/copilot-memory",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/memory-management.md"
-      ],
-      "type": "content-hash",
-      "value": "f65fb383563d02c55692ccd63567442aee1f2022b0d387728bcb31a4b9739484",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/concepts/billing/budgets-for-usage-based-billing",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/auth-and-usage-accounting.md"
-      ],
-      "type": "content-hash",
-      "value": "da4c7888c80afea1496a163c92259bde21760da10473a248f558e066ca617615",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/concepts/models/auto-model-selection",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/model-routing-and-selection.md"
-      ],
-      "type": "content-hash",
-      "value": "cc676368eea8b86b7933a5b057cf0cf2d3f8d0a9fe37badebdf5ccd2e2d99dad",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/concepts/response-customization",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/instruction-context-budget.md",
-        "references/harnesses/memory-management.md"
-      ],
-      "type": "content-hash",
-      "value": "20385b2a5fc9801c6798a899daed8c631e6e2216fa5b47ab2b68f274836523c2",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-mcp-usage/configure-mcp-registry",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "ab7bba4a1174c9958badc18b62369954e4dbf5648acea59f683de1f54c018cb2",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-mcp-usage/configure-mcp-server-access",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "6620053f02edd6b6722f38f3ff6a25b792ccdd6a81ef64be35771f64b51b523a",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/permissions-and-sandboxing.md"
-      ],
-      "type": "content-hash",
-      "value": "ad05c7a91f564f970f028ef313408611cb167fe315a578c987977975f2dc601f",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/permissions-and-sandboxing.md"
-      ],
-      "type": "content-hash",
-      "value": "178856263afc825fb935d9cf5d7c3353a315a6d185592da2188856ab4ce8b615",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/instruction-context-budget.md"
-      ],
-      "type": "content-hash",
-      "value": "7e8baa8add2d310fc90727b8b76b9cbf083da557a034f9a2b55330e6b476a598",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "e911f79cd91e6c8d897b58e93c104d6643eaec9272712b61167b104cbd287bbb",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/instruction-context-budget.md"
-      ],
-      "type": "content-hash",
-      "value": "51918427ddfc492a31393f80a26f82db0688d1813457a2026f69f858adc0fcb0",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/handoff-mechanism.md"
-      ],
-      "type": "content-hash",
-      "value": "f5d7e8945a382c0f712758dc88f3e8f4d444864d5291d2ccbce596edae12716a",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-byok-models",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/model-routing-and-selection.md"
-      ],
-      "type": "content-hash",
-      "value": "5b61730b2edf6b709cbb28ba6855b2d359ab2d2ae474f132b2cc0e147650ad00",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "2f23c3b33be84f3e7e078abc543d2cc14ec69fbfff2051780815edc90c18e387",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/auth-and-usage-accounting.md"
-      ],
-      "type": "content-hash",
-      "value": "9ed4004b81e49173c54caef33e8297c95c8f27a31fe1cb1a26528517919a44c0",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/streaming-and-incremental-rendering.md"
-      ],
-      "type": "content-hash",
-      "value": "eb4fefa2c79dc2953dd092096aa70bb325ca8d21b13755aaa138b748d12abd74",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/allowing-tools",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/permissions-and-sandboxing.md",
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "9bc6399c6e7be8394296fdcd65b4a190db5eb2838a2e0d1d13fcdd6f992e193e",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/chronicle",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "37ec1fd574af2f18fa0c6bc8e4e385e47aa8fadf5bc036356820a51cef054151",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/delegate-tasks-to-cca",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/handoff-mechanism.md"
-      ],
-      "type": "content-hash",
-      "value": "d36b638f47f8e2565cdf93d82a0b1fbf4db5cf26f0caa1f81a6d63a5f4a50b74",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/overview",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-compression.md",
-        "references/harnesses/memory-management.md",
-        "references/harnesses/session-persistence.md",
-        "references/harnesses/tui-cli-application-architecture.md"
-      ],
-      "type": "content-hash",
-      "value": "6e85f65639a6ede59a68b27f4246295f5a9799996b6090db6d047a7a6d485d8e",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/streaming-and-incremental-rendering.md"
-      ],
-      "type": "content-hash",
-      "value": "e706671abdc5eeed1bf53a09b5ff66edb0d551510b248e272d0d82d8596a3390",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/custom-agents",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/handoff-mechanism.md",
-        "references/harnesses/inter-agent-messaging.md"
-      ],
-      "type": "content-hash",
-      "value": "c37c20226ad4229abfbc13df99a34d5e10045d0987157bb5104ccba8ba771817",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/fleet-mode",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/inter-agent-messaging.md",
-        "references/harnesses/orchestration.md"
-      ],
-      "type": "content-hash",
-      "value": "09feb06edf4d2cfc4acee55d5e02df6e3c6bbb7efa37b2c084b7d5007afe5ab8",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/use-copilot-sdk/session-persistence",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "d3bf09a26ec178e1374736af8b318af6ffaa5a06af6f6908175e8e725a4511cd",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/use-copilot-agents/copilot-memory/manage-for-yourself",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/memory-management.md"
-      ],
-      "type": "content-hash",
-      "value": "c20c2d86d80355463790ff35e0215812bc578ce5fc567d5b9a901dff67ceaa43",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/how-tos/use-copilot-agents/use-copilot-cli",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/memory-management.md"
-      ],
-      "type": "content-hash",
-      "value": "6e85f65639a6ede59a68b27f4246295f5a9799996b6090db6d047a7a6d485d8e",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/managing-copilot/configure-personal-settings/installing-the-github-copilot-extension-in-your-environment",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "2a84507953a8c535bb1da33933783512799dd45b1c9b6b3e13b7ffc408fda89e",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/configuration.md",
-        "references/harnesses/streaming-and-incremental-rendering.md"
-      ],
-      "type": "content-hash",
-      "value": "f46c95707505211c238df0513c806f98f80a2c3b46d067080dce3b3c1e201482",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/memory-management.md",
-        "references/harnesses/model-routing-and-selection.md",
-        "references/harnesses/packaging-distribution-and-self-update.md",
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "1b1a38b2e04090cee6a54d08b06d4636c0098b76e610836a5f3d4a351aa3f00f",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "57ffe2923128097c29fa56f1c5cc9492589b01c1a90fcee8be9449b7f68421a5",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/evals-and-testing-a-harness.md",
-        "references/harnesses/model-routing-and-selection.md",
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "f0c701bc7019ecf72ec5c1711259cbe3f83c227b028ad8532187496084e233cd",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/reference/custom-agents-configuration",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/handoff-mechanism.md",
-        "references/harnesses/model-routing-and-selection.md",
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "05d75570f96e31d10fe02d6af4e755e471b7504fbd5906ceb0144b7d4f1d10b7",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/reference/hooks-reference",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/hooks-lifecycle-extensibility.md",
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "f5443f4b80e410091eff2974ea945bd9c20a60e7e2aa32fbdd25fb4a60046b83",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/copilot/responsible-use/copilot-cli",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/permissions-and-sandboxing.md"
-      ],
-      "type": "content-hash",
-      "value": "989e1745a94f040320be3a23a3caa021413c00d3fd8cb5ac4620f5dad0423b8a",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://docs.github.com/en/enterprise-cloud",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/caching.md",
-        "references/harnesses/retries.md"
-      ],
-      "type": "content-hash",
-      "value": null,
-      "commit_date": null,
-      "status": "DEAD_LINK: HTTP 404 (confirmed with redirect-following retry too)",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://github.blog/changelog/2026-04-17-github-copilot-cli-now-supports-copilot-auto-model-selection/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/model-routing-and-selection.md"
-      ],
-      "type": "content-hash",
-      "value": "8058433ef48e4b49d604316b86523d2eedfcb122b382e564c893587908e1d3b6",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://github.blog/engineering/from-pixels-to-characters-the-engineering-behind-github-copilot-clis-animated-ascii-banner/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tui-cli-application-architecture.md"
-      ],
-      "type": "content-hash",
-      "value": "0eadb9a9981660cfbc8e2c3de8768e919eb4c7a5e5489340d821cd225cba60df",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://github.blog/news-insights/product-news/copilot-new-embedding-model-vs-code/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "86a101f15231d5ee362257f6d4c3b9cb5b890842efba4fd16b025a33d18a0e86",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
       "url": "https://github.com/NousResearch/hermes-agent",
       "area": [
         "harnesses"
@@ -1403,8 +11,8 @@
         "references/harnesses/evals-and-testing-a-harness.md"
       ],
       "type": "git-commit",
-      "value": "561b053f794a",
-      "commit_date": "2026-09-03T09:44:24Z",
+      "value": "7b72fd12476a",
+      "commit_date": "2026-09-03T10:42:15Z",
       "status": "OK",
       "checked": "2026-09-03"
     },
@@ -1553,8 +161,8 @@
         "references/harnesses/evals-and-testing-a-harness.md"
       ],
       "type": "git-commit",
-      "value": "007c0be64078",
-      "commit_date": "2026-09-03T10:03:59Z",
+      "value": "265a33393eee",
+      "commit_date": "2026-09-03T10:34:53Z",
       "status": "OK",
       "checked": "2026-09-03"
     },
@@ -1631,1544 +239,6 @@
       "checked": "2026-09-03"
     },
     {
-      "url": "https://gorilla.cs.berkeley.edu/blogs/8_berkeley_function_calling_leaderboard.html",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "96c6413dc0952a4ec62f41f0bb4b6bb8666ff161e135a1f2566ac69c2744c2ed",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "ef72a8621b6ea1b8aa1d1b7691f73cc3079fd38e86f599c9a38cb626c911fc29",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/evals-and-testing-a-harness.md"
-      ],
-      "type": "content-hash",
-      "value": "df7e1404f4a78f76be4380c67d1e0ac46a5e27f01940e9196263827cec28f7a3",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/assets/files/llms-full-24b1af8f853f53bfc3223973214a1d73.txt",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/auth-and-usage-accounting.md"
-      ],
-      "type": "content-hash",
-      "value": "2b0f3dd2ed96240d6ea58b8f19d95339bf0930ff656447f5b7072bac51b9d7d6",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/developer-guide/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/evals-and-testing-a-harness.md"
-      ],
-      "type": "content-hash",
-      "value": null,
-      "commit_date": null,
-      "status": "HTTP_404",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/getting-started/installation",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "b56a9c3c428d3b371a372e87f4189a48a7a4dc39449e88db155caacd6fc6062d",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/getting-started/platform-support",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "66a6ecb92515a3fe074ab4cfdc282a0f445b04e7f562720690ef3c255bca0e79",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/getting-started/updating",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "3c3ed542d16572b3a69d3ca2a573d6d26c198d0354e299a6da3bdb2069b54983",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/reference/cli-commands",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "7e4b1514a13155a9e5534b8075bbe83a33c5d4d7cf59fc873a014ffaaf2591ce",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/bot-mode",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/inter-agent-messaging.md"
-      ],
-      "type": "content-hash",
-      "value": "9368ca623d3f77f92bbeea34580c157702769e4fc32b6056114b1ff8f361bed5",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/checkpoints-and-rollback",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "8aa6e3a4601961b78507f2136c2fbd3e775e5df19029d07f78231bcd3b91006e",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/configuration",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/retries.md"
-      ],
-      "type": "content-hash",
-      "value": "017948ca92c890c5705d86e2ae5e79b68e9345e885d405c44a731d14d6355775",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/docker",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "3048c7966cd5d679ded2962d0e38cce2a99f82142851f88d353d3132cb7f38d7",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/retries.md"
-      ],
-      "type": "content-hash",
-      "value": null,
-      "commit_date": null,
-      "status": "HTTP_404",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/context-files",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "282f665dbca281daa4e62229307f88654827b9644490389cf1c3d70030ab248d",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/inter-agent-messaging.md"
-      ],
-      "type": "content-hash",
-      "value": "2a38ce08c0ce500ce4f14010467f4759872777f5d698837d6cb0711b3e4da578",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/lsp",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "9dc0931de3ac0c6697bc92b21806bb81c21938c0b7513a385c53dec5d97c2f45",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "064fc5d8e71df88c66b9d571707fe16a5033b31894ce1adf0c0d05805a320f45",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/memory",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/memory-management.md"
-      ],
-      "type": "content-hash",
-      "value": "23c7b577a336bb4938abe60d101daeee5b9c3a79872c8fdb2dcb52122abfd884",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/memory-providers",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "8ad925be2b154cb505de9aae1ec454802fee3eccf88d63d2235c10031b557328",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/overview",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md",
-        "references/harnesses/memory-management.md"
-      ],
-      "type": "content-hash",
-      "value": "16beb3bc1e8c491637db47f29cb0e77ddf02f45e487df3568417821e55513e5d",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/personality",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/memory-management.md"
-      ],
-      "type": "content-hash",
-      "value": "c08a52e0b9f6c112611b5a5d84d2d2b9fa6986997bddb4fe3ca0b71a3ff7f3b7",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/tool-search",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "08971916cf1ff195c83eaf8d5c6c5d0b947bd63ee52698b4d12162a6cf93bd92",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/security",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "1f2800bb0857d97e67e7f81c1d2c5c3aafc99dad7ad7dbc29beae8d91b951300",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/sessions",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "fd0d3b693defff4ffd2ef72c042451ff404897e0238ea286c4a3c83996016a28",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/agents-course/bonus-unit2/monitoring-and-evaluating-agents-notebook",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/evals-and-testing-a-harness.md"
-      ],
-      "type": "content-hash",
-      "value": "5b24408a03ce73dbfa8f69ccebe04238861370ddd10a9ff28bdf048f482f44e3",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/agents-course/en/unit2/smolagents/multi_agent_systems",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/orchestration.md"
-      ],
-      "type": "content-hash",
-      "value": "ef9efd89c848e7ddfdb42bc2089d9f9edfd5848166f22a26257276417524729c",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/agents-course/en/unit3/agentic-rag/agentic-rag",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "a1b7a998b5cc1b1cab25153b72794310ab1aab42be386e7d0a6fed3a046d56bb",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/cookbook/en/advanced_rag",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "9749b77fb91944bfc172924184e49929e0234f07cc9c53a7f7a0aa6104a929d1",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/cookbook/en/rag_evaluation",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "84d5d67609b8efa75b13e388f94f84a8ca7d0fa6f5808ed3ea55f04e901f3ca4",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/cookbook/en/rag_llamaindex_librarian",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "19b51cd70771d8378a0bc1564282abe59e907815faee2d72a6266c3af87979e9",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/cookbook/en/rag_with_hf_and_milvus",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "f53f408e4aff2baceef92e57c872b11eb26b58f49608b682c1ac0400d719387d",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/cookbook/en/rag_with_hugging_face_gemma_elasticsearch",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "d685fcee2720f9f0e2f2240451cef4633d43cd4df54149fb8c15a95661c53a25",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/cookbook/en/rag_with_hugging_face_gemma_mongodb",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "c3c9ad03e07df3ef31675c3de4da741a2e2424377fc621e98d718c1190e4d3ce",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/cookbook/en/rag_with_knowledge_graphs_neo4j",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "b46d9d806a46aefefc1812dbb7cb89f0517d04cd4462999e0ba11498fbd676f3",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/cookbook/en/rag_with_unstructured_data",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "6a134b22e4b74ad55822bdbc8623369b2aa1c2bab527631a43975e74f462fd78",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/cookbook/en/rag_zephyr_langchain",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "7ac9ba9cf4809892362e0ad2d84feef63c8278c5a66e29ddfe8bf22f3a070c11",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/cookbook/en/semantic_cache_chroma_vector_database",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "7f8b4f9bacd5c65cba391f84b7c2ebd7394c4664b1c00d22cea704c34233a1ba",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://huggingface.co/learn/cookbook/en/structured_generation",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "89056e4780901a63b10ec41bf60ea1149a3cb822aa7daf834360326bcbce9090",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "9efd2d27f669ce20929ab78855c72807bdefc4d082fc17bdeac8e215b62036f1",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://mariozechner.at/posts/2025-11-02-what-if-you-dont-need-mcp/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "dbe783428467da60e4e9541d9cbe689f7d7d060a42484d0a7135b5785fc0e5d9",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://mariozechner.at/posts/2025-11-30-pi-coding-agent/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/permissions-and-sandboxing.md"
-      ],
-      "type": "content-hash",
-      "value": "6464e0288377f4a874bbc7252ae6c16ab2d1be5ea11c17f90f6bd5035b57fe5f",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://mariozechner.at/posts/2026-04-08-ive-sold-out/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "eff84551bff6a02c2219c80ac7d58735d7cd37e9e307942a5b7557c48c32535d",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://modelcontextprotocol.io/docs/concepts/tools",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "07f6fa0c2f790f23505a0d16b801bee275c14bb76c78656fc30aa516c5d53a91",
-      "commit_date": null,
-      "status": "OK (redirect followed via curl)",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://modelcontextprotocol.io/registry/about",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "4c49302ad5d204d1a0cce583a1b31971e43a32e9e521c6f2860b91d63b319a2b",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://modelcontextprotocol.io/specification/draft/basic/security_best_practices",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "edc02649f4992b92e80f78742b1497923fb88ed4f889a3376bdc30896ddb6adf",
-      "commit_date": null,
-      "status": "OK (redirect followed via curl)",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opencode.ai/docs/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/caching.md",
-        "references/harnesses/context-compression.md",
-        "references/harnesses/fan-out.md",
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "6a119434225648f04bf47edb9986991eaf79d70dc798617bd3e10ed7b4939064",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opencode.ai/docs/agents/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/orchestration.md"
-      ],
-      "type": "content-hash",
-      "value": "ea3bafd44f82205df5fe327d687037976fc068f4b352b9a2fadf1068cee14c6c",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opencode.ai/docs/cli/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md",
-        "references/harnesses/session-persistence.md"
-      ],
-      "type": "content-hash",
-      "value": "8e6a0728475df98b1b9480a78be39841cbadae54d1e0fe6262aa6967bbc549b9",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opencode.ai/docs/config/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/configuration.md",
-        "references/harnesses/context-compression.md",
-        "references/harnesses/model-routing-and-selection.md",
-        "references/harnesses/retries.md"
-      ],
-      "type": "content-hash",
-      "value": "6a26d135b71bf2265cea1a3b11b31b25d96b1ff2f637717f5261a6bb2ffb268d",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opencode.ai/docs/keybinds/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/handoff-mechanism.md"
-      ],
-      "type": "content-hash",
-      "value": "1fd29f3770984d65cd6837e656f3b4509578e85470f84adcdeca9cb8e1e167c5",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opencode.ai/docs/mcp-servers",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "9761f6245b6bddc28bc1390e593cbc277c487aa6354731e89807d81905b95ec2",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opencode.ai/docs/permissions",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "79cf8e81deae268c8a92797004d32d47a11e5aebe930b74c5264dc44dfc79b5f",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opencode.ai/docs/permissions/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/configuration.md",
-        "references/harnesses/context-retrieval-and-agentic-search.md",
-        "references/harnesses/permissions-and-sandboxing.md"
-      ],
-      "type": "content-hash",
-      "value": "79cf8e81deae268c8a92797004d32d47a11e5aebe930b74c5264dc44dfc79b5f",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opencode.ai/docs/plugins/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/hooks-lifecycle-extensibility.md"
-      ],
-      "type": "content-hash",
-      "value": "7e5389446894ace8f82c33dd43611693bbb51798ff0145fb233eaac89923cf89",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opencode.ai/docs/providers/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/caching.md"
-      ],
-      "type": "content-hash",
-      "value": "7756cc3ab3e700f8e09dc5df4392c2dbbf5d318093e0a9875dce682242d41e26",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opencode.ai/docs/tools",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "674b51e8862e79e01243821437a4c6f7996b16962dd52cf2f5a6432be1d661c3",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://opentui.com/docs/getting-started/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tui-cli-application-architecture.md"
-      ],
-      "type": "content-hash",
-      "value": "a63f94c4f7d991c8348d11716975f331cd92ef75ae61072b5bb5c22d6d539e9b",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://pi.dev/api/report-install",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/observability-and-self-diagnostics.md"
-      ],
-      "type": "content-hash",
-      "value": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://pi.dev/install.sh",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "a3a3604ee550bf72c5da7da3c3014cc361c14ab3b91b1b24f097d9022bd8de5b",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "7e5f280f3c1056ce3f68d69293daaf7e76ed278398cbe596fef3be4c230029c2",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/system-prompt-design-as-craft.md"
-      ],
-      "type": "content-hash",
-      "value": "ca678e3be70fcf260055afac15842ba0972bf1aeb516d840cd36289b4bb758a9",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/strict-tool-use",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "8600855e87f13e632634186244e34bf74c1165c73b01a3168ab67c985f32dade",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://platform.claude.com/docs/en/api/messages",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/llm-api-contract.md"
-      ],
-      "type": "content-hash",
-      "value": "c7280c608296b53c850bba88a0a755cf4fdee5dcbf985a7e429276f22b337df2",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/caching.md"
-      ],
-      "type": "content-hash",
-      "value": "49927ac3c91e95502337b85224c055ca8f72ba4c18278d0e141a5cb41534d29e",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/system-prompt-design-as-craft.md"
-      ],
-      "type": "content-hash",
-      "value": "c237b959114357ea2174115e0e161e5f8dbf997a268c9d7c124aa4cfa1bc02f0",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://platform.claude.com/docs/en/build-with-claude/task-budgets",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/auth-and-usage-accounting.md"
-      ],
-      "type": "content-hash",
-      "value": "39844ba0da0cb7be6ca53a27f521d8b89cab751a2d84f6e8d05709fe49414756",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://platform.claude.com/docs/en/docs/build-with-claude/streaming",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/llm-api-contract.md"
-      ],
-      "type": "content-hash",
-      "value": "ab0e8606e14a95320ad2445291e363e7d872238daa23bf4bb1a5c88a59cc3105",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/mitigate-jailbreaks",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/system-prompt-design-as-craft.md"
-      ],
-      "type": "content-hash",
-      "value": "21198157c1ac21b902e29e10f178ab4d5247d7cebc67907ea7fccdf83d7706f7",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://platform.openai.com/docs/guides/function-calling",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/llm-api-contract.md"
-      ],
-      "type": "content-hash",
-      "value": "0de11f60e19427806f5e3a8f7a83a1e288cb40e153697b3f000b154268504114",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/.github/workflows/publish.yml",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "7b5faaa0d075febb954c9637c6514be60d26482d2fef5af2159f27de7fc3b5df",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/install",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "fc3c1b2123f49b6df545a7622e5127d21cd794b15134fc3b66e1ca49f7fb297e",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/script/build.ts",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "c98c068580faac0ebcade9a1179827a24bd3f3102e6c08fef637a0636fa9f19d",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/script/publish.ts",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "a865f09f5d59e349dfacd3b96689caf9ceb29c0f019a2c4afbde85e6394fc5ce",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/installation/index.ts",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "113efe8f8233189ff49736472d6bcbf3a8eaf617b382b01c80619b219806c61f",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://raw.githubusercontent.com/earendil-works/pi/main/.github/workflows/build-binaries.yml",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "f11568909694d035977d52a86f2aeb55fb3fd35c3d0e6a7ed1e3fa70c47936fa",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/package-manager-cli.ts",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "8f75c01f9c2c2e07d2144eaef43a0739435844cacf28a6fd6b316692e510a1c0",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/utils/windows-self-update.ts",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "4289579fd8219b63dbe2d01bff20dd6afb806fb8e4d14484bc911868bfd83844",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://raw.githubusercontent.com/earendil-works/pi/main/scripts/build-binaries.sh",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "862c1b88c4558ce3581199561eb4a968077cfa5490be024614b7aa91e2071bf5",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://registry.npmjs.org/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/packaging-distribution-and-self-update.md"
-      ],
-      "type": "content-hash",
-      "value": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://vadim.blog/claude-code-no-indexing/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md"
-      ],
-      "type": "content-hash",
-      "value": "08d5c6e1c880807b79553170178777174beaa5fbc2c9e6edaa9ddd6ef0d6ae0a",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://www.anthropic.com/engineering/building-effective-agents",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/system-prompt-design-as-craft.md",
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "b34b1f93892527db8585f198a71eab2f853ad26e784267bd4063a223b2091042",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/context-retrieval-and-agentic-search.md",
-        "references/harnesses/system-prompt-design-as-craft.md"
-      ],
-      "type": "content-hash",
-      "value": "db842379481b1af1b0e6911aff34860fbe43ecd8e621d90801691d58f1e1cdfb",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://www.anthropic.com/engineering/harness-design-long-running-apps",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/evals-and-testing-a-harness.md"
-      ],
-      "type": "content-hash",
-      "value": "96b0b16fb2b2756eb542d5f42c5557925adbe619269d506538aea9b31de8d9b0",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://www.anthropic.com/engineering/writing-tools-for-agents",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/tool-schema-and-interface-design.md"
-      ],
-      "type": "content-hash",
-      "value": "a59c307b47304bb9bb93552232e96a72498eefa70f6da03a82c194dfdae3df82",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "7a65f4fe075a37d1eccfbab1624d47506b4b6ea3e6358fdd8f014cc0942ae893",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://www.promptarmor.com/resources/github-copilot-cli-downloads-and-executes-malware",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/permissions-and-sandboxing.md"
-      ],
-      "type": "content-hash",
-      "value": "5ea7828310beef6dcd2b1ceab6c6941fa211f53f56e253bd23aea2a0d2fddd7c",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://www.reversinglabs.com/blog/mcp-rug-pull-attack-worries",
-      "area": [
-        "harnesses"
-      ],
-      "cited_by": [
-        "references/harnesses/mcp-supply-chain-trust.md"
-      ],
-      "type": "content-hash",
-      "value": "2ad0b642b041d85e3380b4eede76d3893ddf3b0b20944b48c34e69f40a117608",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/case-study-apm-overhaul.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/23-case-study-apm-overhaul.md"
-      ],
-      "type": "content-hash",
-      "value": "4557585614eaafe3137ef5a4ca2ebc2b573ccb6457d92a8597289f6e3f5b5030",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/case-study-growth-engine.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/26-case-study-growth-engine.md"
-      ],
-      "type": "content-hash",
-      "value": "1f9925d4246c05031ecb526748c1315f02e4dda74118894fe935838c70e2ddb4",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/case-study-handbook-writing.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/24-case-study-handbook-writing.md"
-      ],
-      "type": "content-hash",
-      "value": "02da89ded6ff043d7556d74389ab51adea385a71f164a9c1df90eb75312a83f6",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/case-study-publishing-pipeline.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/25-case-study-publishing-pipeline.md"
-      ],
-      "type": "content-hash",
-      "value": "db2b67df1a498eaa9564dcbad6634d75ceee6d88664b4cd13e4c9bf0c2fb0528",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/appendix-a-cross-harness-reference.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/appendix-a-cross-harness-reference.md"
-      ],
-      "type": "content-hash",
-      "value": "156775a99fbd58d4e19d42e6c7cd2c0555372258709ec2530c9734b6953d50a9",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/appendix-b-genesis-worked-example.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/appendix-b-genesis-worked-example.md"
-      ],
-      "type": "content-hash",
-      "value": "87adcca52cf83fee188efcc4e9d830d6390b8637a8c3d117c4798be06ea6afaf",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch04-the-reference-architecture.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/04-the-reference-architecture.md"
-      ],
-      "type": "content-hash",
-      "value": "f57af9dd08c2306762b1532dc79b0530c0c8a3cfedb212c16669fede8886785e",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch09-part-iii-preface.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/09-10-part-iii-preface-and-practitioners-mindset.md"
-      ],
-      "type": "content-hash",
-      "value": "fc56d43df92f19775e9406ab1fbbb136bf2179ba32a1056a3d7ec5dfaa8711ec",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch10-the-practitioners-mindset.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/09-10-part-iii-preface-and-practitioners-mindset.md"
-      ],
-      "type": "content-hash",
-      "value": "efa3c6e252ebb319dbc7e3cf3d073db9c60d01be5d1481153261bafd010127d3",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch11-the-runtime-machine.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/11-the-runtime-machine.md"
-      ],
-      "type": "content-hash",
-      "value": "9366f52d8ecafd72874251549c16f2dcc8c0b5bf0ce181a06471f1365fb70281",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch12-the-instrumented-codebase.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/12-the-instrumented-codebase.md"
-      ],
-      "type": "content-hash",
-      "value": "6d76908f69cf72ee2142fff34bb7e07aa63220bc2436be45594b08c4a3c0c8e2",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch13-the-prose-specification.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/prose-framework.md"
-      ],
-      "type": "content-hash",
-      "value": "ef7257313010c41e2e1efd2611eb0f25656fe1dfc96a2977a691926d7021b306",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch14-the-load-lifecycle.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/14-the-load-lifecycle.md"
-      ],
-      "type": "content-hash",
-      "value": "740bd1c8338705acd7c6463ebcbe8c2309d1a84a8f7ff49b44c9f3054cdc0773",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch15-attention-and-context-economy.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/15-attention-and-context-economy.md"
-      ],
-      "type": "content-hash",
-      "value": "3359ceec0c8146e5fa14c00466ff83216ea6adad4d278eefcd2ebc977abe6ee2",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch16-deterministic-probabilistic-boundary.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/16-deterministic-probabilistic-boundary.md"
-      ],
-      "type": "content-hash",
-      "value": "7a68761fea6fbd38e63635f74bacbab48deed4e2bfe566d7d4ce2c4acce038db",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch17-multi-agent-orchestration.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/17-multi-agent-orchestration.md"
-      ],
-      "type": "content-hash",
-      "value": "634a903f2c69aefce1f15448214af50f0c9ff1301e96098c06348e4c413c4d3d",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch18-the-execution-meta-process.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/18-the-execution-meta-process.md"
-      ],
-      "type": "content-hash",
-      "value": "ff33bc1ac4e2fb54ea4ade845bb68203c5a19de89cf09527f532a352eb995e45",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch19-architectural-patterns-rosetta-stone.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/19-architectural-patterns-rosetta-stone.md"
-      ],
-      "type": "content-hash",
-      "value": "5a3b911c795ffb98224bf672546483bb0d33257d0f2d557f7921846a26b3db11",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch20-anti-patterns-and-failure-modes.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/20-anti-patterns-and-failure-modes.md"
-      ],
-      "type": "content-hash",
-      "value": "506379aaac18ef63a2cf31df7cdeef6856d57c5dbb2cdf5313f08d6869dd66f9",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch21-primitives-as-code.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/21-primitives-as-code.md"
-      ],
-      "type": "content-hash",
-      "value": "30ce4c8df66c6511e5d54b230e54d5a0e308c0c86a34bba654fc24165f1f40fe",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
-      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch22-the-reference-architecture-earned.html",
-      "area": [
-        "sdlc"
-      ],
-      "cited_by": [
-        "references/sdlc/22-the-reference-architecture-earned.md"
-      ],
-      "type": "content-hash",
-      "value": "649d9435a3f2272b3e919209f402770e4204bfd1211d411aa23e2b7fc5ab5810",
-      "commit_date": null,
-      "status": "OK",
-      "checked": "2026-09-03"
-    },
-    {
       "url": "https://github.com/danielmeppiel/genesis/blob/613f2a64a4a193cacd45fd4439a093044ae3178d/skills/genesis/examples/04-pr-review-advisory.md",
       "area": [
         "sdlc"
@@ -3235,6 +305,2936 @@
       "type": "git-commit",
       "value": "8aa6b95ee552",
       "commit_date": "2026-09-03T02:22:03Z",
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://arxiv.org/abs/2305.15334",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/system-prompt-design-as-craft.md"
+      ],
+      "type": "content-hash",
+      "value": "ec15f3a1f50f8f2ee136c9c464bb6b465610017450d7be1141c1feff10701538",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://arxiv.org/abs/2403.14720",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/system-prompt-design-as-craft.md"
+      ],
+      "type": "content-hash",
+      "value": "5f0530309edf74c4bdf28f68f366149238b1d5453579d7a24f48ce84b8df250e",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://arxiv.org/abs/2005.11401",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "8fe67b6e6cba908511e7a7bb688a6306cd15309ae9096b4e57970469dce23e55",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://arxiv.org/abs/2602.23368",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "2e81e230ca58e20f499d9a1f068382fc92dd84b45ba9330bd8eb13987ae6c77f",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/checkpointing",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "19de162a508482d5d17179e3d6721afe81d907e3b53f5b730edb2dd2574609ea",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/advisor",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/model-routing-and-selection.md"
+      ],
+      "type": "content-hash",
+      "value": "429fd184a4655b08adf5d1e88923b26a0e8c9a87c5050225c68e8f4a39721cf5",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/agent-teams",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/handoff-mechanism.md",
+        "references/harnesses/inter-agent-messaging.md"
+      ],
+      "type": "content-hash",
+      "value": "e6b822a9443ca4898df9bf25328d560591b8679a0d91a12ead7fac406a19100e",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://claude.com/blog/how-claude-code-works-in-large-codebases-best-practices-and-where-to-start",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "a0b902d314696573f720b149f35ff1e24413399db6f831146d1294d1ee630448",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/agent-sdk/todo-tracking",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "5772d0bffda6b0daf78d7d64e20c382f75a969888b8b7350af01615b64e08cd6",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/agent-view",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/fan-out.md"
+      ],
+      "type": "content-hash",
+      "value": "7a32e8c195927d79937a75be1b81305cc93bb2223c5a36a13d94dc0260c8e099",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://claude.com/blog/building-agents-with-the-claude-agent-sdk",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/evals-and-testing-a-harness.md"
+      ],
+      "type": "content-hash",
+      "value": "23fb8acc3b0ab902cd807442c8673301861d0ed9b027f31e3444b392c7796c00",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "82888044d831c3bd18f03d87a846ce5d27e028bd67a095edc04ba377fc622163",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/authentication",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/auth-and-usage-accounting.md"
+      ],
+      "type": "content-hash",
+      "value": "70a67c3b2e3be3b5f70533481420c338fd012196d0e95a459554a7e5857c2953",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/claude-directory",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "f83a8946827f8e525aea0e92c9d28f1418b61738d48a195c831d5741883a099a",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/cli-reference",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/streaming-and-incremental-rendering.md"
+      ],
+      "type": "content-hash",
+      "value": "ef8a850a0e5c0015b34f27562c5d7eba3ae9f19aeb13bbf7bafe2517ec96b395",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/agent-sdk/agent-loop",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/auth-and-usage-accounting.md"
+      ],
+      "type": "content-hash",
+      "value": "ebdc66c65ac279f53437841abf0a50853ac8a02d7b80bf364d7868de82a7e301",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/agent-sdk/streaming-output",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/llm-api-contract.md"
+      ],
+      "type": "content-hash",
+      "value": "e0572024622260762685c08ac749e6d61e17a9de81a39feac18c55bfd13c507f",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/context-window",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-compression.md",
+        "references/harnesses/instruction-context-budget.md",
+        "references/harnesses/memory-management.md"
+      ],
+      "type": "content-hash",
+      "value": "edbfbdda5cd854d7ce398f44e44e78f4ad0dfb8981e91b78112900efb6af18a9",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://arxiv.org/pdf/2506.01333",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "dac92180371101714e141160cb822a7ec86ca3fb7ee849e49930a206c6abf46a",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/costs",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/auth-and-usage-accounting.md",
+        "references/harnesses/caching.md"
+      ],
+      "type": "content-hash",
+      "value": "780a89ce9ed18459339294ad3b5a0c84239ba62299e2132bffaf6c170e68376b",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/fullscreen",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tui-cli-application-architecture.md"
+      ],
+      "type": "content-hash",
+      "value": "d4c20dce22585923d94286d3147ffc22bd55edf27e4ebb9c42f375e7f01fa538",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/how-claude-code-works",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-compression.md",
+        "references/harnesses/memory-management.md",
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "193c9b77378732dc2eef8beda4546effceb99cfc58deeb89bf3ff52bd597eca3",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/headless",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/evals-and-testing-a-harness.md"
+      ],
+      "type": "content-hash",
+      "value": "361e8541050d8790a590183d8b9c87f8524441d943e497a5a0b896c6c5995f6a",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/keybindings",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tui-cli-application-architecture.md"
+      ],
+      "type": "content-hash",
+      "value": "48d5a798b4623f99ae43d04eedb44ae40069c86c806e84dcdd9c28419f853c0e",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/errors",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/retries.md"
+      ],
+      "type": "content-hash",
+      "value": "6d6b4c1e1d63bb9d3042cb2d641955e990b32de1a23e624df631488cd715b2fc",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/managed-mcp",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "266e328e3b89e095414706f399d354653435a000b24b287753027187d41ea29d",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/interactive-mode",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tui-cli-application-architecture.md"
+      ],
+      "type": "content-hash",
+      "value": "9d8c6177932807855444a2fd456ba50044c549df180f8756c9d79ba94787f852",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/permission-modes",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/permissions-and-sandboxing.md"
+      ],
+      "type": "content-hash",
+      "value": "9646f7c1f16dd70adcf84dc60908196be0c85ed0c1f2f086f04b3bd873955113",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/permissions",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/permissions-and-sandboxing.md"
+      ],
+      "type": "content-hash",
+      "value": "c5bf3a41598202fb94cb9eaa447e90fde64d205d75cbc5f00365ec0d2185aefc",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/large-codebases",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "df2e16e47f69a9abca7f55e90229a44e56c1349439d82015eeb59c986a2f64ca",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/sandbox-environments",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "a5f663b6e3fa6698971956491259678b2dd58dc872562d015e947d62bbcf14c3",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/prompt-caching",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/caching.md"
+      ],
+      "type": "content-hash",
+      "value": "79c817d54b4cc47a569e1951ca593086c0b137a071e77dd1434742296cce8edb",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/model-config",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-compression.md",
+        "references/harnesses/model-routing-and-selection.md"
+      ],
+      "type": "content-hash",
+      "value": "7be618ee722aff4fbd8904fc7734761b6f289d5057923e792ffaf8f9edc62771",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/memory",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/instruction-context-budget.md",
+        "references/harnesses/memory-management.md"
+      ],
+      "type": "content-hash",
+      "value": "a5dc9f1be38683abbeb986aa2a0bb8a2e96c023e83a487b33c67f7babfc8a4d2",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/monitoring-usage",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/auth-and-usage-accounting.md"
+      ],
+      "type": "content-hash",
+      "value": "60b4be7eb10b8896f8e1c40ec317f9044ca3ab05e2414882351b4a1503ee3351",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/hooks",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/hooks-lifecycle-extensibility.md",
+        "references/harnesses/inter-agent-messaging.md"
+      ],
+      "type": "content-hash",
+      "value": "0939c35caa8104af1e19d38c8224cca4aa96db128d0a3a68f793cb4d04d80aca",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/security",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/permissions-and-sandboxing.md"
+      ],
+      "type": "content-hash",
+      "value": "d7ebe7a1ffc21170d14c974205ce3233c90cac3a832d22b6db70face91a275ca",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/sandboxing",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md",
+        "references/harnesses/permissions-and-sandboxing.md"
+      ],
+      "type": "content-hash",
+      "value": "2a1f0721b23ee69f9278b8be6de684bdc2e0ce3bda0aa5671b4294ae7aa3f8ea",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/sessions",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "a865c03be83462b8c65bfb58261197561b04177dac57f60e03b816ddf306d52f",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/settings",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/configuration.md"
+      ],
+      "type": "content-hash",
+      "value": "481e85b0cbf5e50d1f0b7004e49e2c8d9c8a8c10555c757872580254729f4843",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/setup",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "ac00fa19c698a6ac441889989b23dbe71fecc4831754c7bd6057a58bb1dff0c4",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/terminal-config",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tui-cli-application-architecture.md"
+      ],
+      "type": "content-hash",
+      "value": "3270a8ddb4062556f02d5c8934a4efa151e6603e16bfe45495cda6f0c62fb236",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/skills",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/instruction-context-budget.md"
+      ],
+      "type": "content-hash",
+      "value": "68b8f19df06116bac63576869f1a9fac6d0123c341999c2e0f62fc948f079cae",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/workflows",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/auth-and-usage-accounting.md",
+        "references/harnesses/model-routing-and-selection.md",
+        "references/harnesses/orchestration.md"
+      ],
+      "type": "content-hash",
+      "value": "606b9897fce706020016411490cdb5793a49df03306e6ca74c92c0028cbb1f80",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/sub-agents",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/fan-out.md",
+        "references/harnesses/handoff-mechanism.md",
+        "references/harnesses/inter-agent-messaging.md",
+        "references/harnesses/model-routing-and-selection.md"
+      ],
+      "type": "content-hash",
+      "value": "84bafe3edd0bf4742bdf9b62b240bc08e456615932afff04b64bf2f6c93bbe93",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/tools-reference",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "20262b21213a153b08263b791c264b175d1ee4426fd9e67593cec3643afdb727",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/third-party-integrations",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/auth-and-usage-accounting.md"
+      ],
+      "type": "content-hash",
+      "value": "50a8384a06a1a6920261864947364ec45498f8400c5c1a2af94cfe7436126551",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.claude.com/docs/en/vs-code",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "c8f958b6c1b0524a55d613cc469a90cc348129bd31a238cd6ea9dc884f1aa99a",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://code.visualstudio.com/docs/agent-customization/custom-agents",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/handoff-mechanism.md"
+      ],
+      "type": "content-hash",
+      "value": "f4696e6be636c72637874b8a14684bc3c54f71800cce22404b0f2080ffc62c29",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/copilot/concepts/copilot-billing/understanding-and-managing-requests-in-copilot",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/auth-and-usage-accounting.md"
+      ],
+      "type": "content-hash",
+      "value": "e2c262f604eb80ef60ca68e21dea7f66373e68b9dcb7be6b8012b61ca2c4e507",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/concepts/agents/about-agent-skills",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/instruction-context-budget.md"
+      ],
+      "type": "content-hash",
+      "value": "1cc1c182aff602537b819454d19cc1eccf4312e3c4267d0bcd6feb083e6dfc11",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/about-copilot-cli",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "57fb70adbc4c0ac3582421f42c7fa93d4e0806bacba2be7f7b2fa2c108cd9c77",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/chronicle",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "c4fd411446ba4657dc199c965c187d5089922fee5628570e2fdc4119eec7c8ed",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/function-calling",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/llm-api-contract.md"
+      ],
+      "type": "content-hash",
+      "value": "0de11f60e19427806f5e3a8f7a83a1e288cb40e153697b3f000b154268504114",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/copilot/customizing-copilot/using-model-context-protocol/extending-copilot-chat-with-mcp",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "ab4522fc198f33d8efb44483820d352095d223e66d8bc3310cf089db5392a93c",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/hooks-lifecycle-extensibility.md"
+      ],
+      "type": "content-hash",
+      "value": "9f4fe7630ba5bd39eb3ffbc47c2a5737ed1f7e8508c9917ef69c79132b4c6224",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/fleet",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/fan-out.md",
+        "references/harnesses/inter-agent-messaging.md",
+        "references/harnesses/orchestration.md"
+      ],
+      "type": "content-hash",
+      "value": "bbd1530f63001f974edcad55ba3a1057a53089510740bd28d0ee9cc885e5a68a",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/concepts/billing/budgets-for-usage-based-billing",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/auth-and-usage-accounting.md"
+      ],
+      "type": "content-hash",
+      "value": "e87a876daea3e9b80075712464fe16045f23799082159d6cbdfc4281fa6f8e90",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/concepts/agents/copilot-cli/tool-search",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "f17f43aa9060de461c6d5109d89e9cedd22a3dfff5a8e16b804333be37f3ede6",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/concepts/agents/copilot-memory",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/memory-management.md"
+      ],
+      "type": "content-hash",
+      "value": "4c3dc952a93eab1d9b54719bd8fc21cc9cc7fe93fac13b2624bf769015d66473",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-mcp-usage/configure-mcp-registry",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "72add8423b50bf4fe5b40423c3dd7cf7f06c9997c442e63cd7c69e7b81ba4757",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes/configuring-local-sandbox-settings",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/permissions-and-sandboxing.md"
+      ],
+      "type": "content-hash",
+      "value": "b8624dc1251714971a8d12872724620cae5584325fd8d8d918fc9f111f113ac2",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/cloud-and-local-sandboxes",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/permissions-and-sandboxing.md"
+      ],
+      "type": "content-hash",
+      "value": "3b6a36bd7c367e6b2789e852ce4834d48eeceefc5bfb5976a30b06289babd96a",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/instruction-context-budget.md"
+      ],
+      "type": "content-hash",
+      "value": "fdb10e7e894838ee3d653920283b71012765a038894e60c0a07751f6d340e75c",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "ee73e268e245b2f3534a364609d9163e65c0131ce226c2a486a083d2dff99ef5",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/concepts/response-customization",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/instruction-context-budget.md",
+        "references/harnesses/memory-management.md"
+      ],
+      "type": "content-hash",
+      "value": "731633bab032d28aa107d54f435346f6633b7f5506338d910d4563e1a5ff17a4",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/concepts/models/auto-model-selection",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/model-routing-and-selection.md"
+      ],
+      "type": "content-hash",
+      "value": "84d6519b372e3df6d8b5bd5668c441dff894b07fbfbf728176f856edac75c5bf",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/handoff-mechanism.md"
+      ],
+      "type": "content-hash",
+      "value": "a78580e80472fbbd70e94fd849e41a7e15925c3a50a23bdf13e28ba74f59593e",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-byok-models",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/model-routing-and-selection.md"
+      ],
+      "type": "content-hash",
+      "value": "8e3fc36324eac85b6a6bde57a07ae3e2ab690cb60fabfce12a4d1664b93da92c",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/chronicle",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "0d287f2eae64b15bb0237b940139e150544a3ac4004b423a63d1a8025c2d1ebb",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/allowing-tools",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/permissions-and-sandboxing.md",
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "512b9741c5f08e1608699cd8d66f7bc25682fc47b35e386d2d04ff7931c2dff3",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/delegate-tasks-to-cca",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/handoff-mechanism.md"
+      ],
+      "type": "content-hash",
+      "value": "7a648a01c873ca02f55438cd752faeffd27369e9c542ffb059c49c1ce0378ce9",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/streaming-and-incremental-rendering.md"
+      ],
+      "type": "content-hash",
+      "value": "d39b426eaff98f1745738e0d3b5cb0cccd4341907ba6a45d9ea650e91b42242b",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/custom-agents",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/handoff-mechanism.md",
+        "references/harnesses/inter-agent-messaging.md"
+      ],
+      "type": "content-hash",
+      "value": "21aa0676a28c3cd33561c1b1bfaac1ae4b6fc818ace58528e168414b2f4ba989",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/fleet-mode",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/inter-agent-messaging.md",
+        "references/harnesses/orchestration.md"
+      ],
+      "type": "content-hash",
+      "value": "2bd2bbdd8b532934ecec08c438305ab6cd1bd54930647f4c9c70403f333a4112",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/overview",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-compression.md",
+        "references/harnesses/memory-management.md",
+        "references/harnesses/session-persistence.md",
+        "references/harnesses/tui-cli-application-architecture.md"
+      ],
+      "type": "content-hash",
+      "value": "2b1edfc6a8b2cc133625591758b94a7ad138915b4cf7660c89637cda2131f1ed",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/use-copilot-agents/copilot-memory/manage-for-yourself",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/memory-management.md"
+      ],
+      "type": "content-hash",
+      "value": "06723b9f96e069e3b6911d80b217411ef60237bd7c608742940e19a05bfa3a3b",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/features/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/streaming-and-incremental-rendering.md"
+      ],
+      "type": "content-hash",
+      "value": "79189f998775000e61ce37afdd6c8757d9487031515917c68e46f0c38fe4617d",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/instruction-context-budget.md"
+      ],
+      "type": "content-hash",
+      "value": "c17430504b700697cb87a1a66f240a28aabd3e645b4ab89581dd152213c1e0e7",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/use-copilot-agents/use-copilot-cli",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/memory-management.md"
+      ],
+      "type": "content-hash",
+      "value": "2b1edfc6a8b2cc133625591758b94a7ad138915b4cf7660c89637cda2131f1ed",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/enterprise-cloud",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/caching.md",
+        "references/harnesses/retries.md"
+      ],
+      "type": "content-hash",
+      "value": null,
+      "commit_date": null,
+      "status": "DEAD_LINK: HTTP 404",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/configuration.md",
+        "references/harnesses/streaming-and-incremental-rendering.md"
+      ],
+      "type": "content-hash",
+      "value": "28a4707e1edb33f639775fc1b596a02aa8b400e07d9dd4f5cee94141d7987218",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-hooks",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "63ee493a82f54d54687e3a46d8b26fa31e6914ae3c3d818b99a50b82fdb75f77",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/managing-copilot/configure-personal-settings/installing-the-github-copilot-extension-in-your-environment",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "38953dab218c48fd4e1436a415ec9a181a0d23745064cbde3ba3e6fdb7327a79",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/evals-and-testing-a-harness.md",
+        "references/harnesses/model-routing-and-selection.md",
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "3ac5f2a6ad92468b91e1651989a9fe402f3757e4fb874858b477974a5a123fd7",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://github.blog/changelog/2026-04-17-github-copilot-cli-now-supports-copilot-auto-model-selection/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/model-routing-and-selection.md"
+      ],
+      "type": "content-hash",
+      "value": "8058433ef48e4b49d604316b86523d2eedfcb122b382e564c893587908e1d3b6",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/auth-and-usage-accounting.md"
+      ],
+      "type": "content-hash",
+      "value": "6c577317943a921f37adead285c78887680d7da150415957fca78982aefe78af",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "bf19999bc0395d043a2fd55719dafbfc52197510f2b32237bee566a9d5947b75",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://github.blog/engineering/from-pixels-to-characters-the-engineering-behind-github-copilot-clis-animated-ascii-banner/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tui-cli-application-architecture.md"
+      ],
+      "type": "content-hash",
+      "value": "0eadb9a9981660cfbc8e2c3de8768e919eb4c7a5e5489340d821cd225cba60df",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://github.blog/news-insights/product-news/copilot-new-embedding-model-vs-code/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "86a101f15231d5ee362257f6d4c3b9cb5b890842efba4fd16b025a33d18a0e86",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/responsible-use/copilot-cli",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/permissions-and-sandboxing.md"
+      ],
+      "type": "content-hash",
+      "value": "a270405f4f6378be48bb7d3c9d79a16eab706f31ccdaff7db1e810e19170c9e4",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/evals-and-testing-a-harness.md"
+      ],
+      "type": "content-hash",
+      "value": "df7e1404f4a78f76be4380c67d1e0ac46a5e27f01940e9196263827cec28f7a3",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/memory-management.md",
+        "references/harnesses/model-routing-and-selection.md",
+        "references/harnesses/packaging-distribution-and-self-update.md",
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "906549feb3e4c45a00ba9e9e26f49489e63d85b24426ff2dfebf7026c3940adf",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/developer-guide/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/evals-and-testing-a-harness.md"
+      ],
+      "type": "content-hash",
+      "value": null,
+      "commit_date": null,
+      "status": "DEAD_LINK: HTTP 404",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/administer-copilot/manage-mcp-usage/configure-mcp-server-access",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "44afe217e848510e7023529a956780600b59c7c875169b66811c04ce6615e79f",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/getting-started/platform-support",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "66a6ecb92515a3fe074ab4cfdc282a0f445b04e7f562720690ef3c255bca0e79",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "ef72a8621b6ea1b8aa1d1b7691f73cc3079fd38e86f599c9a38cb626c911fc29",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://gorilla.cs.berkeley.edu/blogs/8_berkeley_function_calling_leaderboard.html",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "96c6413dc0952a4ec62f41f0bb4b6bb8666ff161e135a1f2566ac69c2744c2ed",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/getting-started/installation",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "b56a9c3c428d3b371a372e87f4189a48a7a4dc39449e88db155caacd6fc6062d",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/getting-started/updating",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "3c3ed542d16572b3a69d3ca2a573d6d26c198d0354e299a6da3bdb2069b54983",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/bot-mode",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/inter-agent-messaging.md"
+      ],
+      "type": "content-hash",
+      "value": "9368ca623d3f77f92bbeea34580c157702769e4fc32b6056114b1ff8f361bed5",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/reference/cli-commands",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "7e4b1514a13155a9e5534b8075bbe83a33c5d4d7cf59fc873a014ffaaf2591ce",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/checkpoints-and-rollback",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "8aa6e3a4601961b78507f2136c2fbd3e775e5df19029d07f78231bcd3b91006e",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/retries.md"
+      ],
+      "type": "content-hash",
+      "value": null,
+      "commit_date": null,
+      "status": "DEAD_LINK: HTTP 404",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/docker",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "3048c7966cd5d679ded2962d0e38cce2a99f82142851f88d353d3132cb7f38d7",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/context-files",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "282f665dbca281daa4e62229307f88654827b9644490389cf1c3d70030ab248d",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/lsp",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "9dc0931de3ac0c6697bc92b21806bb81c21938c0b7513a385c53dec5d97c2f45",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/memory",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/memory-management.md"
+      ],
+      "type": "content-hash",
+      "value": "23c7b577a336bb4938abe60d101daeee5b9c3a79872c8fdb2dcb52122abfd884",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/assets/files/llms-full-24b1af8f853f53bfc3223973214a1d73.txt",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/auth-and-usage-accounting.md"
+      ],
+      "type": "content-hash",
+      "value": "2b0f3dd2ed96240d6ea58b8f19d95339bf0930ff656447f5b7072bac51b9d7d6",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/inter-agent-messaging.md"
+      ],
+      "type": "content-hash",
+      "value": "2a38ce08c0ce500ce4f14010467f4759872777f5d698837d6cb0711b3e4da578",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/configuration",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/retries.md"
+      ],
+      "type": "content-hash",
+      "value": "017948ca92c890c5705d86e2ae5e79b68e9345e885d405c44a731d14d6355775",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "064fc5d8e71df88c66b9d571707fe16a5033b31894ce1adf0c0d05805a320f45",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/memory-providers",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "8ad925be2b154cb505de9aae1ec454802fee3eccf88d63d2235c10031b557328",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/overview",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md",
+        "references/harnesses/memory-management.md"
+      ],
+      "type": "content-hash",
+      "value": "16beb3bc1e8c491637db47f29cb0e77ddf02f45e487df3568417821e55513e5d",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/personality",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/memory-management.md"
+      ],
+      "type": "content-hash",
+      "value": "c08a52e0b9f6c112611b5a5d84d2d2b9fa6986997bddb4fe3ca0b71a3ff7f3b7",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/features/tool-search",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "08971916cf1ff195c83eaf8d5c6c5d0b947bd63ee52698b4d12162a6cf93bd92",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/how-tos/copilot-sdk/use-copilot-sdk/session-persistence",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "1c6c99366ac23a83b6a60aaaec23a3463087cf91788a25862c8c78e39a29819b",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/sessions",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "fd0d3b693defff4ffd2ef72c042451ff404897e0238ea286c4a3c83996016a28",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/security",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "1f2800bb0857d97e67e7f81c1d2c5c3aafc99dad7ad7dbc29beae8d91b951300",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/cookbook/en/advanced_rag",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "2090f07f1a62173530962ed88f23fb2f97d60b5bcbdfa745495ac8427e566b0e",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/agents-course/en/unit3/agentic-rag/agentic-rag",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "b42d3b02d05f5045ed0d3e19d79eaa61a0e12cf60bb661ce14d238298232a5d8",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/agents-course/en/unit2/smolagents/multi_agent_systems",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/orchestration.md"
+      ],
+      "type": "content-hash",
+      "value": "a2b5f2068c9e422e3e837da76271dc2100eb924fe59a5805222f45924a31a21f",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/agents-course/bonus-unit2/monitoring-and-evaluating-agents-notebook",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/evals-and-testing-a-harness.md"
+      ],
+      "type": "content-hash",
+      "value": "3d7326bb738a44f19b4816ff48bc49ca0437a4f796f19127886d0937abb248b9",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/cookbook/en/rag_with_hf_and_milvus",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "2f31ddb19419f59540de4f6adceef6cb71887678306fc03f0553b5606754c38b",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/cookbook/en/rag_with_hugging_face_gemma_elasticsearch",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "47cc149b414a072516b52c1f7545c34b0a19c581fdb083229749bdfa9f41b83e",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "c9108182fc53b465210a618ea68d9e6f5dbfe43fdd37463692703b4c4c9db6aa",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/cookbook/en/rag_llamaindex_librarian",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "0e9ee9f0d561bb8efc26082ba7788dd1235a26ef1001b3f2f812197332fe4fbc",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/cookbook/en/rag_with_hugging_face_gemma_mongodb",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "36f046ebf4937a36a05d88f5338ad79f45871e86677fcf36dba3bfb5fcb9b8ec",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/cookbook/en/rag_evaluation",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "da4b891d697c3470b0513527ad179338df056bdb7cf87cc9990647ff3da976ea",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/cookbook/en/rag_zephyr_langchain",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "fdd2618f4ce15b4d6b70858ab21c90764bea8cc42f036f2c335287b6606d0223",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/cookbook/en/rag_with_knowledge_graphs_neo4j",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "03ec4db8936fa6b7b4d12e4cca82aedd54d7c473731b42815421edf3138a763e",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/cookbook/en/rag_with_unstructured_data",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "de52e204940f36f5ec1ae1d91d5580fa7633b4e0cdac616c1ab6f6ab82d610f3",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/cookbook/en/semantic_cache_chroma_vector_database",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "7bb1d395d02f4ecb42b505af3ba72db933abd1447e50769f591d16a3ccf7fd6e",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/reference/hooks-reference",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/hooks-lifecycle-extensibility.md",
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "8a16fc1d60c01847649525da5753f744e63317c82a73bfa8e2027fa1bea0afbe",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://huggingface.co/learn/cookbook/en/structured_generation",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "d20a61c00931346a68be1c3b65f97518b63b8003257910f17a4336a29e5b0b2d",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://mariozechner.at/posts/2026-04-08-ive-sold-out/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "eff84551bff6a02c2219c80ac7d58735d7cd37e9e307942a5b7557c48c32535d",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://modelcontextprotocol.io/registry/about",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "4c49302ad5d204d1a0cce583a1b31971e43a32e9e521c6f2860b91d63b319a2b",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.claude.com/en/api/messages",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/llm-api-contract.md"
+      ],
+      "type": "content-hash",
+      "value": "2e221116123dcfc3edf5d8a7b02205f58a04a6987b54c3cb60da3b1d674a999a",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://mariozechner.at/posts/2025-11-02-what-if-you-dont-need-mcp/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "dbe783428467da60e4e9541d9cbe689f7d7d060a42484d0a7135b5785fc0e5d9",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://mariozechner.at/posts/2025-11-30-pi-coding-agent/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/permissions-and-sandboxing.md"
+      ],
+      "type": "content-hash",
+      "value": "6464e0288377f4a874bbc7252ae6c16ab2d1be5ea11c17f90f6bd5035b57fe5f",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.github.com/en/copilot/reference/custom-agents-configuration",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/handoff-mechanism.md",
+        "references/harnesses/model-routing-and-selection.md",
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "d8a627c90b92a07c72fd5a1260bbae0f903c6675117608aa1871aeeb06b29f86",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://pi.dev/install.sh",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "a3a3604ee550bf72c5da7da3c3014cc361c14ab3b91b1b24f097d9022bd8de5b",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://modelcontextprotocol.io/specification/draft/basic/security_best_practices",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "edc02649f4992b92e80f78742b1497923fb88ed4f889a3376bdc30896ddb6adf",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opentui.com/docs/getting-started/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tui-cli-application-architecture.md"
+      ],
+      "type": "content-hash",
+      "value": "a63f94c4f7d991c8348d11716975f331cd92ef75ae61072b5bb5c22d6d539e9b",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opencode.ai/docs/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/caching.md",
+        "references/harnesses/context-compression.md",
+        "references/harnesses/fan-out.md",
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "6a119434225648f04bf47edb9986991eaf79d70dc798617bd3e10ed7b4939064",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://modelcontextprotocol.io/docs/concepts/tools",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "07f6fa0c2f790f23505a0d16b801bee275c14bb76c78656fc30aa516c5d53a91",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opencode.ai/docs/cli/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md",
+        "references/harnesses/session-persistence.md"
+      ],
+      "type": "content-hash",
+      "value": "8e6a0728475df98b1b9480a78be39841cbadae54d1e0fe6262aa6967bbc549b9",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opencode.ai/docs/keybinds/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/handoff-mechanism.md"
+      ],
+      "type": "content-hash",
+      "value": "1fd29f3770984d65cd6837e656f3b4509578e85470f84adcdeca9cb8e1e167c5",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opencode.ai/docs/permissions",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "79cf8e81deae268c8a92797004d32d47a11e5aebe930b74c5264dc44dfc79b5f",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opencode.ai/docs/permissions/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/configuration.md",
+        "references/harnesses/context-retrieval-and-agentic-search.md",
+        "references/harnesses/permissions-and-sandboxing.md"
+      ],
+      "type": "content-hash",
+      "value": "79cf8e81deae268c8a92797004d32d47a11e5aebe930b74c5264dc44dfc79b5f",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opencode.ai/docs/config/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/configuration.md",
+        "references/harnesses/context-compression.md",
+        "references/harnesses/model-routing-and-selection.md",
+        "references/harnesses/retries.md"
+      ],
+      "type": "content-hash",
+      "value": "6a26d135b71bf2265cea1a3b11b31b25d96b1ff2f637717f5261a6bb2ffb268d",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opencode.ai/docs/mcp-servers",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "9761f6245b6bddc28bc1390e593cbc277c487aa6354731e89807d81905b95ec2",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opencode.ai/docs/agents/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/orchestration.md"
+      ],
+      "type": "content-hash",
+      "value": "ea3bafd44f82205df5fe327d687037976fc068f4b352b9a2fadf1068cee14c6c",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opencode.ai/docs/tools",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "674b51e8862e79e01243821437a4c6f7996b16962dd52cf2f5a6432be1d661c3",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opencode.ai/docs/plugins/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/hooks-lifecycle-extensibility.md"
+      ],
+      "type": "content-hash",
+      "value": "7e5389446894ace8f82c33dd43611693bbb51798ff0145fb233eaac89923cf89",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/.github/workflows/publish.yml",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "7b5faaa0d075febb954c9637c6514be60d26482d2fef5af2159f27de7fc3b5df",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://opencode.ai/docs/providers/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/caching.md"
+      ],
+      "type": "content-hash",
+      "value": "7756cc3ab3e700f8e09dc5df4392c2dbbf5d318093e0a9875dce682242d41e26",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/strict-tool-use",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "7c8ac77be034fec646561b14736747cfed86545f888d9946faa93882881f6ab6",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/install",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "fc3c1b2123f49b6df545a7622e5127d21cd794b15134fc3b66e1ca49f7fb297e",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/script/build.ts",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "c98c068580faac0ebcade9a1179827a24bd3f3102e6c08fef637a0636fa9f19d",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "9e83af6bd3afc1157694bf9221ad3593bcfc1bdff5143c189e631592589c09b6",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/build-with-claude/task-budgets",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/auth-and-usage-accounting.md"
+      ],
+      "type": "content-hash",
+      "value": "7db51216500895322930c2de406dc0daa74ec5daaeb65f9125c92aa284b8f61c",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/script/publish.ts",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "a865f09f5d59e349dfacd3b96689caf9ceb29c0f019a2c4afbde85e6394fc5ce",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/caching.md"
+      ],
+      "type": "content-hash",
+      "value": "2866d432c9dd36d9a073388a65e0cf6fbdf0ad139fe6386cb68aaba40c713062",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://pi.dev/api/report-install",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/observability-and-self-diagnostics.md"
+      ],
+      "type": "content-hash",
+      "value": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/system-prompt-design-as-craft.md"
+      ],
+      "type": "content-hash",
+      "value": "a7780b4b7d016e60fcda69e389783b3ae0286b34a04ea46e73756a08b3881eb3",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://registry.npmjs.org/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/system-prompt-design-as-craft.md"
+      ],
+      "type": "content-hash",
+      "value": "8e4718f3daeac5744fef6aa0247b3d877a953bbfefa461eb744f5a86d7ba8184",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://vadim.blog/claude-code-no-indexing/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md"
+      ],
+      "type": "content-hash",
+      "value": "08d5c6e1c880807b79553170178777174beaa5fbc2c9e6edaa9ddd6ef0d6ae0a",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/earendil-works/pi/main/.github/workflows/build-binaries.yml",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "f11568909694d035977d52a86f2aeb55fb3fd35c3d0e6a7ed1e3fa70c47936fa",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/anomalyco/opencode/dev/packages/opencode/src/installation/index.ts",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "113efe8f8233189ff49736472d6bcbf3a8eaf617b382b01c80619b219806c61f",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/utils/windows-self-update.ts",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "4289579fd8219b63dbe2d01bff20dd6afb806fb8e4d14484bc911868bfd83844",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/earendil-works/pi/main/scripts/build-binaries.sh",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "862c1b88c4558ce3581199561eb4a968077cfa5490be024614b7aa91e2071bf5",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/mitigate-jailbreaks",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/system-prompt-design-as-craft.md"
+      ],
+      "type": "content-hash",
+      "value": "2e97b362e33bce3d9c92c1a38377346eb15835cb03172c626cbe0ba5108e5f3a",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://platform.openai.com/docs/guides/function-calling",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/llm-api-contract.md"
+      ],
+      "type": "content-hash",
+      "value": "0de11f60e19427806f5e3a8f7a83a1e288cb40e153697b3f000b154268504114",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/docs/build-with-claude/streaming",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/llm-api-contract.md"
+      ],
+      "type": "content-hash",
+      "value": "4f651fda8898c5eff3657d2bf45be64a57979e242d0104b88824a415b4630176",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/earendil-works/pi/main/packages/coding-agent/src/package-manager-cli.ts",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/packaging-distribution-and-self-update.md"
+      ],
+      "type": "content-hash",
+      "value": "8f75c01f9c2c2e07d2144eaef43a0739435844cacf28a6fd6b316692e510a1c0",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://www.promptarmor.com/resources/github-copilot-cli-downloads-and-executes-malware",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/permissions-and-sandboxing.md"
+      ],
+      "type": "content-hash",
+      "value": "5ea7828310beef6dcd2b1ceab6c6941fa211f53f56e253bd23aea2a0d2fddd7c",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/context-retrieval-and-agentic-search.md",
+        "references/harnesses/system-prompt-design-as-craft.md"
+      ],
+      "type": "content-hash",
+      "value": "db842379481b1af1b0e6911aff34860fbe43ecd8e621d90801691d58f1e1cdfb",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://www.anthropic.com/engineering/building-effective-agents",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/system-prompt-design-as-craft.md",
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "b34b1f93892527db8585f198a71eab2f853ad26e784267bd4063a223b2091042",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://www.anthropic.com/engineering/harness-design-long-running-apps",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/evals-and-testing-a-harness.md"
+      ],
+      "type": "content-hash",
+      "value": "96b0b16fb2b2756eb542d5f42c5557925adbe619269d506538aea9b31de8d9b0",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/case-study-apm-overhaul.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/23-case-study-apm-overhaul.md"
+      ],
+      "type": "content-hash",
+      "value": "4557585614eaafe3137ef5a4ca2ebc2b573ccb6457d92a8597289f6e3f5b5030",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/case-study-handbook-writing.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/24-case-study-handbook-writing.md"
+      ],
+      "type": "content-hash",
+      "value": "02da89ded6ff043d7556d74389ab51adea385a71f164a9c1df90eb75312a83f6",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/appendix-a-cross-harness-reference.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/appendix-a-cross-harness-reference.md"
+      ],
+      "type": "content-hash",
+      "value": "156775a99fbd58d4e19d42e6c7cd2c0555372258709ec2530c9734b6953d50a9",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/case-study-publishing-pipeline.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/25-case-study-publishing-pipeline.md"
+      ],
+      "type": "content-hash",
+      "value": "db2b67df1a498eaa9564dcbad6634d75ceee6d88664b4cd13e4c9bf0c2fb0528",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://www.ox.security/blog/the-mother-of-all-ai-supply-chains-critical-systemic-vulnerability-at-the-core-of-the-mcp/",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "f7e4ddce7b8f57ab286c98376e08ff05b5e0aeb888a238969dd05e0da8fc96cc",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/appendix-b-genesis-worked-example.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/appendix-b-genesis-worked-example.md"
+      ],
+      "type": "content-hash",
+      "value": "87adcca52cf83fee188efcc4e9d830d6390b8637a8c3d117c4798be06ea6afaf",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch09-part-iii-preface.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/09-10-part-iii-preface-and-practitioners-mindset.md"
+      ],
+      "type": "content-hash",
+      "value": "fc56d43df92f19775e9406ab1fbbb136bf2179ba32a1056a3d7ec5dfaa8711ec",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch04-the-reference-architecture.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/04-the-reference-architecture.md"
+      ],
+      "type": "content-hash",
+      "value": "f57af9dd08c2306762b1532dc79b0530c0c8a3cfedb212c16669fede8886785e",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch10-the-practitioners-mindset.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/09-10-part-iii-preface-and-practitioners-mindset.md"
+      ],
+      "type": "content-hash",
+      "value": "efa3c6e252ebb319dbc7e3cf3d073db9c60d01be5d1481153261bafd010127d3",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch11-the-runtime-machine.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/11-the-runtime-machine.md"
+      ],
+      "type": "content-hash",
+      "value": "9366f52d8ecafd72874251549c16f2dcc8c0b5bf0ce181a06471f1365fb70281",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch12-the-instrumented-codebase.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/12-the-instrumented-codebase.md"
+      ],
+      "type": "content-hash",
+      "value": "6d76908f69cf72ee2142fff34bb7e07aa63220bc2436be45594b08c4a3c0c8e2",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://www.anthropic.com/engineering/writing-tools-for-agents",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/tool-schema-and-interface-design.md"
+      ],
+      "type": "content-hash",
+      "value": "a59c307b47304bb9bb93552232e96a72498eefa70f6da03a82c194dfdae3df82",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch13-the-prose-specification.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/prose-framework.md"
+      ],
+      "type": "content-hash",
+      "value": "ef7257313010c41e2e1efd2611eb0f25656fe1dfc96a2977a691926d7021b306",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch14-the-load-lifecycle.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/14-the-load-lifecycle.md"
+      ],
+      "type": "content-hash",
+      "value": "740bd1c8338705acd7c6463ebcbe8c2309d1a84a8f7ff49b44c9f3054cdc0773",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch16-deterministic-probabilistic-boundary.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/16-deterministic-probabilistic-boundary.md"
+      ],
+      "type": "content-hash",
+      "value": "7a68761fea6fbd38e63635f74bacbab48deed4e2bfe566d7d4ce2c4acce038db",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch17-multi-agent-orchestration.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/17-multi-agent-orchestration.md"
+      ],
+      "type": "content-hash",
+      "value": "634a903f2c69aefce1f15448214af50f0c9ff1301e96098c06348e4c413c4d3d",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch15-attention-and-context-economy.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/15-attention-and-context-economy.md"
+      ],
+      "type": "content-hash",
+      "value": "3359ceec0c8146e5fa14c00466ff83216ea6adad4d278eefcd2ebc977abe6ee2",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch19-architectural-patterns-rosetta-stone.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/19-architectural-patterns-rosetta-stone.md"
+      ],
+      "type": "content-hash",
+      "value": "5a3b911c795ffb98224bf672546483bb0d33257d0f2d557f7921846a26b3db11",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch22-the-reference-architecture-earned.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/22-the-reference-architecture-earned.md"
+      ],
+      "type": "content-hash",
+      "value": "649d9435a3f2272b3e919209f402770e4204bfd1211d411aa23e2b7fc5ab5810",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch20-anti-patterns-and-failure-modes.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/20-anti-patterns-and-failure-modes.md"
+      ],
+      "type": "content-hash",
+      "value": "506379aaac18ef63a2cf31df7cdeef6856d57c5dbb2cdf5313f08d6869dd66f9",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch18-the-execution-meta-process.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/18-the-execution-meta-process.md"
+      ],
+      "type": "content-hash",
+      "value": "ff33bc1ac4e2fb54ea4ade845bb68203c5a19de89cf09527f532a352eb995e45",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch21-primitives-as-code.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/21-primitives-as-code.md"
+      ],
+      "type": "content-hash",
+      "value": "30ce4c8df66c6511e5d54b230e54d5a0e308c0c86a34bba654fc24165f1f40fe",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://www.reversinglabs.com/blog/mcp-rug-pull-attack-worries",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/mcp-supply-chain-trust.md"
+      ],
+      "type": "content-hash",
+      "value": "8e2888a26c6966f6583584edb9980e2833a19407b18896814c5f85f79b9ac235",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/api/messages",
+      "area": [
+        "harnesses"
+      ],
+      "cited_by": [
+        "references/harnesses/llm-api-contract.md"
+      ],
+      "type": "content-hash",
+      "value": "fecb3b645db67249292d476b514e46cc9f7344310719f1b1cf9a5d55867f2302",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://danielmeppiel.github.io/agentic-sdlc-handbook/case-study-growth-engine.html",
+      "area": [
+        "sdlc"
+      ],
+      "cited_by": [
+        "references/sdlc/26-case-study-growth-engine.md"
+      ],
+      "type": "content-hash",
+      "value": "1f9925d4246c05031ecb526748c1315f02e4dda74118894fe935838c70e2ddb4",
+      "commit_date": null,
       "status": "OK",
       "checked": "2026-09-03"
     }

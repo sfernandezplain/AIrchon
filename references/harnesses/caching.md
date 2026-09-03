@@ -310,27 +310,80 @@ OpenCode's Anthropic protocol adapter, §3.2) both sit on top of, **not**
 for Claude-Code-specific behavior, which stays scoped to §1.1-1.8 above.
 The mechanism it documents: up to **4 explicit `cache_control` breakpoints**
 per request (or one automatic top-level breakpoint that places itself on
-the last cacheable block); `"ephemeral"` is currently the only cache type;
-a **5-minute TTL** at a 1.25x base-input write cost and 0.1x base-input
-read cost, or a **1-hour TTL** (`"ttl": "1h"`) at a 2x write cost with the
-same 0.1x read cost; a per-model **minimum cacheable prompt length**
-ranging from 512 tokens (Opus 5, Fable 5, Mythos 5) up to 4,096 tokens
-(Opus 4.6/4.5, Haiku 3.5/4.5) -- prompts below the minimum are processed
-without caching and without an error; cache hits require exact,
-byte-for-byte matches of every block up to and including the marked one;
-and a documented **20-block lookback window**, meaning a cache read walks
-backward from the current breakpoint checking at most 20 prior positions
-for a matching entry before giving up, which is why a single trailing
-breakpoint stops working once a conversation grows past that window and a
-second, earlier breakpoint is needed to keep the older prefix reachable.
-Cache invalidation follows a stated **hierarchy, tools -> system ->
-messages**: a change at any level invalidates that level and everything
-after it, but never anything before it (e.g. toggling web search
-invalidates the tools cache but leaves system/messages caches intact).
-None of this 4-breakpoint/20-block/hierarchy detail is Claude-Code-specific
-prose on the `code.claude.com` pages themselves -- it is cited here from
-the Anthropic API page specifically because Claude Code's own docs assume
-it as background rather than re-explaining it.
+the last cacheable block, compatible with explicit breakpoints and
+requiring no manual updates as a conversation grows); `"ephemeral"` is
+currently the only cache type; a **5-minute TTL** at a 1.25x base-input
+write cost and 0.1x base-input read cost for most models, or a **1-hour
+TTL** (`"ttl": "1h"`) at a 2x write cost with the same 0.1x read cost;
+cache hits require exact, byte-for-byte matches of every block up to and
+including the marked one; and a documented **20-block lookback window**
+("the system checks at most 20 positions, where consecutive `tool_use`
+and `tool_result` blocks count as single positions"), meaning a cache read
+walks backward from the current breakpoint checking at most 20 prior
+positions for a matching entry before giving up, which is why a single
+trailing breakpoint stops working once a conversation grows past that
+window and a second, earlier breakpoint is needed to keep the older
+prefix reachable. Cache invalidation follows a stated **hierarchy, tools
+-> system -> messages**: a change at any level invalidates that level and
+everything after it, but never anything before it -- the docs now publish
+this as an explicit per-trigger table rather than only the one-line rule:
+tool-definition changes invalidate all three caches; toggling web search,
+citations, or the fast/standard speed setting invalidates only the tools
+cache; the `tool_choice` parameter and adding/removing images invalidate
+tools and system but leave messages intact; and thinking-parameter or
+effort-setting changes are model-specific in which of tools/system they
+invalidate. (e.g. toggling web search invalidates the tools cache but
+leaves system/messages caches intact, exactly as this page already
+stated). None of this 4-breakpoint/20-block/hierarchy detail is
+Claude-Code-specific prose on the `code.claude.com` pages themselves -- it
+is cited here from the Anthropic API page specifically because Claude
+Code's own docs assume it as background rather than re-explaining it.
+
+**Re-verified 2026-09-03** (this page's own source-drift re-check; the
+live `platform.claude.com` page's content hash had changed since the
+2026-07-30 fetch, and the re-fetch found two real, non-cosmetic updates
+worth correcting here):
+
+- **The per-model minimum-cacheable-prompt-length table has grown and one
+  of this page's original figures was wrong even at the time.** The
+  current table lists six tiers, not two: 512 tokens (Fable 5.1, Mythos
+  5.1, Opus 5, Fable 5, Mythos 5), 1,024 tokens (Opus 4.8, Sonnet 5,
+  Sonnet 4.6, Sonnet 4.5, Opus 4.1, Opus 4, Sonnet 4), 2,048 tokens (Mythos
+  Preview, Opus 4.7, **and Haiku 3.5**), and 4,096 tokens (Opus 4.6, Opus
+  4.5, **and Haiku 4.5**). This corrects the 2026-07-30 version of this
+  paragraph, which had grouped "Haiku 3.5/4.5" together at 4,096 tokens --
+  Haiku 3.5's actual minimum is 2,048 tokens, half what this page
+  previously stated; Haiku 4.5 alone is the one at 4,096. The other five
+  tiers/models named in the earlier version (512-token tier) are unchanged
+  and remain correct. The additional models now listed (Opus 4.7, Opus
+  4.8, Sonnet 5, Sonnet 4.6, Fable 5.1, Mythos 5.1, Mythos Preview) are
+  releases the docs page has added since the original fetch and were not
+  omissions in the earlier write-up.
+- **The 0.1x cache-read multiplier is no longer universal.** Fable 5.1 and
+  Mythos 5.1 specifically now carry a **0.025x** cache-read multiplier
+  (a quarter of the standard 0.1x rate other models get), stated directly
+  on the same pricing table as the 1.25x/2x write multipliers this page
+  already cited. This is new since 2026-07-30 (or was not surfaced in the
+  earlier fetch) and is the one place this page's "same 0.1x read cost"
+  phrasing above is now an approximation for most-but-not-all models
+  rather than a universal constant.
+- **Two mechanisms documented on the source page were not previously
+  captured here and are worth naming as capability, not correction:
+  pre-warming and TTL-mixing.** A request can set `max_tokens: 0` with a
+  `cache_control` marker on the last shared block (typically the system
+  prompt, not a placeholder user message) to load a prompt into the cache
+  without generating any output -- billed only at the cache-write rate,
+  with no output tokens charged; the docs list this as incompatible with
+  `stream: true`, extended thinking, structured outputs, certain
+  `tool_choice` values, and Message Batches. Separately, a single request
+  can mix 5-minute and 1-hour TTL blocks, provided longer-TTL blocks
+  appear before shorter-TTL ones in the request, with billing then
+  calculated across three reference positions (the highest cache hit, the
+  highest 1-hour block, and the last block) rather than a single flat
+  rate for the whole request. Neither mechanism is Claude-Code-specific --
+  no Claude Code doc or changelog entry fetched this session names either
+  one -- so both are recorded here as background on the underlying API
+  Claude Code sits on, not as a Claude Code feature.
 
 ---
 
@@ -1511,13 +1564,18 @@ stable release tag):**
   result rather than an assumption, that neither page documents a
   user-facing prompt-caching configuration surface (§3.5).
 - `https://platform.claude.com/docs/en/build-with-claude/prompt-caching`,
-  fetched fresh this session -- authoritative for the underlying Anthropic
-  Messages API mechanism only (§1.9), cited here because both Claude
-  Code's own docs and OpenCode's Anthropic protocol adapter build on this
-  exact API surface: the 4-breakpoint cap, the `"ephemeral"` cache type,
-  5-minute/1-hour TTL pricing multipliers, per-model minimum cacheable
-  prompt lengths, the tools -> system -> messages invalidation hierarchy,
-  and the 20-block cache-read lookback window.
+  fetched fresh this session (2026-07-30) and **re-fetched and diffed
+  2026-09-03** as part of this project's source-drift re-check -- authoritative
+  for the underlying Anthropic Messages API mechanism only (§1.9), cited here
+  because both Claude Code's own docs and OpenCode's Anthropic protocol
+  adapter build on this exact API surface: the 4-breakpoint cap, the
+  `"ephemeral"` cache type, 5-minute/1-hour TTL pricing multipliers
+  (including the newer 0.025x cache-read tier for Fable 5.1/Mythos 5.1),
+  the per-model minimum-cacheable-prompt-length table (corrected and
+  expanded 2026-09-03), the tools -> system -> messages invalidation
+  hierarchy (now stated as a per-trigger table), the 20-block cache-read
+  lookback window, and the pre-warming/TTL-mixing mechanisms added to
+  §1.9 in the 2026-09-03 re-check.
 
 **pi (authoritative for its own documented behavior; fetched 1 September 2026 from
 `github.com/earendil-works/pi`, `main` branch):**

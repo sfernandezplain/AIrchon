@@ -154,7 +154,14 @@ this session's own reading of it.
 
 Sections 1.4-1.11 below deepen this page's general-RAG background
 using eleven Hugging Face `learn/cookbook` notebooks, all fetched in
-full this session (24 August 2026). Before using them, it is worth
+full this session (24 August 2026); all twelve of this section's
+citations (the eleven cookbook notebooks plus the agents-course
+Agentic RAG page cited in §1.1) were independently re-fetched and
+spot-checked against their live current text on 3 September 2026, as
+a source-drift re-verification pass -- eleven of twelve still support
+the page's claims exactly as written; the twelfth (§1.9's Neo4j
+notebook) turned up one misattributed quotation, corrected in place
+with its own dated note. Before using them, it is worth
 making the grounding-discipline call explicit rather than silently
 picking a side, since `resources/grounding-discipline.md` names only
 two specific paths -- `huggingface.co/learn/agents-course` and
@@ -416,12 +423,22 @@ natural-language question into a Cypher query "from user input
 query against the graph to traverse multi-hop relationships directly
 (for example, finding co-authorship chains a single-hop similarity
 search cannot express). The notebook's own stated differentiator is
-explicit: graph traversal contributes "multi-hop connectivity and
-contextual understanding of information to enhance reasoning and
-explainability" that "vector similarity cannot accomplish
-independently" -- i.e. the two retrieval strategies are complementary
-rather than competing, addressing different query shapes (semantic
-similarity vs. relationship-chain inference) within the same system.
+explicit: "By combining knowledge graphs with embeddings (vector
+search), we can leverage multi-hop connectivity and contextual
+understanding of information to enhance reasoning and explainability
+in LLMs" -- i.e. the notebook frames the two retrieval strategies as
+complementary rather than competing, addressing different query shapes
+(semantic similarity vs. relationship-chain inference) within the same
+system. Correction, re-verified 3 September 2026 directly against the
+live notebook: an earlier version of this page quoted the notebook as
+saying graph traversal contributes something "that vector similarity
+cannot accomplish independently" -- that exact phrase does not appear
+anywhere in the source text and has been removed as a misattributed
+quote. The notebook's actual, weaker claim is the additive one quoted
+above (embeddings *combined with* graphs enhance reasoning, not graphs
+succeeding at something embeddings independently fail at); the
+complementary-rather-than-competing framing itself still holds, it was
+only the supporting quotation that was wrong.
 
 ### 1.10 A retrieval-agent counter-example, and why it sharpens rather than complicates §1.1's distinction
 

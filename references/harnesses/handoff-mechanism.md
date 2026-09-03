@@ -219,10 +219,13 @@ Sources for this section: `docs.github.com/en/copilot/how-tos/copilot-cli/custom
 `docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/delegate-tasks-to-cca`,
 `docs.github.com/en/copilot/reference/custom-agents-configuration`, and
 `docs.github.com/en/copilot/how-tos/copilot-sdk/features/custom-agents`,
-all fetched 2026-07-30. VERIFIED unless tagged otherwise. Two adjacent,
-explicitly out-of-scope surfaces are checked for AUTHORITY OVERREACH
-below: VS Code Copilot Chat's `handoffs` frontmatter field, and the
-Copilot SDK's "Fleet mode."
+fetched 2026-07-30 and re-fetched 3 September 2026 (source-drift re-check
+against `resources/sources-of-truth.json`; the re-fetch included both the
+rendered page and, for the discovery-location claim specifically, the raw
+HTML to rule out summarizer omission -- see 2.1 below). VERIFIED unless
+tagged otherwise. Two adjacent, explicitly out-of-scope surfaces are
+checked for AUTHORITY OVERREACH below: VS Code Copilot Chat's `handoffs`
+frontmatter field, and the Copilot SDK's "Fleet mode."
 
 ### 2.1 Local custom-agent delegation (subagents)
 
@@ -236,12 +239,31 @@ sequenceDiagram
     Sub-->>Main: "the sub-agent's output is incorporated<br/>into the parent agent's response" (SDK docs)
 ```
 
-Custom agents are Markdown files with a `.agent.md` extension,
-discovered in three locations with a documented precedence: project
-scope `.github/agents/`, an organization-wide `{org}/.github` repository,
-and user scope `~/.copilot/agents/` -- "if you have custom agents with
-the same name in both locations, the one in your home directory will be
-used, rather than the one in the repository." The frontmatter fields
+Custom agents are Markdown files with a `.agent.md` extension. **Correction
+made 3 September 2026:** this page previously stated the CLI-specific
+creation page documented "three locations with a documented precedence,"
+naming an organization-wide `{org}/.github` repository alongside the two
+below -- that claim did not survive a direct re-fetch (rendered page and
+raw HTML both checked) of `create-custom-agents-for-cli` and, on inspection,
+was never actually supported by its own immediately-following quote, which
+already said "both locations," not three; this was a research error at
+first-write time, not a genuine doc change caught by drift-checking. The
+CLI-specific creation page in fact documents exactly two locations: project
+scope `.github/agents/` and user scope `~/.copilot/agents/` -- "if you have
+custom agents with the same name in both locations, the one in your home
+directory will be used, rather than the one in the repository." A separate
+surface -- organization- or enterprise-owned custom agents stored in the
+org's `.github` or `.github-private` repository's own `agents/` directory,
+per `docs.github.com/en/copilot/how-tos/administer-copilot/manage-for-organization/prepare-for-custom-agents`
+(re-fetched 3 September 2026) -- does exist and is real, but that page
+documents it for the Copilot cloud/coding agent on GitHub.com, not for the
+CLI; the CLI's own creation-flow page makes no mention of it, and re-fetching
+that page directly (including its raw HTML, to rule out a rendering/summary
+omission) found none. BEST CURRENT UNDERSTANDING, UNCONFIRMED: whether an
+org-level `.github`-repository agent is ever discoverable from a Copilot CLI
+session at all -- not stated on either page checked this session, so treat
+CLI discovery as the two documented locations only until a CLI-specific
+source says otherwise. The frontmatter fields
 documented on the CLI-specific creation page are minimal by the CLI's
 own account: `name` (drives the generated filename), `description`
 (what expertise the agent has and when to use it), free-text
@@ -326,7 +348,8 @@ CLI process.
 Researching this topic surfaces a Copilot feature literally named
 "handoffs" that is worth naming precisely so it is not confused with
 anything above: VS Code's Copilot Chat custom agents (`code.visualstudio.com/docs/agent-customization/custom-agents`,
-fetched 2026-07-30 -- a **different product surface from Copilot CLI**,
+fetched 2026-07-30, re-fetched 3 September 2026 with the `handoffs` field's
+sub-fields and quoted behavior confirmed unchanged -- a **different product surface from Copilot CLI**,
 per this skill's AUTHORITY OVERREACH discipline) support a `handoffs`
 frontmatter array with `label`, `agent`, `prompt`, `send`, and `model`
 fields. "After a chat response completes, handoff buttons appear that
@@ -345,7 +368,10 @@ field), resulting in 'malformed frontmatter' errors" and "'unknown field
 ignored: handoffs.'" Separately, the `custom-agents-configuration`
 reference page states the same field "from VS Code and other IDE custom
 agents [is] currently not supported for Copilot cloud agent on
-GitHub.com" either. So `handoffs` is real, but scoped to one Copilot
+GitHub.com" either -- re-fetched 3 September 2026 and confirmed unchanged
+in substance (the live page now pairs `handoffs` with `argument-hint` in
+that same unsupported-fields sentence, a field addition that does not
+affect this claim). So `handoffs` is real, but scoped to one Copilot
 surface (VS Code/IDE Copilot Chat) that this project does not track as
 a harness, and is confirmed absent from the two surfaces this project
 does track (CLI: parse error/ignored field; cloud agent: explicitly
