@@ -50,10 +50,79 @@ Get-ChildItem -LiteralPath $SrcSkillsDir -Directory | ForEach-Object {
 }
 
 # 3. Fix frontmatter in .opencode/skills/* and .opencode/agents/*
-#    - Remove opencode-incompatible keys: user-invocable, disable-model-invocation, allowed-tools, model
-#    - Keep: name, description, license, metadata
+#
+# Skills (SKILL.md): OpenCode only recognizes name, description, license,
+#   compatibility, metadata. All other keys are ignored. We strip
+#   Claude-Code-specific keys for cleanliness.
+#
+# Agents (*.md): OpenCode derives the agent name from the filename, not
+#   frontmatter. Recognized keys are description, mode, model, temperature,
+#   permission, tools (deprecated), steps, disable, hidden, color, top_p, etc.
+#   Unknown keys are passed through to the provider as model options -- junk.
+#   We strip: name, user-invocable, disable-model-invocation, allowed-tools,
+#   targets, model (invalid format without provider/ prefix).
+#   We convert: tools: [A, B, C] -> permission: block with deny-all default
+#   + allow for each mapped tool, using OpenCode's lowercase tool names.
 
-function Fix-Frontmatter {
+# Map Claude Code tool names to OpenCode permission keys
+# OpenCode permission keys: read, edit, glob, grep, list, bash, task,
+#   external_directory, todowrite, webfetch, websearch, lsp, skill, question
+$script:ToolNameMap = [System.Collections.Generic.Dictionary[string,string]]::new()
+$script:ToolNameMap['Read'] = 'read'
+$script:ToolNameMap['Write'] = 'edit'
+$script:ToolNameMap['Edit'] = 'edit'
+$script:ToolNameMap['Glob'] = 'glob'
+$script:ToolNameMap['Grep'] = 'grep'
+$script:ToolNameMap['Bash'] = 'bash'
+$script:ToolNameMap['WebFetch'] = 'webfetch'
+$script:ToolNameMap['WebSearch'] = 'websearch'
+$script:ToolNameMap['TaskCreate'] = 'task'
+$script:ToolNameMap['TodoWrite'] = 'todowrite'
+$script:ToolNameMap['List'] = 'list'
+$script:ToolNameMap['task'] = 'task'
+$script:ToolNameMap['read'] = 'read'
+$script:ToolNameMap['edit'] = 'edit'
+$script:ToolNameMap['write'] = 'edit'
+$script:ToolNameMap['glob'] = 'glob'
+$script:ToolNameMap['grep'] = 'grep'
+$script:ToolNameMap['bash'] = 'bash'
+$script:ToolNameMap['webfetch'] = 'webfetch'
+$script:ToolNameMap['websearch'] = 'websearch'
+$script:ToolNameMap['todowrite'] = 'todowrite'
+$script:ToolNameMap['execute'] = 'bash'
+$script:ToolNameMap['search'] = 'grep'
+$script:ToolNameMap['web'] = 'webfetch'
+$script:ToolNameMap['agent'] = 'task'
+$script:ToolNameMap['todo'] = 'todowrite'
+
+function Convert-ToolsToPermission {
+    param([string[]]$ToolNames)
+
+    $permKeys = [System.Collections.Generic.List[string]]::new()
+    $seen = @{}
+    foreach ($t in $ToolNames) {
+        $mapped = $null
+        if ($script:ToolNameMap.ContainsKey($t)) {
+            $mapped = $script:ToolNameMap[$t]
+        }
+        if ($mapped -and -not $seen.ContainsKey($mapped)) {
+            $permKeys.Add($mapped) | Out-Null
+            $seen[$mapped] = $true
+        }
+    }
+
+    if ($permKeys.Count -eq 0) { return $null }
+
+    # Build permission block: deny everything by default, allow mapped tools
+    $lines = @('permission:')
+    $lines += "  `"*`": deny"
+    foreach ($k in $permKeys) {
+        $lines += "  ${k}: allow"
+    }
+    return ($lines -join "`n")
+}
+
+function Fix-SkillFrontmatter {
     param([string]$FilePath)
 
     $content = Get-Content -LiteralPath $FilePath -Raw
@@ -65,19 +134,22 @@ function Fix-Frontmatter {
     $frontmatter = $content.Substring(3, $endMarker - 3)
     $body = $content.Substring($endMarker + 3)
 
+    # Keys to strip (Claude-Code-specific, not recognized by OpenCode skills)
     $keysToRemove = @(
         'user-invocable'
         'disable-model-invocation'
         'allowed-tools'
-        'model'
     )
 
     $lines = $frontmatter -split "`n"
     $filtered = [System.Collections.Generic.List[string]]::new()
     $skip = $false
+    $lineIndex = 0
 
-    foreach ($line in $lines) {
+    while ($lineIndex -lt $lines.Count) {
+        $line = $lines[$lineIndex]
         $trimmed = $line.Trim()
+        $lineIndex++
 
         # Skip the value lines of a YAML dash-list key we already matched
         if ($skip) {
@@ -98,30 +170,104 @@ function Fix-Frontmatter {
         }
         if ($matchedScalar) { continue }
 
-        # Convert tools: [A, B, C] -> tools: {A: true, B: true, C: true}
+        $filtered.Add($line) | Out-Null
+    }
+
+    # Remove leading blank lines from frontmatter
+    while ($filtered.Count -gt 0 -and [string]::IsNullOrWhiteSpace($filtered[0])) {
+        $filtered.RemoveAt(0)
+    }
+    # Remove trailing blank lines from frontmatter before closing marker
+    while ($filtered.Count -gt 0 -and [string]::IsNullOrWhiteSpace($filtered[$filtered.Count - 1])) {
+        $filtered.RemoveAt($filtered.Count - 1)
+    }
+
+    $newContent = "---`n" + ($filtered -join "`n") + "`n---" + $body
+    Set-Content -LiteralPath $FilePath -Value $newContent -NoNewline
+    Log "Fixed skill frontmatter: $FilePath"
+}
+
+function Fix-AgentFrontmatter {
+    param([string]$FilePath)
+
+    $content = Get-Content -LiteralPath $FilePath -Raw
+    if (-not $content.StartsWith('---')) { return }
+
+    $endMarker = $content.IndexOf('---', 3)
+    if ($endMarker -lt 0) { return }
+
+    $frontmatter = $content.Substring(3, $endMarker - 3)
+    $body = $content.Substring($endMarker + 3)
+
+    # Keys to strip entirely (unknown to OpenCode, would be passed as junk
+    # to the provider). model is stripped because the source value
+    # (e.g. "claude-sonnet-5") lacks the required provider/ prefix.
+    $keysToRemove = @(
+        'name'
+        'user-invocable'
+        'disable-model-invocation'
+        'allowed-tools'
+        'model'
+        'targets'
+    )
+
+    $lines = $frontmatter -split "`n"
+    $filtered = [System.Collections.Generic.List[string]]::new()
+    $skip = $false
+    $lineIndex = 0
+
+    while ($lineIndex -lt $lines.Count) {
+        $line = $lines[$lineIndex]
+        $trimmed = $line.Trim()
+        $lineIndex++
+
+        # Skip the value lines of a YAML dash-list key we already matched
+        if ($skip) {
+            if ($trimmed.StartsWith('- ') -and -not $trimmed.StartsWith('- -')) {
+                continue
+            }
+            $skip = $false
+        }
+
+        # Check scalar keys to remove
+        $matchedScalar = $false
+        foreach ($key in $keysToRemove) {
+            if ($trimmed -match "^${key}:\s*" -and -not $trimmed.StartsWith('- ')) {
+                $matchedScalar = $true
+                $skip = $true
+                break
+            }
+        }
+        if ($matchedScalar) { continue }
+
+        # Convert tools: [A, B, C] -> permission block
         if ($trimmed -match '^tools:\s*\[(.+)\]\s*$') {
             $toolNames = $Matches[1] -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
-            $toolMap = ($toolNames | ForEach-Object { "${_}: true" }) -join ', '
-            $filtered.Add("tools: {${toolMap}}") | Out-Null
+            $permBlock = Convert-ToolsToPermission $toolNames
+            if ($permBlock) {
+                $filtered.Add($permBlock) | Out-Null
+            }
             $skip = $false
             continue
         }
 
-        # Convert tools: followed by dash-list (next lines) -> tools: {A: true, ...}
+        # Convert tools: followed by dash-list -> permission block
         if ($trimmed -match '^tools:\s*$') {
             $toolList = [System.Collections.Generic.List[string]]::new()
-            $lookahead = $filtered.Count
-            :scan for ($j = $lines.IndexOf($line) + 1; $j -lt $lines.Count; $j++) {
-                $nextTrimmed = $lines[$j].Trim()
+            while ($lineIndex -lt $lines.Count) {
+                $nextTrimmed = $lines[$lineIndex].Trim()
                 if ($nextTrimmed -match '^\-\s+(.+)$') {
                     $toolList.Add($Matches[1].Trim()) | Out-Null
+                    $lineIndex++
                 } else {
                     break
                 }
             }
             if ($toolList.Count -gt 0) {
-                $toolMap = ($toolList | ForEach-Object { "${_}: true" }) -join ', '
-                $filtered.Add("tools: {${toolMap}}") | Out-Null
+                $permBlock = Convert-ToolsToPermission $toolList
+                if ($permBlock) {
+                    $filtered.Add($permBlock) | Out-Null
+                }
                 $skip = $true
                 continue
             }
@@ -141,19 +287,19 @@ function Fix-Frontmatter {
 
     $newContent = "---`n" + ($filtered -join "`n") + "`n---" + $body
     Set-Content -LiteralPath $FilePath -Value $newContent -NoNewline
-    Log "Fixed frontmatter: $FilePath"
+    Log "Fixed agent frontmatter: $FilePath"
 }
 
 # Fix all SKILL.md files under .opencode/skills/
 Get-ChildItem -LiteralPath $DstSkillsDir -Recurse -Filter 'SKILL.md' -File | ForEach-Object {
-    Fix-Frontmatter $_.FullName
+    Fix-SkillFrontmatter $_.FullName
 }
 
 # Fix all agent .md files under .opencode/agents/
 $AgentsDir = Join-Path $RepoRoot '.opencode' 'agents'
 if (Test-Path -LiteralPath $AgentsDir) {
     Get-ChildItem -LiteralPath $AgentsDir -Filter '*.md' -File | ForEach-Object {
-        Fix-Frontmatter $_.FullName
+        Fix-AgentFrontmatter $_.FullName
     }
 }
 
