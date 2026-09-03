@@ -150,6 +150,42 @@ deployments:
   content_hash: null
 - kind: project-relative
   target: agents
+  value: .agents/skills/airchon-sync
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: agents
+  value: .agents/skills/airchon-sync/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:81819df71eb955a8774e393cb9d7f651171a2e169e7be3993aeec0de7733aa6b
+- kind: project-relative
+  target: agents
+  value: .agents/skills/airchon-sync/references/handoff-prompt-template.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:2a9538d32a460e67ec9d2fdef28938f7fbc74d27128d88a48e239586e9e22a5f
+- kind: project-relative
+  target: agents
+  value: .agents/skills/airchon-sync/scripts/check_drift.py
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:8fc15ccc3265c9a67520ab85322f5b58b7646eb96606a87c1b4db2e9e12985a2
+- kind: project-relative
+  target: agents
   value: .agents/skills/airchon/SKILL.md
   runtime: null
   scope: project
@@ -247,6 +283,42 @@ deployments:
   - .
   active_owner: .
   content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/airchon-sync
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/airchon-sync/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:81819df71eb955a8774e393cb9d7f651171a2e169e7be3993aeec0de7733aa6b
+- kind: project-relative
+  target: claude
+  value: .claude/skills/airchon-sync/references/handoff-prompt-template.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:2a9538d32a460e67ec9d2fdef28938f7fbc74d27128d88a48e239586e9e22a5f
+- kind: project-relative
+  target: claude
+  value: .claude/skills/airchon-sync/scripts/check_drift.py
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:8fc15ccc3265c9a67520ab85322f5b58b7646eb96606a87c1b4db2e9e12985a2
 - kind: project-relative
   target: claude
   value: .claude/skills/airchon/SKILL.md
@@ -888,6 +960,10 @@ deployments:
   content_hash: sha256:5d04f3347005e5034b8f4f1bd4cc6261810d94f356e47956729bece74aa3a697
 local_deployed_files:
 - .agents/skills/airchon
+- .agents/skills/airchon-sync
+- .agents/skills/airchon-sync/SKILL.md
+- .agents/skills/airchon-sync/references/handoff-prompt-template.md
+- .agents/skills/airchon-sync/scripts/check_drift.py
 - .agents/skills/airchon/SKILL.md
 - .agents/skills/airchon/references/harnesses/agent-loop-implementations.md
 - .agents/skills/airchon/references/harnesses/agent-loop.md
@@ -899,6 +975,10 @@ local_deployed_files:
 - .claude/agents/airchon-mentor.md
 - .claude/agents/airchon-teacher.md
 - .claude/skills/airchon
+- .claude/skills/airchon-sync
+- .claude/skills/airchon-sync/SKILL.md
+- .claude/skills/airchon-sync/references/handoff-prompt-template.md
+- .claude/skills/airchon-sync/scripts/check_drift.py
 - .claude/skills/airchon/SKILL.md
 - .github/agents/airchon-author.agent.md
 - .github/agents/airchon-mentor.agent.md
@@ -907,6 +987,9 @@ local_deployed_files:
 - .opencode/agents/airchon-mentor.md
 - .opencode/agents/airchon-teacher.md
 local_deployed_file_hashes:
+  .agents/skills/airchon-sync/SKILL.md: sha256:81819df71eb955a8774e393cb9d7f651171a2e169e7be3993aeec0de7733aa6b
+  .agents/skills/airchon-sync/references/handoff-prompt-template.md: sha256:2a9538d32a460e67ec9d2fdef28938f7fbc74d27128d88a48e239586e9e22a5f
+  .agents/skills/airchon-sync/scripts/check_drift.py: sha256:8fc15ccc3265c9a67520ab85322f5b58b7646eb96606a87c1b4db2e9e12985a2
   .agents/skills/airchon/SKILL.md: sha256:032f831a857d7e13cad0a6a13a20a0223917667d77fdf17903fdfba21716c9c4
   .agents/skills/airchon/references/harnesses/agent-loop-implementations.md: sha256:dbf941e48a2a3139a852ff925842e7ab6a0bf60d3452fdf500a0bc494265c6be
   .agents/skills/airchon/references/harnesses/agent-loop.md: sha256:74e6ef6b66d3f5e920c9abdd64284e5d6b63ecbb19d45745b31848144d852d04
@@ -917,6 +1000,9 @@ local_deployed_file_hashes:
   .claude/agents/airchon-author.md: sha256:2fe865da154752902625a4ec3f8f9e4e5b85be1baf7b4d6b0ae58f47cc4728ac
   .claude/agents/airchon-mentor.md: sha256:e8c74af02a3a6dbc9aa2fd7234a4e943ae91d564fdc99a103c77378f7f6087f6
   .claude/agents/airchon-teacher.md: sha256:5d04f3347005e5034b8f4f1bd4cc6261810d94f356e47956729bece74aa3a697
+  .claude/skills/airchon-sync/SKILL.md: sha256:81819df71eb955a8774e393cb9d7f651171a2e169e7be3993aeec0de7733aa6b
+  .claude/skills/airchon-sync/references/handoff-prompt-template.md: sha256:2a9538d32a460e67ec9d2fdef28938f7fbc74d27128d88a48e239586e9e22a5f
+  .claude/skills/airchon-sync/scripts/check_drift.py: sha256:8fc15ccc3265c9a67520ab85322f5b58b7646eb96606a87c1b4db2e9e12985a2
   .claude/skills/airchon/SKILL.md: sha256:032f831a857d7e13cad0a6a13a20a0223917667d77fdf17903fdfba21716c9c4
   .github/agents/airchon-author.agent.md: sha256:2fe865da154752902625a4ec3f8f9e4e5b85be1baf7b4d6b0ae58f47cc4728ac
   .github/agents/airchon-mentor.agent.md: sha256:e8c74af02a3a6dbc9aa2fd7234a4e943ae91d564fdc99a103c77378f7f6087f6

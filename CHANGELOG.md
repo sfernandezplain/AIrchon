@@ -1,3 +1,83 @@
+## 2026-09-03 -- Designed and built `airchon-sync` via `/genesis`; real-task testing found and fixed a genuine noise bug before ship
+
+The operator asked for the "monthly sync" mechanism discussed earlier
+this session to actually get built: a skill that re-checks
+`resources/sources-of-truth.json` against live reality, hands off
+drifted sources to `airchon-author`, and rebaselines the file. Routed
+through `/genesis` per this project's own discipline for any new
+agentic primitive.
+
+Design (steps 1-6): mapped cleanly onto genesis's RECONCILIATION LOOP
+pattern (a backlog of sources swept to a terminal state, persistent
+state in `sources-of-truth.*`, a completion signal per item) with an
+S7 DETERMINISTIC TOOL BRIDGE crossing for the actual hash/commit
+checks -- those are facts-that-must-be-true, never LLM-recalled. Cost
+check (3.2) identified a real amplifier: an unbounded fan-out on a
+large drift backlog could cost millions of tokens in one unattended
+run, and a blocking B10 HUMAN CHECKPOINT was rejected as the fix
+specifically because it would defeat the point of an eventually-
+scheduled, unattended sync -- an R5 COST PRUNE cap-and-defer (default
+8 pages/run) was used instead. SoC pass (step 4) caught a real design
+flaw before drafting: the first-draft plan had the LLM itself
+regenerating `sources-of-truth.md`'s 270-line table by hand each run --
+exactly the LLM-asserted-fact anti-pattern this project's own
+`airchon-author` grounding discipline argues against elsewhere. Fixed
+by giving the bundled script a second (`render`) mode that mechanically
+regenerates both tracked files from the check results, the same
+approach used by hand earlier this session.
+
+Build (step 7) + real-task validation (step 8) surfaced a genuine bug
+the design review hadn't caught: running the bundled `check_drift.py`
+twice in the same session (once to build `sources-of-truth.json`
+originally, once ~45 minutes later while testing this skill) flagged
+41 of 225 sources as drifted. Two real findings followed from actually
+investigating rather than trusting the number:
+
+1. **10 of this project's own 19 git sources are bare-repo citations**
+   (no specific file path -- `claude-code`, `opencode`, `pi`,
+   `hermes-agent` among them, all under active development). A bare
+   repo's HEAD commit changes on every unrelated commit anywhere in it,
+   so treating that as actionable would flood every run with noise on
+   irrelevant changes and exhaust the fan-out cap before a single real,
+   path-scoped change got a look. Fixed: `check_one()` now sets a
+   separate `handoff_needed` field (only path-scoped git changes, or
+   content-hash changes, are ever actionable) distinct from `drifted`
+   (any value change, tracked for transparency but not acted on alone).
+2. **Content-hash checks on SPA-rendered doc sites are noisy at a
+   confirmed non-trivial rate.** Verified directly: two back-to-back
+   fetches of the same `docs.github.com` page were byte-identical
+   (same size, same SHA-256), ruling out per-request randomness -- but
+   the value differed from a same-session check ~45 minutes earlier.
+   After the bare-repo fix, a second live re-test still flagged 63
+   sources, ALL of them content-hash and ALL concentrated on
+   `docs.github.com`/`platform.claude.com` (both React/Next.js-style
+   apps) -- almost certainly a CDN edge-cache cycle re-baking a build
+   timestamp or nonce into the response, not real content drift. This
+   was not fixed (would require HTML content-extraction/normalization,
+   a real engineering project of its own and a new dependency this
+   design deliberately avoided) -- it's documented prominently in the
+   skill's own `SKILL.md`, with an explicit recommendation to manually
+   review a few runs before scheduling this unattended.
+
+Given zero of that second test run's 63 flagged sources were the
+trustworthy path-scoped-git kind, firing real `airchon-author`
+dispatches against them was skipped deliberately (near-100% confirmed
+noise, no signal to justify the token spend) -- `check` and `render`
+modes were validated end-to-end against scratch copies instead, and
+the real `resources/sources-of-truth.*` files were left untouched by
+this design session rather than rebaselined against unreviewed values,
+which would have silently skipped the verification step the whole
+mechanism exists to enforce.
+
+Shipped: `.apm/skills/airchon-sync/` (`SKILL.md`, FORCED-only via
+`disable-model-invocation: true`, not routed through the `airchon`
+skill since a maintenance/reconciliation operation doesn't fit that
+router's teach/author/mentor taxonomy; `scripts/check_drift.py`,
+stdlib-only, two modes; `references/handoff-prompt-template.md`, with
+the page-specific evidence placed at the end of the prompt for cache-
+prefix discipline across the fan-out). Genesis's own handoff packet is
+scratch-only per this project's established precedent, not committed.
+
 ## 2026-09-03 -- Added `resources/sources-of-truth.md`, a live-fetched snapshot of every cited source
 
 A README review session had already surfaced the gap this closes: a
