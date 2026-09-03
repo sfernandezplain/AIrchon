@@ -228,7 +228,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:79686b19b485d2375c6b45066b046fda629f89218adc616d630f9c1d0dcb3686
+  content_hash: sha256:e8c74af02a3a6dbc9aa2fd7234a4e943ae91d564fdc99a103c77378f7f6087f6
 - kind: project-relative
   target: claude
   value: .claude/agents/airchon-teacher.md
@@ -237,7 +237,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:5ca09fd9e425444af429f01be423192ebe16a3d469b82879ac30ccde125b70ba
+  content_hash: sha256:5d04f3347005e5034b8f4f1bd4cc6261810d94f356e47956729bece74aa3a697
 - kind: project-relative
   target: claude
   value: .claude/skills/airchon
@@ -849,7 +849,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:79686b19b485d2375c6b45066b046fda629f89218adc616d630f9c1d0dcb3686
+  content_hash: sha256:e8c74af02a3a6dbc9aa2fd7234a4e943ae91d564fdc99a103c77378f7f6087f6
 - kind: project-relative
   target: copilot
   value: .github/agents/airchon-teacher.agent.md
@@ -858,7 +858,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:5ca09fd9e425444af429f01be423192ebe16a3d469b82879ac30ccde125b70ba
+  content_hash: sha256:5d04f3347005e5034b8f4f1bd4cc6261810d94f356e47956729bece74aa3a697
 - kind: project-relative
   target: opencode
   value: .opencode/agents/airchon-author.md
@@ -876,7 +876,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:79686b19b485d2375c6b45066b046fda629f89218adc616d630f9c1d0dcb3686
+  content_hash: sha256:e8c74af02a3a6dbc9aa2fd7234a4e943ae91d564fdc99a103c77378f7f6087f6
 - kind: project-relative
   target: opencode
   value: .opencode/agents/airchon-teacher.md
@@ -885,7 +885,7 @@ deployments:
   owners:
   - .
   active_owner: .
-  content_hash: sha256:5ca09fd9e425444af429f01be423192ebe16a3d469b82879ac30ccde125b70ba
+  content_hash: sha256:5d04f3347005e5034b8f4f1bd4cc6261810d94f356e47956729bece74aa3a697
 local_deployed_files:
 - .agents/skills/airchon
 - .agents/skills/airchon/SKILL.md
@@ -915,12 +915,12 @@ local_deployed_file_hashes:
   .agents/skills/airchon/references/harnesses/mcp-integration.md: sha256:b1569099c5dc0bee4838ef7fbab53d6096eb79f1278d0a55692a97a96f50dde9
   .agents/skills/airchon/references/harnesses/memory-management.md: sha256:d27559323f5404548ecd9aa20d701a5da2b77ad8af3c658c32956b59c00c1bf0
   .claude/agents/airchon-author.md: sha256:2fe865da154752902625a4ec3f8f9e4e5b85be1baf7b4d6b0ae58f47cc4728ac
-  .claude/agents/airchon-mentor.md: sha256:79686b19b485d2375c6b45066b046fda629f89218adc616d630f9c1d0dcb3686
-  .claude/agents/airchon-teacher.md: sha256:5ca09fd9e425444af429f01be423192ebe16a3d469b82879ac30ccde125b70ba
+  .claude/agents/airchon-mentor.md: sha256:e8c74af02a3a6dbc9aa2fd7234a4e943ae91d564fdc99a103c77378f7f6087f6
+  .claude/agents/airchon-teacher.md: sha256:5d04f3347005e5034b8f4f1bd4cc6261810d94f356e47956729bece74aa3a697
   .claude/skills/airchon/SKILL.md: sha256:032f831a857d7e13cad0a6a13a20a0223917667d77fdf17903fdfba21716c9c4
   .github/agents/airchon-author.agent.md: sha256:2fe865da154752902625a4ec3f8f9e4e5b85be1baf7b4d6b0ae58f47cc4728ac
-  .github/agents/airchon-mentor.agent.md: sha256:79686b19b485d2375c6b45066b046fda629f89218adc616d630f9c1d0dcb3686
-  .github/agents/airchon-teacher.agent.md: sha256:5ca09fd9e425444af429f01be423192ebe16a3d469b82879ac30ccde125b70ba
+  .github/agents/airchon-mentor.agent.md: sha256:e8c74af02a3a6dbc9aa2fd7234a4e943ae91d564fdc99a103c77378f7f6087f6
+  .github/agents/airchon-teacher.agent.md: sha256:5d04f3347005e5034b8f4f1bd4cc6261810d94f356e47956729bece74aa3a697
   .opencode/agents/airchon-author.md: sha256:2fe865da154752902625a4ec3f8f9e4e5b85be1baf7b4d6b0ae58f47cc4728ac
-  .opencode/agents/airchon-mentor.md: sha256:79686b19b485d2375c6b45066b046fda629f89218adc616d630f9c1d0dcb3686
-  .opencode/agents/airchon-teacher.md: sha256:5ca09fd9e425444af429f01be423192ebe16a3d469b82879ac30ccde125b70ba
+  .opencode/agents/airchon-mentor.md: sha256:e8c74af02a3a6dbc9aa2fd7234a4e943ae91d564fdc99a103c77378f7f6087f6
+  .opencode/agents/airchon-teacher.md: sha256:5d04f3347005e5034b8f4f1bd4cc6261810d94f356e47956729bece74aa3a697
