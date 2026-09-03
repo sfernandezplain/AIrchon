@@ -95,7 +95,7 @@ the wiki-book side of this relocation note.
 stateDiagram-v2
     [*] --> Slumberer
     Slumberer --> Gnostic: 2 modules, sequential
-    Gnostic --> Demiurge: 55 modules, 5 core clusters + Clusters 6-7 (RAG, SDLC mechanics) + Clusters 9-10 (Models, Inference Engines)
+    Gnostic --> Demiurge: 57 modules, 5 core clusters + Clusters 6-7 (RAG, SDLC mechanics) + Clusters 9-10 (Models, Inference Engines)
     Demiurge --> Archon: 10 modules, design-space band + Cluster 8 (SDLC design-space)
     Archon --> [*]: primary sources beyond this book
     note right of Slumberer
@@ -828,18 +828,52 @@ fit your corpus's format.
 **Key concepts:** the character-vs-token chunking trap (a
 character-based `chunk_size` silently disagreeing with a tokenizer's
 count); PaCMAP embedding-space visualization; ColBERTv2 cross-encoder
-reranking via RAGatouille.
+reranking via RAGatouille; **pre-retrieval query transformation**:
+Rewrite-Retrieve-Read (rewriting the query before retrieval via an LLM)
+and HyDE (Hypothetical Document Embeddings -- generating a hypothetical
+answer, embedding it instead of the query, and retrieving against the
+corpus so the encoder's dense bottleneck filters out false details).
 
 **Comprehension check:** Why does a plain `RecursiveCharacterTextSplitter`
 with a character-based `chunk_size` risk producing chunks that overflow
 an embedding model's actual token budget, and what fix does this page
-document?
+document? Additionally, how does HyDE's "generate a hypothetical answer
+and embed that" approach differ from simply rewriting the query before
+retrieval?
 
 **Exercise:** Take the pipeline you built in the previous module, add a
 reranking stage over its top-k retrieved results, and compare the
-top-1 result before and after reranking on the same query.
+top-1 result before and after reranking on the same query. Then, for
+one more query, compare the results of a plain retrieval, a
+Rewrite-Retrieve-Read retrieval, and a HyDE retrieval -- note which
+reformulation strategy, if either, improved the top-1 result.
 
-#### Module: Vector store integrations ([../rag/vector-store-integrations.md](../../references/rag/vector-store-integrations.md))
+#### Module: Cache Augmented Generation ([../rag/cache-augmented-generation.md](../../references/rag/cache-augmented-generation.md))
+
+**Key concepts:** CAG as a retrieval-free alternative to RAG -- load the
+entire knowledge base into the model's context window and cache the
+prefix; the retrieval-vs-in-context tradeoff (Ovadia et al.'s finding
+that RAG consistently outperforms fine-tuning for knowledge injection);
+prompt-caching as the mechanism that makes CAG viable (breakpoints, 0.1x
+read cost, 5-min/1-hour TTLs); when CAG is viable (large context window
++ KB fits + caching makes cost manageable) and when it isn't (KB exceeds
+context window, or per-query cost of re-processing cached context is too
+high). **Honesty caveat:** the pieces are VERIFIED from named sources but
+the synthesis ("skip retrieval, load everything, cache it") is BEST
+CURRENT UNDERSTANDING, UNCONFIRMED -- no single fetched source states
+the pattern in exactly those words.
+
+**Comprehension check:** In the CAG-vs-RAG tradeoff, what single
+characteristic of the knowledge base (size vs. context window) determines
+whether CAG is even architecturally viable, and what mechanism makes the
+repeated use of that cached context affordable per query?
+
+**Exercise:** Take a knowledge base small enough to fit in a single
+context window (e.g., a single API reference document), load it as a
+cached context prefix, and ask three different questions against it.
+Compare the answer quality and per-query cost to what the same three
+questions would produce with a retrieval-based approach over the same
+document chunked and embedded.
 
 **Key concepts:** three notebooks swapping the retriever half of the
 basic pipeline onto Milvus, Elasticsearch, and MongoDB Atlas while
@@ -886,16 +920,26 @@ draws from, using either prompting or a constrained-decoding library.
 
 **Key concepts:** synthetic QA-dataset generation from the knowledge
 base itself; groundedness/relevance/standalone-ness critique agents as
-a quality filter; an LLM-as-judge (GPT-4-style) scoring rubric.
+a quality filter; an LLM-as-judge (GPT-4-style) scoring rubric; **RAGAS**
+as a reference-free alternative -- four metrics (Faithfulness, Context
+Precision, Context Recall, Response Relevancy) that evaluate RAG quality
+without requiring ground-truth answers, each with its own formula for
+decomposing the response and retrieved context into a score.
 
 **Comprehension check:** Name the three critique-agent scores this
 page's pipeline filters a synthetic QA pair on, and what happens to a
-pair that fails any one of them.
+pair that fails any one of them. Additionally, which RAGAS metric
+measures whether all claims in the response are supported by retrieved
+context, and which one measures whether the retriever ranks relevant
+chunks above irrelevant ones?
 
 **Exercise:** Generate five synthetic QA pairs from your own pipeline's
 knowledge base, critique each on this page's three axes, and run the
 surviving pairs through an LLM-as-judge comparison of your pipeline's
-answer against the synthetic "true" answer.
+answer against the synthetic "true" answer. Then calculate the RAGAS
+Faithfulness score on the same five responses and compare: does the
+critique-agent filter and RAGAS Faithfulness agree on which answers are
+grounded in the retrieved context?
 
 #### Module: Agentic RAG with LlamaIndex ([../rag/agentic-rag-with-llamaindex.md](../../references/rag/agentic-rag-with-llamaindex.md))
 

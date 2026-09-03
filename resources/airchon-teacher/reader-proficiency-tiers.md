@@ -352,14 +352,20 @@ local-inference-engine mechanics -- not in a claim this wiki-book's own
 `references/harnesses/` corpus has independently verified the way it has
 verified, say, Claude Code's `settings.json` merge order.
 
-- **RAG cluster (9 pages, `references/rag/`):**
+- **RAG cluster (10 pages, `references/rag/`):**
   [RAG foundations](../../references/rag/foundations.md),
   [The basic RAG pipeline](../../references/rag/basic-rag-pipeline.md),
-  [Advanced RAG techniques](../../references/rag/advanced-rag-techniques.md),
+  [Advanced RAG techniques](../../references/rag/advanced-rag-techniques.md)
+  (including pre-retrieval query reformulation: Rewrite-Retrieve-Read and
+  HyDE),
+  [Cache Augmented Generation](../../references/rag/cache-augmented-generation.md)
+  (CAG as a retrieval-free alternative to RAG),
   [Vector store integrations](../../references/rag/vector-store-integrations.md),
   [Semantic caching for RAG](../../references/rag/semantic-caching.md),
   [Structured generation for RAG](../../references/rag/structured-generation-for-rag.md),
-  [RAG evaluation](../../references/rag/rag-evaluation.md),
+  [RAG evaluation](../../references/rag/rag-evaluation.md)
+  (including RAGAS as a reference-free evaluation framework alongside the
+  Cookbook's critique-agent approach),
   [Agentic RAG with LlamaIndex](../../references/rag/agentic-rag-with-llamaindex.md),
   and [RAG over heterogeneous data sources](../../references/rag/heterogeneous-data-sources.md).
   This cluster is assigned here, rather than folded into the Gnostic
@@ -367,8 +373,9 @@ verified, say, Claude Code's `settings.json` merge order.
   granularity -- specific chunk-size/tokenizer mismatches, specific
   reranker models (ColBERTv2 via RAGatouille), specific cache-eviction
   policies, specific vector-store integrations (Milvus, Elasticsearch,
-  MongoDB Atlas) -- not the harness-agnostic abstraction the Gnostic tier
-  is deliberately scoped to. It is also, concretely, the direct
+  MongoDB Atlas), the RAGAS metric suite with its exact formulas, and the
+  CAG-vs-RAG architectural tradeoff -- not the harness-agnostic
+  abstraction the Gnostic tier is deliberately scoped to. It is also, concretely, the direct
   prerequisite body of knowledge for the already-existing Archon-tier
   page [Context retrieval / RAG vs. agentic search as a design
   space](../../references/harnesses/context-retrieval-and-agentic-search.md), which presumes a

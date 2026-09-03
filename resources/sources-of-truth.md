@@ -3,7 +3,7 @@
 Generated 2026-09-03 by `airchon-sync` (re-run of `check_drift.py`),
 actually fetching every source, not by describing a mechanism.
 
-**Result: 225 sources checked, 222 confirmed live and correct right now, 0 static, 3 need attention.**
+**Result: 234 sources checked, 231 confirmed live and correct right now, 0 static, 3 need attention.**
 
 See `resources/sources-of-truth.json` (same directory) for full
 unshortened hashes/commit SHAs, and `.apm/skills/airchon-sync/` for
@@ -190,7 +190,7 @@ the mechanism that generated this file.
 | [https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview) | `system-prompt-design-as-craft.md` | SHA-256 | `sha256:8e4718f3daeac5744fef...` | OK |
 | [https://platform.claude.com/docs/en/agents-and-tools/tool-use/strict-tool-use](https://platform.claude.com/docs/en/agents-and-tools/tool-use/strict-tool-use) | `tool-schema-and-interface-design.md` | SHA-256 | `sha256:7c8ac77be034fec64656...` | OK |
 | [https://platform.claude.com/docs/en/api/messages](https://platform.claude.com/docs/en/api/messages) | `llm-api-contract.md` | SHA-256 | `sha256:fecb3b645db67249292d...` | OK |
-| [https://platform.claude.com/docs/en/build-with-claude/prompt-caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) | `caching.md` | SHA-256 | `sha256:2866d432c9dd36d9a073...` | OK |
+| [https://platform.claude.com/docs/en/build-with-claude/prompt-caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) | `caching.md`<br>`cache-augmented-generation.md` | SHA-256 | `sha256:2866d432c9dd36d9a073...` | OK |
 | [https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices) | `system-prompt-design-as-craft.md` | SHA-256 | `sha256:a7780b4b7d016e60fcda...` | OK |
 | [https://platform.claude.com/docs/en/build-with-claude/task-budgets](https://platform.claude.com/docs/en/build-with-claude/task-budgets) | `auth-and-usage-accounting.md` | SHA-256 | `sha256:7db51216500895322930...` | OK |
 | [https://platform.claude.com/docs/en/docs/build-with-claude/streaming](https://platform.claude.com/docs/en/docs/build-with-claude/streaming) | `llm-api-contract.md` | SHA-256 | `sha256:4f651fda8898c5eff365...` | OK |
@@ -245,3 +245,17 @@ the mechanism that generated this file.
 | [https://github.com/danielmeppiel/genesis/blob/main/skills/genesis/examples/02-review-panel-architecture.md](https://github.com/danielmeppiel/genesis/blob/main/skills/genesis/examples/02-review-panel-architecture.md) | `appendix-b-genesis-worked-example.md` | commit SHA | commit `32efb47bffb9` (2026-04-26) | OK |
 | [https://github.com/danielmeppiel/genesis/blob/main/skills/genesis/examples/README.md](https://github.com/danielmeppiel/genesis/blob/main/skills/genesis/examples/README.md) | `appendix-b-genesis-worked-example.md` | commit SHA | commit `32efb47bffb9` (2026-04-26) | OK |
 | [https://github.com/microsoft/apm](https://github.com/microsoft/apm) | `21-primitives-as-code.md` | commit SHA | commit `8aa6b95ee552` (2026-09-03) | OK |
+
+## references/rag/
+
+| Source | Cited by | Check | Current value | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| [https://arxiv.org/abs/2309.15217](https://arxiv.org/abs/2309.15217) | `rag-evaluation.md` | SHA-256 | `sha256:51f0d7a686ebc9341f5596...` | OK |
+| [https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/) | `rag-evaluation.md` | SHA-256 | `sha256:2f86fa7cbb84b7464f900...` | OK |
+| [https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/faithfulness/](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/faithfulness/) | `rag-evaluation.md` | SHA-256 | `sha256:be0675e6728cf2d69818c...` | OK |
+| [https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/context_precision/](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/context_precision/) | `rag-evaluation.md` | SHA-256 | `sha256:75e16d196cb601ce6bdec...` | OK |
+| [https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/context_recall/](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/context_recall/) | `rag-evaluation.md` | SHA-256 | `sha256:c181d54a3100770a066f5...` | OK |
+| [https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/answer_relevance/](https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/answer_relevance/) | `rag-evaluation.md` | SHA-256 | `sha256:06c6ec21809e69b29f1ed...` | OK |
+| [https://arxiv.org/abs/2312.05934](https://arxiv.org/abs/2312.05934) | `cache-augmented-generation.md` | SHA-256 | `sha256:577ec55c739af6391f999...` | OK |
+| [https://arxiv.org/abs/2305.14283](https://arxiv.org/abs/2305.14283) | `advanced-rag-techniques.md` | SHA-256 | `sha256:e814b061a0080c1b1cb60...` | OK |
+| [https://arxiv.org/abs/2212.10496](https://arxiv.org/abs/2212.10496) | `advanced-rag-techniques.md` | SHA-256 | `sha256:7df8ca35a04609ba72c26...` | OK |

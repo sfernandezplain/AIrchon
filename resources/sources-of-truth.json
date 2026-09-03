@@ -2637,10 +2637,12 @@
     {
       "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
       "area": [
-        "harnesses"
+        "harnesses",
+        "rag"
       ],
       "cited_by": [
-        "references/harnesses/caching.md"
+        "references/harnesses/caching.md",
+        "references/rag/cache-augmented-generation.md"
       ],
       "type": "content-hash",
       "value": "2866d432c9dd36d9a073388a65e0cf6fbdf0ad139fe6386cb68aaba40c713062",
@@ -3234,6 +3236,132 @@
       ],
       "type": "content-hash",
       "value": "1f9925d4246c05031ecb526748c1315f02e4dda74118894fe935838c70e2ddb4",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://arxiv.org/abs/2309.15217",
+      "area": [
+        "rag"
+      ],
+      "cited_by": [
+        "references/rag/rag-evaluation.md"
+      ],
+      "type": "content-hash",
+      "value": "51f0d7a686ebc9341f5596a066e858fe1c9d3132e82b95ad72559f48fb248d69",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/",
+      "area": [
+        "rag"
+      ],
+      "cited_by": [
+        "references/rag/rag-evaluation.md"
+      ],
+      "type": "content-hash",
+      "value": "2f86fa7cbb84b7464f900f83025182821500e69f0df287428711e76ceee49ff8",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/faithfulness/",
+      "area": [
+        "rag"
+      ],
+      "cited_by": [
+        "references/rag/rag-evaluation.md"
+      ],
+      "type": "content-hash",
+      "value": "be0675e6728cf2d69818c61d23e5aeadb948a6c26e715f57d7240b9e7a0ef5d2",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/context_precision/",
+      "area": [
+        "rag"
+      ],
+      "cited_by": [
+        "references/rag/rag-evaluation.md"
+      ],
+      "type": "content-hash",
+      "value": "75e16d196cb601ce6bdecbe09d1218e958e585b97f4a37099a92f037df0a972b",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/context_recall/",
+      "area": [
+        "rag"
+      ],
+      "cited_by": [
+        "references/rag/rag-evaluation.md"
+      ],
+      "type": "content-hash",
+      "value": "c181d54a3100770a066f53e38f88350d323a1e204896caa0afef1b73f99d780c",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://docs.ragas.io/en/stable/concepts/metrics/available_metrics/answer_relevance/",
+      "area": [
+        "rag"
+      ],
+      "cited_by": [
+        "references/rag/rag-evaluation.md"
+      ],
+      "type": "content-hash",
+      "value": "06c6ec21809e69b29f1ede41108bef301828a241849b55247812d1a78a20ad85",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://arxiv.org/abs/2312.05934",
+      "area": [
+        "rag"
+      ],
+      "cited_by": [
+        "references/rag/cache-augmented-generation.md"
+      ],
+      "type": "content-hash",
+      "value": "577ec55c739af6391f9994baf2fd5db8e74f17743fb5aca8f7eaf22c44a00bb8",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://arxiv.org/abs/2305.14283",
+      "area": [
+        "rag"
+      ],
+      "cited_by": [
+        "references/rag/advanced-rag-techniques.md"
+      ],
+      "type": "content-hash",
+      "value": "e814b061a0080c1b1cb60ce601272bec60afc8927df9aa04ca94cf864f718fc3",
+      "commit_date": null,
+      "status": "OK",
+      "checked": "2026-09-03"
+    },
+    {
+      "url": "https://arxiv.org/abs/2212.10496",
+      "area": [
+        "rag"
+      ],
+      "cited_by": [
+        "references/rag/advanced-rag-techniques.md"
+      ],
+      "type": "content-hash",
+      "value": "7df8ca35a04609ba72c26b1b6f20cb884b4d6af1e48b460b4286f99e1a1220b8",
       "commit_date": null,
       "status": "OK",
       "checked": "2026-09-03"

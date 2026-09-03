@@ -66,8 +66,20 @@ than independently verified.
    partition-then-chunk pipeline for mixed document formats, and Jina
    Reranker v2 scoring whole SQL table schemas with no vector index at
    all
+10. [Cache Augmented Generation (CAG): loading the whole knowledge base
+    instead of retrieving](cache-augmented-generation.md) -- the
+    retrieval-free alternative to RAG: load the entire knowledge base
+    into the context window and cache the prefix, viable only with
+    large context windows and prompt caching (Ovadia et al. 2023 +
+    Anthropic prompt-caching docs)
 
 All eleven HuggingFace Cookbook notebooks identified as this area's
 source material are now covered by the pages above. `foundations.md`
 additionally covers the two non-cookbook primary sources (Lewis et al.
-2020 and the HuggingFace Agents Course Unit 3 page).
+2020 and the HuggingFace Agents Course Unit 3 page). Pages 1–9 are
+sourced from HuggingFace Cookbook notebooks; page 10 (`cache-augmented-generation.md`)
+is sourced from arXiv papers and Anthropic's prompt-caching documentation.
+The RAGAS section added to `rag-evaluation.md` (§5) is sourced from the
+RAGAS paper (Shahul Es et al., arXiv:2309.15217) and the RAGAS docs.
+The query-reformulation section added to `advanced-rag-techniques.md`
+(§6) is sourced from two arXiv papers (Ma et al. 2023, Gao et al. 2022).

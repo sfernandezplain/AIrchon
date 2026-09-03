@@ -1,4 +1,4 @@
-# Advanced RAG techniques: token-aware chunking, embedding visualization, and reranking
+# Advanced RAG techniques: token-aware chunking, embedding visualization, reranking, and query reformulation
 
 Source: **"Advanced RAG on Hugging Face documentation using
 LangChain"**, authored by Aymeric Roucher
@@ -177,3 +177,152 @@ than demonstrates; documenting them here as "named but unimplemented"
 keeps this page's claims scoped to what was actually fetched and read
 this session rather than inferring implementations that were not
 shown.
+
+## 6. Pre-retrieval query transformation: Rewrite-Retrieve-Read and HyDE
+
+The techniques documented in §1–§4 above all operate either on the
+retriever half (chunk sizing, indexing, reranking) or the reader half
+(prompt design). This section documents a third category: techniques
+that transform the *query itself* before retrieval — bridging the gap
+between the user's input text and the knowledge needed to answer it.
+These are **pre-retrieval** techniques, distinct from the
+post-retrieval cross-encoder reranking documented in §4 (which
+operates on the *retrieved results* after retrieval has already
+happened). The notebook named "query expansion" in its §5
+named-but-unimplemented list ("reformulate the user query in slightly
+different ways to retrieve more documents"); the two papers below are
+the foundational formalizations of that lever.
+
+### 6.1 Query Rewriting: the Rewrite-Retrieve-Read framework
+
+Xinbei Ma, Yeyun Gong, Pengcheng He, Hai Zhao, and Nan Duan, in "Query
+Rewriting for Retrieval-Augmented Large Language Models"
+(arxiv.org/abs/2305.14283, fetched this session from the arXiv
+abstract page, EMNLP 2023), introduce the **Rewrite-Retrieve-Read**
+framework. The paper's abstract states its core contribution: it
+proposes "a new framework, Rewrite-Retrieve-Read instead of the
+previous retrieve-then-read for the retrieval-augmented LLMs from the
+perspective of the query rewriting." The paper's stated motivation:
+"there is inevitably a gap between the input text and the needed
+knowledge in retrieval" — the user's raw query may not match the
+vocabulary, phrasing, or specificity of the documents that contain
+the answer.
+
+The framework, per the abstract, works as follows:
+
+1. **Rewrite**: first prompt an LLM to generate (rewrite) the query.
+2. **Retrieve**: use the rewritten query (not the original) to
+   retrieve contexts — the paper's abstract states it uses "a web
+   search engine to retrieve contexts," though the framework is
+   general and the retriever can be any search system.
+3. **Read**: pass the retrieved contexts to the LLM reader to
+   generate the answer.
+
+This is structurally a **pre-retrieval** transformation: the query is
+modified *before* it reaches the retriever, not after. The
+Retrieve-then-Read pipeline retrieves directly on the user's raw
+input; Rewrite-Retrieve-Read inserts one LLM call — the rewrite —
+before the retrieval step, then proceeds with the normal
+retrieve-then-read flow. The abstract is explicit about where the
+adaptation happens: "Unlike prior studies focusing on adapting either
+the retriever or the reader, our approach pays attention to the
+adaptation of the search query itself."
+
+The paper also proposes a **trainable scheme** beyond the prompt-based
+approach, per the abstract: "A small language model is adopted as a
+trainable rewriter to cater to the black-box LLM reader. The rewriter
+is trained using the feedback of the LLM reader by reinforcement
+learning." In this scheme, the rewriter is not just a frozen LLM
+prompted to rewrite — it is a small language model that is fine-tuned
+via RL, where the reward signal comes from how well the LLM reader
+performs on the downstream task (open-domain QA and multiple-choice QA)
+using the rewritten query. The abstract reports that "experiments
+results show consistent performance improvement, indicating that our
+framework is proven effective and scalable."
+
+The key distinction from HyDE (§6.2 below): Rewrite-Retrieve-Read
+transforms the *query* into a better *query* before retrieval — the
+rewritten query is still a question or search phrase, not a hypothetical
+answer document. HyDE transforms the query into a hypothetical *answer*
+and retrieves on that instead.
+
+### 6.2 HyDE: Hypothetical Document Embeddings
+
+Luyu Gao, Xueguang Ma, Jimmy Lin, and Jamie Callan, in "Precise
+Zero-Shot Dense Retrieval without Relevance Labels"
+(arxiv.org/abs/2212.10496, fetched this session from the arXiv
+abstract page, submitted December 2022), introduce **HyDE**
+(Hypothetical Document Embeddings). The paper's abstract states the
+core idea: "Given a query, HyDE first zero-shot instructs an
+instruction-following language model (e.g. InstructGPT) to generate a
+hypothetical document. The document captures relevance patterns but is
+unreal and may contain false details. Then, an unsupervised
+contrastively learned encoder (e.g. Contriever) encodes the document
+into an embedding vector. This vector identifies a neighborhood in the
+corpus embedding space, where similar real documents are retrieved based
+on vector similarity."
+
+The mechanism, per the abstract, has a critical property that makes it
+work despite the hypothetical document containing false details: "This
+second step ground[s] the generated document to the actual corpus,
+with the encoder's dense bottleneck filtering out the incorrect
+details." In other words:
+
+```mermaid
+flowchart LR
+    Q["User query"] --> LLM["Instruction-following LLM<br/>(e.g. InstructGPT)"]
+    LLM --> HD["Hypothetical document<br/>(captures relevance patterns,<br/>may contain false details)"]
+    HD --> ENC["Unsupervised encoder<br/>(e.g. Contriever)"]
+    ENC --> EMB["Embedding vector"]
+    EMB --> CORPUS["Corpus embedding space<br/>(vector similarity search)"]
+    CORPUS --> RET["Real documents retrieved"]
+```
+
+The insight is that dense retrieval normally struggles with zero-shot
+relevance — the abstract states it "remains difficult to create
+effective fully zero-shot dense retrieval systems when no relevance
+label is available" — because the query encoder must somehow map a
+short user query into the same embedding neighborhood as the
+full-length documents that answer it. HyDE sidesteps this by having
+the LLM generate a *full-length hypothetical answer document* that is
+already in the "document space" the encoder was trained on, and then
+embedding that document (which captures the relevance pattern of the
+answer) rather than the raw query (which does not).
+
+The paper reports the following results, per the abstract: "HyDE
+significantly outperforms the state-of-the-art unsupervised dense
+retriever Contriever and shows strong performance comparable to
+fine-tuned retrievers, across various tasks (e.g. web search, QA, fact
+verification) and languages (e.g. sw, ko, ja)." This is a notable
+claim: HyDE achieves performance comparable to *fine-tuned* retrievers
+without any relevance labels at all, purely by leveraging the LLM's
+ability to generate a plausible answer document and then using a
+*zero-shot* encoder to embed it. The false details in the hypothetical
+document do not derail retrieval because the encoder's dense bottleneck
+— its compression of the document into a single embedding vector —
+smooths over the specific incorrect claims while preserving the general
+relevance pattern.
+
+### 6.3 Position in the RAG technique taxonomy
+
+Both Rewrite-Retrieve-Read and HyDE are **pre-retrieval query
+transformation** techniques — they modify what the retriever sees
+before retrieval happens. This positions them as a complement to, not
+a replacement for, the post-retrieval reranking documented in §4
+above. A RAG pipeline could in principle use both: rewrite or
+Hypothetical-Document-embed the query first (§6), then retrieve a
+candidate pool, then cross-encoder-rerank the candidates (§4), then
+pass the final top-k to the reader. The pre-retrieval techniques
+improve what enters the retrieval pipeline; the post-retrieval
+techniques improve what exits it.
+
+The distinction matters because the failure modes they address are
+different. Reranking (§4) addresses the case where the bi-encoder
+retriever ranks the right documents too low — it fixes ranking quality
+within the retrieved set. Query transformation (§6) addresses the case
+where the *query itself* is the bottleneck — the user's phrasing does
+not match the document's vocabulary, or the query is too short/sparse
+for the encoder to map into the right neighborhood. Reranking cannot
+help if the relevant document was never retrieved in the first place;
+query transformation can, by changing the query to retrieve better
+candidates upfront.

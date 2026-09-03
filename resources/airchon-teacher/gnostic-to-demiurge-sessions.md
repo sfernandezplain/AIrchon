@@ -565,6 +565,17 @@ flowchart TB
    silently disagreeing with a tokenizer's count.
 2. PaCMAP embedding-space visualization.
 3. ColBERTv2 cross-encoder reranking via RAGatouille.
+4. Pre-retrieval query transformation: Rewrite-Retrieve-Read (rewriting
+   the query before retrieval) and HyDE (Hypothetical Document
+   Embeddings -- generating a hypothetical answer, embedding it instead
+   of the query, and retrieving against the corpus so the encoder's
+   dense bottleneck filters out false details).
+5. Cache Augmented Generation (CAG) as a retrieval-free alternative:
+   load the entire knowledge base into context and cache the prefix
+   instead of retrieving chunks; when CAG is viable (large context
+   window + KB fits + prompt caching makes cost manageable) and when
+   it isn't. **Honesty caveat:** the pieces are VERIFIED from named
+   sources but the synthesis is BEST CURRENT UNDERSTANDING.
 
 **Session 31 -- Vector store integrations.** Items to cover, in order:
 1. Three notebooks swapping the retriever half of the basic pipeline
@@ -588,6 +599,10 @@ order:
 2. Groundedness/relevance/standalone-ness critique agents as a quality
    filter.
 3. An LLM-as-judge (GPT-4-style) scoring rubric.
+4. RAGAS as a reference-free alternative: four metrics (Faithfulness,
+   Context Precision, Context Recall, Response Relevancy) that evaluate
+   RAG quality without requiring ground-truth answers, each with its
+   own formula for decomposing the response and retrieved context.
 
 **Session 35 -- Agentic RAG with LlamaIndex.** Items to cover, in
 order:
@@ -615,7 +630,9 @@ here is integration of Sessions 28-36, not a new concept:
    context, and what retrieval specifically adds back.
 3. Walk advanced-rag-techniques.md's comprehension check: why a
    character-based `chunk_size` risks overflowing an embedding model's
-   token budget, and the fix this page documents.
+   token budget, and the fix this page documents. Additionally, how
+   does HyDE's "generate a hypothetical answer and embed that" approach
+   differ from simply rewriting the query before retrieval?
 4. Walk vector-store-integrations.md's comprehension check: one
    production vector store this page documents and the embedding model
    its notebook pairs it with.
@@ -626,7 +643,10 @@ here is integration of Sessions 28-36, not a new concept:
    source-highlighting feature concretely solves.
 7. Walk rag-evaluation.md's comprehension check: the three
    critique-agent scores a synthetic QA pair is filtered on, and what
-   happens to a pair that fails any one of them.
+   happens to a pair that fails any one of them. Additionally, which
+   RAGAS metric measures whether all claims in the response are
+   supported by retrieved context, and which one measures whether the
+   retriever ranks relevant chunks above irrelevant ones?
 8. Walk agentic-rag-with-llamaindex.md's comprehension check: LlamaIndex's
    "OpenAI-by-default trap" and the concrete substitution the notebook
    makes to avoid it.
