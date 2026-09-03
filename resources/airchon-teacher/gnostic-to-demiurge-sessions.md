@@ -1,7 +1,7 @@
 # Session breakdown (agenda only): Gnostic -> Demiurge
 
 **What this file is.** A pacing layer on top of
-[knowledge-path-curriculum.md](../../references/harnesses/knowledge-path-curriculum.md)'s
+[knowledge-path-curriculum.md](knowledge-path-curriculum.md)'s
 "Transition 2: Gnostic -> Demiurge" section -- the 21-page
 core-mechanics band, already grouped by that page into five thematic
 clusters (Memory & Context, Coordination & Multi-Agent, Transport &

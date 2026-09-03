@@ -31,61 +31,35 @@ clusters for Gnostic->Demiurge, and the 10-page design-space band plus
 the Agentic-SDLC design-space/methodology cluster for Demiurge->Archon
 (the last two clusters, covering `references/models/` and
 `references/inference-engines/`, were added the same day this page
-relocated). `knowledge-path-curriculum.md` immediately below still
-expands those reading lists into a teachable structure and links out to
-the relocated page from its own new location.
+relocated). `knowledge-path-curriculum.md` -- relocated out of this
+wiki-book that same day too, see the Curriculum section below -- still
+expands those reading lists into a teachable structure and links back
+to this page from its own new, adjacent location.
 
 ## Curriculum
 
-[Knowledge-path curriculum: a course skeleton for the three tier transitions](knowledge-path-curriculum.md) --
-written 2026-08-17, revised 2026-08-24 and again 2026-09-03, a
-curriculum scaffold (not a research page) expanding
-`resources/airchon-teacher/reader-proficiency-tiers.md`'s reading lists
-(relocated from this book, see above) into a teachable structure: for
-each transition (Slumberer->Gnostic,
-Gnostic->Demiurge, Demiurge->Archon), a transition overview, 3-5
-learning objectives, a per-source-page module (key concepts + one
-comprehension-check question + one applied exercise), and a capstone
-synthesis task; the 21-page Gnostic->Demiurge band is further grouped
-into five thematic clusters (Memory & Context, Coordination &
-Multi-Agent, Transport & API, Config & Permissions, Skills & Tools),
-extended 2026-08-24 by Cluster 6 (Retrieval-Augmented Generation, 9
-modules from `references/rag/`) and Cluster 7 (Agentic SDLC
-practitioner mechanics, 6 modules from `references/sdlc/`), and
-extended again 2026-09-03 by Cluster 9 (AI model classification, 5
-modules from `references/models/`) and Cluster 10 (Local/self-hosted
-inference engines, 14 modules from `references/inference-engines/`);
-the Demiurge->Archon band was extended 2026-08-24 by Cluster 8 (Agentic
-SDLC design-space and methodology, 9 modules from `references/sdlc/`).
-Every factual detail about what a source page covers is inherited from
-that page's own row below (or from `references/rag/index.md` /
-`references/sdlc/index.md` / `references/models/index.md` /
-`references/inference-engines/index.md` for Clusters 6-10), not
-re-verified on the curriculum page itself. A session-pacing agenda
-layer for Transition 1
-(Slumberer->Gnostic) -- three schedulable sessions, each listing only
-the agenda items to discuss, sized so no session runs thinner than
-three items or heavier than six -- was added 2026-08-17 and then
-relocated the same day out of this page to
-`resources/airchon-teacher/slumberer-to-gnostic-sessions.md`,
-scoped to `airchon-teacher`'s own domain rather than kept as general
-wiki-book content (see that agent's own file and `CHANGELOG.md`). A
-second such agenda layer for Transition 2 (Gnostic->Demiurge) --
-27 sessions (one per module, five per-cluster synthesis sessions, and
-a final capstone session), organized around the same five thematic
-clusters -- was written directly to
-`resources/airchon-teacher/gnostic-to-demiurge-sessions.md`
-the same way, without ever living inline in this page. A third such
-agenda layer for Transition 3 (Demiurge->Archon) -- 13 sessions (one
-per module, two per-cluster synthesis sessions, and a final capstone
-session), organized around a two-way design-space/original-survey vs.
-production-completeness split this band's own pages already draw for
-themselves in the Topics table below -- was written directly to
-`resources/airchon-teacher/demiurge-to-archon-sessions.md`
-the same way. **Note (2026-08-24, still current 2026-09-03):** neither
-pacing file yet accounts for Cluster 6, 7, 8, 9, or 10; the curriculum
-page itself flags this as follow-up pacing work out of scope for
-`airchon-author`.
+**Relocated 2026-09-03.** The knowledge-path curriculum scaffold no
+longer lives in this wiki-book -- it moved to
+`resources/airchon-teacher/knowledge-path-curriculum.md`, the same day
+and for the same reason the reader-proficiency-tiers rubric it expands
+relocated to that directory (see the Reader proficiency tiers section
+above): it is a curriculum scaffold authored by the operator, not a
+`references/harnesses/` research page about harness internals, and
+belongs in `airchon-teacher`'s own tier domain instead, alongside the
+rubric it expands and the session-pacing agenda files
+(`*-sessions.md`) that already lived there. Read it directly at its new
+path for the full three-transition course structure -- per-transition
+learning objectives, a per-source-page module (key concepts +
+comprehension check + exercise) for every page named in the
+reader-proficiency-tiers reading lists, and a capstone synthesis task
+per transition, including the Cluster 6-10 extensions covering
+`references/rag/`, `references/sdlc/`, `references/models/`, and
+`references/inference-engines/`. Every factual detail it cites about
+what a source page covers remains inherited from that page's own row
+below (or from `references/rag/index.md` / `references/sdlc/index.md` /
+`references/models/index.md` / `references/inference-engines/index.md`
+for Clusters 6-10), not re-verified on the curriculum page itself --
+that inheritance discipline did not change with the move.
 
 ## Topics
 

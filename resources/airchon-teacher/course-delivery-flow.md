@@ -267,7 +267,7 @@ message" constraint.
      session (every cluster-synthesis and final-capstone session
      does), use it verbatim.
    - Otherwise (a plain content session), open
-     [knowledge-path-curriculum.md](../../references/harnesses/knowledge-path-curriculum.md),
+     [knowledge-path-curriculum.md](knowledge-path-curriculum.md),
      find that session's corresponding module (session titles and
      module titles match 1:1, e.g. "Session 4 -- Caching" ->
      "Module: Caching"), and use that module's own **Exercise** field

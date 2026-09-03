@@ -50,7 +50,8 @@ the new relative depth (two directories up to reach
 `references/models/`, or `references/inference-engines/`, where a bare
 filename or a `../rag/`/`../sdlc/` link previously sufficed from inside
 `references/harnesses/` itself), and
-`references/harnesses/knowledge-path-curriculum.md`,
+`knowledge-path-curriculum.md` (moved alongside this page on 2026-09-03,
+see its own opening section),
 `references/harnesses/index.md`, and this project's other consumers of
 this page were updated to point at the new path. Same day, two more
 reference areas that postdate the 2026-08-24 RAG/SDLC revision below --
@@ -708,7 +709,7 @@ material's evidentiary weight, for either kind of distinction.
 own opening section for why, and see
 [references/harnesses/index.md](../../references/harnesses/index.md)
 for the pointer left in its old location. Every other file that linked
-to or quoted this page (`references/harnesses/knowledge-path-curriculum.md`,
+to or quoted this page ([knowledge-path-curriculum.md](knowledge-path-curriculum.md),
 [classification-flow.md](classification-flow.md),
 [course-delivery-flow.md](course-delivery-flow.md), and
 [demiurge-to-archon-sessions.md](demiurge-to-archon-sessions.md)) was

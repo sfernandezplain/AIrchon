@@ -76,14 +76,14 @@ stateDiagram-v2
 
 ## Before Step 2
 
-- [ ] Read [references/harnesses/knowledge-path-curriculum.md](../../references/harnesses/knowledge-path-curriculum.md) and [reader-proficiency-tiers.md](reader-proficiency-tiers.md) first, for the tier structure and module list
+- [ ] Read [knowledge-path-curriculum.md](knowledge-path-curriculum.md) and [reader-proficiency-tiers.md](reader-proficiency-tiers.md) first, for the tier structure and module list
 - [ ] Then read the actual `references/harnesses/*.md` topic page(s) each module you're drawing questions from cites (e.g. `agent-loop.md`, `mcp-integration.md`, `hooks-lifecycle-extensibility.md`) -- the curriculum page inherits its factual claims from those pages rather than re-verifying them, and so must you: never write a question or answer key from the curriculum's one-line "key concepts" summary alone
 
 ## Step 2: Generate Exam Asset
 
 ### Sourcing Questions
 
-Read [references/harnesses/knowledge-path-curriculum.md](../../references/harnesses/knowledge-path-curriculum.md), follow its module links out to the actual `references/harnesses/*.md` topic pages, and extract 10 questions per tier from what those pages actually say:
+Read [knowledge-path-curriculum.md](knowledge-path-curriculum.md), follow its module links out to the actual `references/harnesses/*.md` topic pages, and extract 10 questions per tier from what those pages actually say:
 
 - **Slumberer:** Entry-level definitions, key concepts (harness types, tool names, basic workflow steps)
 - **Gnostic:** Hands-on scenarios, composition decisions, dispatch rules
@@ -334,7 +334,7 @@ isn't already known before naming one:
 **What this means:** You have advanced proficiency in agent harness design. You can evaluate trade-offs and make sound architectural choices.
 
 **Next Steps:**
-1. Read the [Demiurge tier modules](../../references/harnesses/knowledge-path-curriculum.md) in the curriculum
+1. Read the [Demiurge tier modules](knowledge-path-curriculum.md) in the curriculum
 2. Exercise (which harness are you using -- Claude Code or Copilot CLI?): trace one real permission-check decision through that harness's own enforcement path and write down each stage it passed through
 3. When ready, take the Archon challenges or mentor a peer
 

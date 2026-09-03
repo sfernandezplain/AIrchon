@@ -1,3 +1,44 @@
+## 2026-09-03 -- Relocated `knowledge-path-curriculum.md` out of the wiki-book to sit alongside `reader-proficiency-tiers.md`
+
+Immediately after the relocation below, the operator asked for
+`knowledge-path-curriculum.md` -- the curriculum scaffold that directly
+expands `reader-proficiency-tiers.md`'s tier reading lists into modules,
+comprehension checks, exercises, and capstones -- to follow its sibling
+out of `references/harnesses/` for the same reason: it is a curriculum
+scaffold authored by the operator, not harness-internals research, and
+belongs in `airchon-teacher`'s own tier domain. `airchon-author` moved
+it byte-for-byte to `resources/airchon-teacher/knowledge-path-curriculum.md`
+(a pure relocation, no content re-authoring) and fixed the cross-file
+links that pointed at its old path across `classification-flow.md`,
+`course-delivery-flow.md`, `demiurge-to-archon-sessions.md`,
+`gnostic-to-demiurge-sessions.md`, `slumberer-to-gnostic-sessions.md`,
+and `reader-proficiency-tiers.md`, plus replaced
+`references/harnesses/index.md`'s "Curriculum" section with a
+relocation note.
+
+That pass correctly left the page's own *content* untouched per its
+scope -- but the move silently broke every link the page makes OUT to
+its sources, since its relative depth to `references/harnesses/`
+siblings and to `references/rag/`/`references/sdlc/` changed even
+though its depth from the repo root did not: bare same-directory links
+like `agent-topology.md` and one-level-up links like `../rag/...` both
+assumed the file still lived in `references/harnesses/`. Caught this by
+grepping the moved file for bare `.md` links and `../rag/`/`../sdlc/`
+patterns immediately after the move (38 bare harness-page links, 9 RAG
+links, 20 SDLC links -- 67 in total) and rewrote all of them to
+`../../references/harnesses/...`, `../../references/rag/...`, and
+`../../references/sdlc/...` respectively; the Cluster 9/10 links to
+`references/models/` and `references/inference-engines/` added the
+previous entry already used that two-levels-up form and needed no
+change. Also fixed the page's own opening section, which still
+described itself as living inside "this wiki-book" after having just
+moved out of it, and added a revision note documenting the page's own
+relocation (distinct from the note already covering
+`reader-proficiency-tiers.md`'s move) and a same-directory link to that
+sibling page (was written as a needlessly-round-trip
+`../../resources/airchon-teacher/...` path from the prior session, still
+correct but not idiomatic once both files share a directory).
+
 ## 2026-09-03 -- Relocated `reader-proficiency-tiers.md` out of the wiki-book into `resources/airchon-teacher/`; folded `references/models/` and `references/inference-engines/` into its tier bands
 
 The operator pointed out that `reader-proficiency-tiers.md` -- the

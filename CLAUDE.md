@@ -66,14 +66,16 @@ that work together:
   renamed from `teacher` on 2026-08-17 -- see `CHANGELOG.md`) -- a
   standalone custom agent, unrelated to the mentor/author split above,
   that assesses reader proficiency: administers a 40-question exam
-  grounded in `references/harnesses/knowledge-path-curriculum.md`,
+  grounded in `resources/airchon-teacher/knowledge-path-curriculum.md`,
   scores it, and classifies the reader into one of four tiers
   (Slumberer / Gnostic / Demiurge / Archon, defined in
-  `resources/airchon-teacher/reader-proficiency-tiers.md` -- relocated
-  there 2026-09-03 from `references/harnesses/`, since it is a
-  meta/rubric page scoped to `airchon-teacher`'s own domain rather than
-  harness-internals research; see `CHANGELOG.md`'s 2026-09-03 entry).
-  Persists the
+  `resources/airchon-teacher/reader-proficiency-tiers.md`). Both pages
+  were relocated there 2026-09-03 from `references/harnesses/` --
+  `reader-proficiency-tiers.md` first, `knowledge-path-curriculum.md`
+  immediately after to sit alongside the sibling page it directly
+  expands -- since neither is actually harness-internals research, both
+  are meta/curriculum-scaffold pages scoped to `airchon-teacher`'s own
+  domain; see `CHANGELOG.md`'s 2026-09-03 entries. Persists the
   tier to `~/.airchon/level` and the exam + responses to
   `~/.airchon/qualify-exam.md` -- both on the user's own machine,
   outside this repo, never under `references/harnesses/`. Since
@@ -157,7 +159,7 @@ references/inference-engines/              Local/self-hosted inference-engine in
 <deploy-root>/agents/airchon-author.*      Deployed copy of the author agent -- gitignored, regenerated, NEVER hand-edited
 <deploy-root>/agents/airchon-teacher.*     Deployed copy of the teacher agent -- gitignored, regenerated, NEVER hand-edited
 <deploy-root>/skills/airchon/               Deployed copy of the router skill -- gitignored, regenerated, NEVER hand-edited
-resources/airchon-teacher/                 airchon-teacher's own content, outside references/harnesses/ on purpose (see below); genuinely NOT deployed anywhere by `apm install` (moved outside `.apm/agents/` on 2026-08-18 specifically so it wouldn't be -- see `CHANGELOG.md`). Three kinds of content live here now, all project-relative and Read directly by the agent, none deployed: (1) the original session-pacing/scaffolding files (the three `*-sessions.md` files, `course-progress-template.md`, `exam-file-template.md`, `scoring-reference.md`) that the Course-Delivery Flow consumes but does not author; (2) since 2026-08-19, `classification-flow.md`, `course-delivery-flow.md`, `guardrails.md`, and `routed-invocation-protocol.md` -- the actual Steps/CD procedures R3-EXTRACTed out of `airchon-teacher.agent.md`'s own body (see `CHANGELOG.md`'s 2026-08-19 entry); this second kind is canonical, hand-authored source, not reference material -- edit these files directly, the same discipline as the `.agent.md` file itself, never treat them as generated or optional; (3) since 2026-09-03, `reader-proficiency-tiers.md` -- relocated here from `references/harnesses/` (it is a meta/rubric page scoped to this agent's own tier domain, not harness-internals research; see `CHANGELOG.md`'s 2026-09-03 entry). Unlike kind (2), this third kind stays `airchon-author`'s exclusive write scope, per that agent's own BOUNDARY exception for this directory -- do not hand-edit it directly the way kind (2) is edited.
+resources/airchon-teacher/                 airchon-teacher's own content, outside references/harnesses/ on purpose (see below); genuinely NOT deployed anywhere by `apm install` (moved outside `.apm/agents/` on 2026-08-18 specifically so it wouldn't be -- see `CHANGELOG.md`). Three kinds of content live here now, all project-relative and Read directly by the agent, none deployed: (1) the original session-pacing/scaffolding files (the three `*-sessions.md` files, `course-progress-template.md`, `exam-file-template.md`, `scoring-reference.md`) that the Course-Delivery Flow consumes but does not author; (2) since 2026-08-19, `classification-flow.md`, `course-delivery-flow.md`, `guardrails.md`, and `routed-invocation-protocol.md` -- the actual Steps/CD procedures R3-EXTRACTed out of `airchon-teacher.agent.md`'s own body (see `CHANGELOG.md`'s 2026-08-19 entry); this second kind is canonical, hand-authored source, not reference material -- edit these files directly, the same discipline as the `.agent.md` file itself, never treat them as generated or optional; (3) since 2026-09-03, `reader-proficiency-tiers.md` and `knowledge-path-curriculum.md` -- both relocated here from `references/harnesses/` the same day (rubric page first, then the curriculum scaffold that directly expands it, moved to sit alongside it) since neither is actually harness-internals research; see `CHANGELOG.md`'s 2026-09-03 entries. Unlike kind (2), this third kind stays `airchon-author`'s exclusive write scope, per that agent's own BOUNDARY exception for this directory -- do not hand-edit it directly the way kind (2) is edited.
 ~/.airchon/level                           airchon-teacher's own state -- one line, the reader's tier -- user's machine, outside this repo entirely
 ~/.airchon/qualify-exam.md                 airchon-teacher's own state -- exam + responses + score history -- user's machine, outside this repo entirely
 ~/.airchon/course-progress.md              airchon-teacher's own state (added 2026-08-18) -- current course, session-by-session progress, the in-flight exercise, and transition-exam Q&A/score -- user's machine, outside this repo entirely

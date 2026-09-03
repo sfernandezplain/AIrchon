@@ -1,7 +1,7 @@
 # Session breakdown (agenda only): Demiurge -> Archon
 
 **What this file is.** A pacing layer on top of
-[knowledge-path-curriculum.md](../../references/harnesses/knowledge-path-curriculum.md)'s
+[knowledge-path-curriculum.md](knowledge-path-curriculum.md)'s
 "Transition 3: Demiurge -> Archon" section -- the 10-page design-space
 /original-survey/production-completeness band. That page's learning
 objectives, per-module key concepts, comprehension checks, and

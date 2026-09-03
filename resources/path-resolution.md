@@ -14,7 +14,7 @@ way. Kept in one shared file, outside `resources/airchon-teacher/`
 than duplicated three times across the agent bodies that need it.
 
 **The assumption this corrects.** Every project-relative path any of
-these three agents names -- `references/harnesses/knowledge-path-curriculum.md`,
+these three agents names -- `references/harnesses/agent-loop.md`,
 `resources/airchon-teacher/classification-flow.md`, and so on -- is
 written as if the session's working directory is the AIrchon repo
 itself. That is true whenever a human runs Claude Code or Copilot CLI
@@ -35,12 +35,12 @@ resolves from cwd.
 advance which case applies:
 
 1. **Try the literal path first**, exactly as named (e.g. read
-   `references/harnesses/knowledge-path-curriculum.md`). If it
+   `references/harnesses/agent-loop.md`). If it
    resolves, you are running standalone inside this repo -- done; this
    is the expected outcome almost always.
 2. **On a not-found result, fall back to a vendored-dependency
    search.** Search for `apm_modules/*/*/<the same literal path>` (e.g.
-   `apm_modules/*/*/references/harnesses/knowledge-path-curriculum.md`)
+   `apm_modules/*/*/references/harnesses/agent-loop.md`)
    and read whichever single match comes back. There should be at
    most one -- this repo is a leaf dependency, not itself re-vendored
    recursively.

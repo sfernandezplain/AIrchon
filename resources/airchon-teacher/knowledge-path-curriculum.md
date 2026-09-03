@@ -2,14 +2,19 @@
 
 ## What this page is, and what it is not
 
-This page is a **curriculum scaffold**, not a research page. Every other
-page in this wiki-book (plus
-[reader-proficiency-tiers.md](../../resources/airchon-teacher/reader-proficiency-tiers.md),
-which this page directly expands but which itself relocated out of this
-book on 2026-09-03 -- see this page's own revision note below) makes
-claims about how Claude Code, GitHub
-Copilot CLI, or OpenCode actually behave, each tagged VERIFIED or BEST
-CURRENT UNDERSTANDING, UNCONFIRMED per this book's grounding discipline.
+This page is a **curriculum scaffold**, not a research page, and (like
+its sibling [reader-proficiency-tiers.md](reader-proficiency-tiers.md),
+which this page directly expands) it does not itself live in the
+`references/harnesses/` wiki-book -- both relocated to
+`resources/airchon-teacher/` on 2026-09-03, `reader-proficiency-tiers.md`
+first and this page immediately after to sit alongside it (see this
+page's own revision note below). Every page actually IN that wiki-book
+(and in `references/rag/`, `references/sdlc/`, `references/models/`,
+and `references/inference-engines/`, this page's other cited sources)
+makes claims about how Claude Code, GitHub Copilot CLI, or OpenCode
+actually behave -- or, for the non-harnesses areas, about their own
+named subject matter -- each tagged VERIFIED or BEST CURRENT
+UNDERSTANDING, UNCONFIRMED per that source's own grounding discipline.
 This page makes no new claims of that kind. It takes the three named
 transitions from `reader-proficiency-tiers.md` -- Slumberer to Gnostic,
 Gnostic to Demiurge, Demiurge to Archon -- and turns each tier's flat
@@ -23,8 +28,8 @@ this page cites about what a given source page covers (a config key, a
 tool name, a mechanism) is inherited from that source page's own
 grounding, not re-verified here -- if a module's "key concepts" line
 names `CLAUDE_CODE_MAX_RETRIES` or `PostToolUse`, the authority for that
-claim is [retries.md](retries.md) or
-[hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md)
+claim is [retries.md](../../references/harnesses/retries.md) or
+[hooks-lifecycle-extensibility.md](../../references/harnesses/hooks-lifecycle-extensibility.md)
 itself, cited by reference, not re-fetched for this page. Second, the
 comprehension-check questions, exercise prompts, and capstones below are
 this page's own original pedagogical design (like the tier names
@@ -72,6 +77,19 @@ discipline internally, scoped to their own sources. That distinction is
 restated inline at each new cluster's overview, the same discipline
 Clusters 6-8's own overviews already hold to, and is not optional
 context to drop when teaching from this page.
+
+Immediately after that revision, THIS page followed its sibling out of
+`references/harnesses/` to `resources/airchon-teacher/
+knowledge-path-curriculum.md` -- same reasoning as
+`reader-proficiency-tiers.md`'s own move above (a curriculum scaffold,
+not harness-internals research), moved to sit alongside the rubric
+page it directly expands. Its content -- every module, cluster, and
+learning objective above and below -- is unchanged by the move; only
+its own links to sibling wiki-book pages and to `references/rag/`,
+`references/sdlc/`, `references/models/`, and
+`references/inference-engines/` were updated for the new relative
+depth. See `references/harnesses/index.md`'s "Curriculum" section for
+the wiki-book side of this relocation note.
 
 ```mermaid
 stateDiagram-v2
@@ -142,7 +160,7 @@ page's learning objectives, modules, comprehension checks, and
 exercises below are still the authoritative source that file's agendas
 point back to -- it adds pacing, not new content.
 
-### Module: A topology of agentic systems ([agent-topology.md](agent-topology.md))
+### Module: A topology of agentic systems ([agent-topology.md](../../references/harnesses/agent-topology.md))
 
 **Key concepts:** reactive vs. deliberative agents; single-agent vs.
 multi-agent systems as a topology axis (not yet the mechanics -- those
@@ -160,7 +178,7 @@ agent."
 autocomplete plugin counts). Place it on all four of agent-topology.md's
 axes and write two sentences justifying each placement.
 
-### Module: The agent loop ([agent-loop.md](agent-loop.md))
+### Module: The agent loop ([agent-loop.md](../../references/harnesses/agent-loop.md))
 
 **Key concepts:** the Thought/Action/Observation cycle and the ReAct
 pattern; the while-loop framing (observations appended back into the
@@ -384,7 +402,7 @@ prefix instead of resending it -- four operations on the same resource
 (the context window) that are easy to conflate and that these five
 pages deliberately keep apart.
 
-#### Module: Memory management ([memory-management.md](memory-management.md))
+#### Module: Memory management ([memory-management.md](../../references/harnesses/memory-management.md))
 
 **Key concepts:** instruction-file hierarchies (e.g. `CLAUDE.md` load
 order); Claude Code's auto-memory vs. Copilot's server-side Copilot
@@ -402,7 +420,7 @@ rule the page describes (e.g. a project-level file meant to override a
 user-level one) and predict which content wins before checking the
 harness's actual behavior.
 
-#### Module: Instruction context budget ([instruction-context-budget.md](instruction-context-budget.md))
+#### Module: Instruction context budget ([instruction-context-budget.md](../../references/harnesses/instruction-context-budget.md))
 
 **Key concepts:** why `@`-style imports don't reduce eager-load cost;
 path-scoped rules (`paths:`) vs. `applyTo:` as two harnesses' answers to
@@ -419,7 +437,7 @@ much of your actual context budget a real project's instruction files
 consume, then propose one concrete change to reduce it without losing
 information.
 
-#### Module: Context compression ([context-compression.md](context-compression.md))
+#### Module: Context compression ([context-compression.md](../../references/harnesses/context-compression.md))
 
 **Key concepts:** mid-run compression as distinct from eager-load
 budget and from compaction-survival; Claude Code's evict-then-summarize
@@ -436,7 +454,7 @@ compression trigger point (e.g. by pasting large file contents
 repeatedly) and record, turn by turn, what the harness evicted first
 versus what it preserved as summary.
 
-#### Module: Caching ([caching.md](caching.md))
+#### Module: Caching ([caching.md](../../references/harnesses/caching.md))
 
 **Key concepts:** server-side prefix reuse as distinct from compression
 (shrinking) and memory loading; cache scope and TTL-by-auth-path;
@@ -452,7 +470,7 @@ session -- one that only appends new turns, one that edits an early
 turn -- and use the harness's own token/cost accounting to observe the
 cache-hit difference this page predicts.
 
-#### Module: Session & transcript persistence ([session-persistence.md](session-persistence.md))
+#### Module: Session & transcript persistence ([session-persistence.md](../../references/harnesses/session-persistence.md))
 
 **Key concepts:** single-session durability across process restarts, as
 distinct from mid-run compaction-survival and agent-to-agent handoff;
@@ -477,7 +495,7 @@ agents run concurrently and how that's throttled, and what wire format
 agents use to talk to each other once running. Each of these four pages
 answers exactly one of those questions.
 
-#### Module: Orchestration ([orchestration.md](orchestration.md))
+#### Module: Orchestration ([orchestration.md](../../references/harnesses/orchestration.md))
 
 **Key concepts:** the general orchestrator/manager-agent concept; Claude
 Code's turn-by-turn model vs. its script-held Dynamic-workflows plan
@@ -493,7 +511,7 @@ a 3-stage task using the `agent()`/`pipeline()` primitives this page
 documents, and identify where in your plan the documented
 concurrency/total-agent cap would bind.
 
-#### Module: Handoff mechanism ([handoff-mechanism.md](handoff-mechanism.md))
+#### Module: Handoff mechanism ([handoff-mechanism.md](../../references/harnesses/handoff-mechanism.md))
 
 **Key concepts:** agent-to-agent context transfer specifically (not
 compaction survival); Claude Code's fresh-context subagents vs. named
@@ -509,7 +527,7 @@ documents, deliberately give it a task that requires information from
 the parent's context, and observe exactly what did and didn't cross
 the handoff boundary.
 
-#### Module: Fan-out (subagent dispatch) ([fan-out.md](fan-out.md))
+#### Module: Fan-out (subagent dispatch) ([fan-out.md](../../references/harnesses/fan-out.md))
 
 **Key concepts:** launch mechanics distinct from handoff (what crosses)
 and orchestration (who holds the plan); Claude Code's three distinct
@@ -525,7 +543,7 @@ and count how many ran concurrently against the documented cap; if the
 harness lets you exceed the apparent default, identify which config key
 you changed to do it.
 
-#### Module: Inter-agent messaging ([inter-agent-messaging.md](inter-agent-messaging.md))
+#### Module: Inter-agent messaging ([inter-agent-messaging.md](../../references/harnesses/inter-agent-messaging.md))
 
 **Key concepts:** the wire format/transport once agents are already
 talking; Claude Code's `SendMessage` tool and file-based mailbox;
@@ -550,7 +568,7 @@ already works -- how a single outbound model request is framed, how it
 streams back, how failure on that single request gets retried, and how
 the harness picks which model answers a given step.
 
-#### Module: The LLM API contract ([llm-api-contract.md](llm-api-contract.md))
+#### Module: The LLM API contract ([llm-api-contract.md](../../references/harnesses/llm-api-contract.md))
 
 **Key concepts:** Anthropic's Messages API (`tool_use`/`tool_result`
 blocks, the `stop_reason` enumeration, the SSE event sequence); OpenAI's
@@ -567,7 +585,7 @@ provider (via a debug/verbose flag if the harness exposes one) and
 manually annotate each SSE event against this page's own event
 taxonomy.
 
-#### Module: Streaming & incremental rendering ([streaming-and-incremental-rendering.md](streaming-and-incremental-rendering.md))
+#### Module: Streaming & incremental rendering ([streaming-and-incremental-rendering.md](../../references/harnesses/streaming-and-incremental-rendering.md))
 
 **Key concepts:** the client/UI-side layer above the wire-level SSE
 contract; buffering/reassembly/pacing discipline; Claude Code's
@@ -583,7 +601,7 @@ harness session and observe how its rendering degrades -- does it
 buffer visibly, coalesce deltas, or fail to reassemble -- and map the
 observed behavior back to a mechanism this page names.
 
-#### Module: Retries ([retries.md](retries.md))
+#### Module: Retries ([retries.md](../../references/harnesses/retries.md))
 
 **Key concepts:** failure recovery on a single outbound request, as
 distinct from context-overflow handling and cache-prefix reuse; Claude
@@ -600,7 +618,7 @@ limit or kill network briefly) against a real harness and observe how
 many attempts it makes and at what backoff interval, comparing against
 the documented default.
 
-#### Module: Model routing / selection ([model-routing-and-selection.md](model-routing-and-selection.md))
+#### Module: Model routing / selection ([model-routing-and-selection.md](../../references/harnesses/model-routing-and-selection.md))
 
 **Key concepts:** which underlying model answers a given step; Claude
 Code's four-tier session-model precedence stack; Copilot CLI's Auto
@@ -623,7 +641,7 @@ enforcement architecture that turns permission rules into actual
 runtime gates, the mechanism for user-side code to sit inside the
 loop's control flow, and how identity/spend get tracked and enforced.
 
-#### Module: Configuration ([configuration.md](configuration.md))
+#### Module: Configuration ([configuration.md](../../references/harnesses/configuration.md))
 
 **Key concepts:** Claude Code's four-scope `settings.json` hierarchy
 (Managed/User/Project/Local); Copilot CLI's `~/.copilot` layout and
@@ -641,7 +659,7 @@ value) and confirm which one wins in practice, then locate the
 documented merge exception if the setting is one that merges rather
 than overrides.
 
-#### Module: Permissions & sandboxing architecture ([permissions-and-sandboxing.md](permissions-and-sandboxing.md))
+#### Module: Permissions & sandboxing architecture ([permissions-and-sandboxing.md](../../references/harnesses/permissions-and-sandboxing.md))
 
 **Key concepts:** the enforcement architecture underneath the
 permission-rule schema; Claude Code's OS-level sandboxed-Bash
@@ -657,7 +675,7 @@ then deliberately attempt an action you expect to be denied (a
 filesystem write outside an allowed directory, or a network call) and
 document the exact denial message and which layer produced it.
 
-#### Module: Hooks and lifecycle extensibility ([hooks-lifecycle-extensibility.md](hooks-lifecycle-extensibility.md))
+#### Module: Hooks and lifecycle extensibility ([hooks-lifecycle-extensibility.md](../../references/harnesses/hooks-lifecycle-extensibility.md))
 
 **Key concepts:** the mechanism for user-side code to sit directly
 inside the loop's control flow; Claude Code's ~30-event catalogue and
@@ -673,7 +691,7 @@ documents) that fires on a tool-call lifecycle event and deliberately
 blocks one specific tool invocation, then verify the block actually
 happens and inspect what payload your hook received.
 
-#### Module: Auth & usage accounting ([auth-and-usage-accounting.md](auth-and-usage-accounting.md))
+#### Module: Auth & usage accounting ([auth-and-usage-accounting.md](../../references/harnesses/auth-and-usage-accounting.md))
 
 **Key concepts:** API-key/OAuth handling and precedence; token/cost
 tracking surfaces (e.g. `/usage`); the three genuinely distinct
@@ -697,7 +715,7 @@ discovered/registered/invoked, and the harness-specific companion to
 the general agent-loop page -- how the abstract loop actually gets
 implemented in real code.
 
-#### Module: Built-in tools ([built-in-tools.md](built-in-tools.md))
+#### Module: Built-in tools ([built-in-tools.md](../../references/harnesses/built-in-tools.md))
 
 **Key concepts:** the full tool inventory per harness (Claude Code's
 `tools-reference` table, Copilot CLI's permission-"kind" vocabulary,
@@ -713,7 +731,7 @@ in a real session (via a documented introspection command if one
 exists) and classify each as permission-required or not, checking your
 classification against the page's own table.
 
-#### Module: Built-in skills ([built-in-skills.md](built-in-skills.md))
+#### Module: Built-in skills ([built-in-skills.md](../../references/harnesses/built-in-skills.md))
 
 **Key concepts:** what ships as a skill by default vs. user-authored
 content; Claude Code's bundled-skill set and `disableBundledSkills`/
@@ -727,7 +745,7 @@ page documents, and state what `disableBundledSkills` controls.
 confirm the skill is genuinely unavailable in a real session, then
 re-enable it and confirm it returns.
 
-#### Module: MCP integration ([mcp-integration.md](mcp-integration.md))
+#### Module: MCP integration ([mcp-integration.md](../../references/harnesses/mcp-integration.md))
 
 **Key concepts:** discovery/registration/invocation of MCP servers;
 config formats and transports across harnesses; tool-calling semantics
@@ -741,7 +759,7 @@ transport it uses to actually talk to that server.
 with one harness following this page's documented config format, and
 verify its tools appear and are invocable in a live session.
 
-#### Module: Agent loop implementations ([agent-loop-implementations.md](agent-loop-implementations.md))
+#### Module: Agent loop implementations ([agent-loop-implementations.md](../../references/harnesses/agent-loop-implementations.md))
 
 **Key concepts:** the harness-specific companion to the general
 agent-loop page; Claude Code's Agent SDK-documented loop (turns,
@@ -762,13 +780,13 @@ does the loop halt, warn, or inject a new instruction?
 **Cluster overview:** how a real RAG pipeline is built, tuned, and
 evaluated -- as opposed to how any one harness decides whether to use
 retrieval at all, which is the Archon-tier
-[context-retrieval-and-agentic-search.md](context-retrieval-and-agentic-search.md)'s
+[context-retrieval-and-agentic-search.md](../../references/harnesses/context-retrieval-and-agentic-search.md)'s
 concern, not this cluster's. Every module below cites `references/rag/`
 pages directly; those pages attribute their own claims to the
 HuggingFace Cookbook notebooks and Lewis et al. (2020), not to this
 wiki-book's own VERIFIED/BEST-CURRENT-UNDERSTANDING grounding.
 
-#### Module: RAG foundations ([../rag/foundations.md](../rag/foundations.md))
+#### Module: RAG foundations ([../rag/foundations.md](../../references/rag/foundations.md))
 
 **Key concepts:** Lewis et al.'s parametric/non-parametric memory split;
 RAG-Sequence vs. RAG-Token; the HuggingFace Agents Course's agentic-RAG
@@ -786,7 +804,7 @@ supporting document, and write two sentences on which of Lewis et al.'s
 named failure modes (no provenance, stale knowledge) the second answer
 actually fixed.
 
-#### Module: The basic RAG pipeline ([../rag/basic-rag-pipeline.md](../rag/basic-rag-pipeline.md))
+#### Module: The basic RAG pipeline ([../rag/basic-rag-pipeline.md](../../references/rag/basic-rag-pipeline.md))
 
 **Key concepts:** the introductory LangChain + Zephyr + FAISS pipeline
 over GitHub issues; `GitHubIssuesLoader` -> `RecursiveCharacterTextSplitter`
@@ -803,7 +821,7 @@ embedder, retriever, generator) against a small corpus of your own
 choosing, and identify which of the five stages you had to change to
 fit your corpus's format.
 
-#### Module: Advanced RAG techniques ([../rag/advanced-rag-techniques.md](../rag/advanced-rag-techniques.md))
+#### Module: Advanced RAG techniques ([../rag/advanced-rag-techniques.md](../../references/rag/advanced-rag-techniques.md))
 
 **Key concepts:** the character-vs-token chunking trap (a
 character-based `chunk_size` silently disagreeing with a tokenizer's
@@ -819,7 +837,7 @@ document?
 reranking stage over its top-k retrieved results, and compare the
 top-1 result before and after reranking on the same query.
 
-#### Module: Vector store integrations ([../rag/vector-store-integrations.md](../rag/vector-store-integrations.md))
+#### Module: Vector store integrations ([../rag/vector-store-integrations.md](../../references/rag/vector-store-integrations.md))
 
 **Key concepts:** three notebooks swapping the retriever half of the
 basic pipeline onto Milvus, Elasticsearch, and MongoDB Atlas while
@@ -834,7 +852,7 @@ similar) for one of the three production stores this page documents,
 and note what changed at the retrieval-call site versus what stayed
 identical.
 
-#### Module: Semantic caching for RAG ([../rag/semantic-caching.md](../rag/semantic-caching.md))
+#### Module: Semantic caching for RAG ([../rag/semantic-caching.md](../../references/rag/semantic-caching.md))
 
 **Key concepts:** cache placement (before retrieval, not before
 generation); FAISS `IndexFlatL2` with a Euclidean distance threshold;
@@ -848,7 +866,7 @@ LLM call, given that a RAG system has two expensive, repeatable steps?
 call, using a distance threshold of your choosing, and demonstrate a
 cache hit on two differently-worded queries that carry the same intent.
 
-#### Module: Structured generation for RAG ([../rag/structured-generation-for-rag.md](../rag/structured-generation-for-rag.md))
+#### Module: Structured generation for RAG ([../rag/structured-generation-for-rag.md](../../references/rag/structured-generation-for-rag.md))
 
 **Key concepts:** source-snippet highlighting as a provenance mechanism;
 the naive JSON-prompting approach and where it breaks; Outlines'
@@ -862,7 +880,7 @@ concretely solve?
 structured answer object that names which retrieved chunk(s) the answer
 draws from, using either prompting or a constrained-decoding library.
 
-#### Module: RAG evaluation ([../rag/rag-evaluation.md](../rag/rag-evaluation.md))
+#### Module: RAG evaluation ([../rag/rag-evaluation.md](../../references/rag/rag-evaluation.md))
 
 **Key concepts:** synthetic QA-dataset generation from the knowledge
 base itself; groundedness/relevance/standalone-ness critique agents as
@@ -877,7 +895,7 @@ knowledge base, critique each on this page's three axes, and run the
 surviving pairs through an LLM-as-judge comparison of your pipeline's
 answer against the synthetic "true" answer.
 
-#### Module: Agentic RAG with LlamaIndex ([../rag/agentic-rag-with-llamaindex.md](../rag/agentic-rag-with-llamaindex.md))
+#### Module: Agentic RAG with LlamaIndex ([../rag/agentic-rag-with-llamaindex.md](../../references/rag/agentic-rag-with-llamaindex.md))
 
 **Key concepts:** LlamaIndex's Loading/Indexing/Querying three-phase
 framing as an alternative vocabulary to LangChain's load/split/embed
@@ -894,7 +912,7 @@ LlamaIndex instead of LangChain, and note which of its three named
 phases (Loading/Indexing/Querying) corresponds to which of your original
 pipeline's stages.
 
-#### Module: RAG over heterogeneous data sources ([../rag/heterogeneous-data-sources.md](../rag/heterogeneous-data-sources.md))
+#### Module: RAG over heterogeneous data sources ([../rag/heterogeneous-data-sources.md](../../references/rag/heterogeneous-data-sources.md))
 
 **Key concepts:** Unstructured's partition-then-chunk pipeline for mixed
 document formats (PDF, PPTX, EPUB, HTML) in one corpus; Jina Reranker v2
@@ -919,7 +937,7 @@ mechanics depth as Clusters 1-5, but sourced single-source from the
 handbook ("the handbook says") rather than this wiki-book's own
 cross-verified pages.
 
-#### Module: The reference architecture and the runtime machine ([../sdlc/04-the-reference-architecture.md](../sdlc/04-the-reference-architecture.md), [../sdlc/11-the-runtime-machine.md](../sdlc/11-the-runtime-machine.md))
+#### Module: The reference architecture and the runtime machine ([../sdlc/04-the-reference-architecture.md](../../references/sdlc/04-the-reference-architecture.md), [../sdlc/11-the-runtime-machine.md](../../references/sdlc/11-the-runtime-machine.md))
 
 **Key concepts:** the Human/Agent/Platform three-layer participant
 model (Ch. 4); the four parts of the agentic runtime machine --
@@ -938,7 +956,7 @@ runtime-machine model, why the same markdown content still produces
 different behavior in two harnesses despite meaning the same thing to a
 human reader.
 
-#### Module: The instrumented codebase ([../sdlc/12-the-instrumented-codebase.md](../sdlc/12-the-instrumented-codebase.md))
+#### Module: The instrumented codebase ([../sdlc/12-the-instrumented-codebase.md](../../references/sdlc/12-the-instrumented-codebase.md))
 
 **Key concepts:** the seven primitive types (instructions, and six
 others this page's own table covers); the five load modes (eager
@@ -955,7 +973,7 @@ lives "in the team's heads" (an unwritten pattern, a deprecated approach
 to avoid), and write it up as one of the seven primitive types, choosing
 the load mode that best matches when an agent should actually see it.
 
-#### Module: The load lifecycle ([../sdlc/14-the-load-lifecycle.md](../sdlc/14-the-load-lifecycle.md))
+#### Module: The load lifecycle ([../sdlc/14-the-load-lifecycle.md](../../references/sdlc/14-the-load-lifecycle.md))
 
 **Key concepts:** the four-phase Resolve -> Materialize -> Bind ->
 Activate pipeline; the three binding modes; the phantom-dependency and
@@ -973,7 +991,7 @@ exercise and trace it explicitly through all four phases, naming which
 tool or actor owns each phase and how many times per session/install
 each phase runs.
 
-#### Module: Attention and context economy ([../sdlc/15-attention-and-context-economy.md](../sdlc/15-attention-and-context-economy.md))
+#### Module: Attention and context economy ([../sdlc/15-attention-and-context-economy.md](../../references/sdlc/15-attention-and-context-economy.md))
 
 **Key concepts:** window (hard token ceiling) vs. attention (a smaller,
 position-sensitive effective-focus cache); context rot and attention
@@ -992,7 +1010,7 @@ it against a real model, and check whether the instruction was followed
 -- then repeat with the same instruction moved to the start or end and
 compare.
 
-#### Module: Primitives as code ([../sdlc/21-primitives-as-code.md](../sdlc/21-primitives-as-code.md))
+#### Module: Primitives as code ([../sdlc/21-primitives-as-code.md](../../references/sdlc/21-primitives-as-code.md))
 
 **Key concepts:** the package model (one skill = one Module/Facade, a
 bundle = a Composite, a dependency edge = a Package Reference); the
@@ -1011,7 +1029,7 @@ earlier exercises or elsewhere) that share some content, and refactor
 that shared content into a single declared dependency both primitives
 reference, rather than each embedding its own copy.
 
-#### Module: Appendix A, the cross-harness reference ([../sdlc/appendix-a-cross-harness-reference.md](../sdlc/appendix-a-cross-harness-reference.md))
+#### Module: Appendix A, the cross-harness reference ([../sdlc/appendix-a-cross-harness-reference.md](../../references/sdlc/appendix-a-cross-harness-reference.md))
 
 **Key concepts:** the master comparison table mapping ten APM primitive
 concepts (project-wide rules, scope-attached rules, personas, skills,
@@ -1536,7 +1554,7 @@ ten-page band; a future pacing pass on that file (out of scope for this
 page) is needed to fold in session agendas for the Agentic-SDLC
 design-space cluster.
 
-### Module: The multi-agent coordination design space ([multi-agent-coordination-design-space.md](multi-agent-coordination-design-space.md))
+### Module: The multi-agent coordination design space ([multi-agent-coordination-design-space.md](../../references/harnesses/multi-agent-coordination-design-space.md))
 
 **Key concepts:** topology patterns from the general multi-agent-systems
 literature (centralized/decentralized/layered/shared-message-pool);
@@ -1554,7 +1572,7 @@ harness, specifying the bid signal, the auctioneer role, and how it
 would interoperate with the capability-based dispatch this page finds
 in all three real harnesses today.
 
-### Module: Tool schema / interface design ([tool-schema-and-interface-design.md](tool-schema-and-interface-design.md))
+### Module: Tool schema / interface design ([tool-schema-and-interface-design.md](../../references/harnesses/tool-schema-and-interface-design.md))
 
 **Key concepts:** JSON Schema authoring grounded in Anthropic's own
 tool-use docs; the few-powerful-vs-many-narrow tradeoff tested against
@@ -1571,7 +1589,7 @@ good-vs-poor standard this page documents, `strict: true` constraints,
 and all four MCP annotation hints set to their correct values for that
 tool's actual behavior.
 
-### Module: System-prompt / agent-instruction design as a craft ([system-prompt-design-as-craft.md](system-prompt-design-as-craft.md))
+### Module: System-prompt / agent-instruction design as a craft ([system-prompt-design-as-craft.md](../../references/harnesses/system-prompt-design-as-craft.md))
 
 **Key concepts:** tool-calling-style phrasing and the "right altitude"
 framing; few-shot tool-call examples vs. prose constraints as
@@ -1589,7 +1607,7 @@ own distinction, and (b) includes explicit compaction-survival phrasing
 of the kind this page cites Anthropic's own documented sample
 instruction for.
 
-### Module: Context retrieval / RAG vs. agentic search as a design space ([context-retrieval-and-agentic-search.md](context-retrieval-and-agentic-search.md))
+### Module: Context retrieval / RAG vs. agentic search as a design space ([context-retrieval-and-agentic-search.md](../../references/harnesses/context-retrieval-and-agentic-search.md))
 
 **Key concepts:** the RAG-vs-agentic-search design space; the finding
 that none of the three harnesses ships embeddings-based retrieval as
@@ -1607,7 +1625,7 @@ own findings as evidence, and sketch what a hybrid
 embeddings-plus-agentic-search retrieval layer would concretely need to
 add to one real harness's documented architecture.
 
-### Module: Advanced/novel planning and execution architectures ([advanced-planning-and-execution-architectures.md](advanced-planning-and-execution-architectures.md))
+### Module: Advanced/novel planning and execution architectures ([advanced-planning-and-execution-architectures.md](../../references/harnesses/advanced-planning-and-execution-architectures.md))
 
 **Key concepts:** the negative finding that no shipped harness
 implements tree-search/MCTS planning, loop-integrated self-critique,
@@ -1625,7 +1643,7 @@ hooks, fan-out's parallel-dispatch machinery), sketch a from-scratch
 design for loop-integrated self-critique in a hypothetical harness,
 citing which existing primitive each part of your design reuses.
 
-### Module: Evals and testing a harness ([evals-and-testing-a-harness.md](evals-and-testing-a-harness.md))
+### Module: Evals and testing a harness ([evals-and-testing-a-harness.md](../../references/harnesses/evals-and-testing-a-harness.md))
 
 **Key concepts:** the four-layer testing pyramid (unit-level wire-format
 correctness -> session/integration correctness -> API/route-surface
@@ -1642,7 +1660,7 @@ layer) for a hypothetical new tool you are adding to an existing
 harness, modeled directly on OpenCode's documented pyramid, specifying
 what each layer's test actually asserts.
 
-### Module: MCP supply-chain trust/vetting ([mcp-supply-chain-trust.md](mcp-supply-chain-trust.md))
+### Module: MCP supply-chain trust/vetting ([mcp-supply-chain-trust.md](../../references/harnesses/mcp-supply-chain-trust.md))
 
 **Key concepts:** the three separable trust axes (identity/code-safety/
 continuity); the named attack taxonomy (tool description poisoning,
@@ -1659,7 +1677,7 @@ a policy statement) that would close the update-time gap this page
 identifies, specifying what gets hashed/signed/compared and at what
 lifecycle point the check would need to run.
 
-### Module: Observability and self-diagnostics ([observability-and-self-diagnostics.md](observability-and-self-diagnostics.md))
+### Module: Observability and self-diagnostics ([observability-and-self-diagnostics.md](../../references/harnesses/observability-and-self-diagnostics.md))
 
 **Key concepts:** the four separable observability layers this page
 argues for (cost export, execution tracing, interactive debug surface,
@@ -1676,7 +1694,7 @@ new harness feature that keeps all four layers this page names
 genuinely separate, specifying one concrete signal (a metric, a span,
 a log line, or a debug command) for each layer.
 
-### Module: Packaging, distribution, and self-update mechanics ([packaging-distribution-and-self-update.md](packaging-distribution-and-self-update.md))
+### Module: Packaging, distribution, and self-update mechanics ([packaging-distribution-and-self-update.md](../../references/harnesses/packaging-distribution-and-self-update.md))
 
 **Key concepts:** multi-channel distribution (installer scripts,
 package managers, signed repos) and integrity chains (GPG/code
@@ -1693,7 +1711,7 @@ harness that explicitly addresses one documented failure mode from this
 page (e.g. a streamed-download memory issue, or a launcher-preservation
 gap), specifying the concrete safeguard you'd add.
 
-### Module: TUI/CLI application architecture ([tui-cli-application-architecture.md](tui-cli-application-architecture.md))
+### Module: TUI/CLI application architecture ([tui-cli-application-architecture.md](../../references/harnesses/tui-cli-application-architecture.md))
 
 **Key concepts:** the rendering-engine/component-model/input-handling
 layer above streaming-and-incremental-rendering.md's buffering
@@ -1724,7 +1742,7 @@ the same generative, argue-from-primitives bar as the ten core modules
 above, but single-source ("the handbook says") rather than
 independently cross-verified.
 
-#### Module: The practitioner's mindset ([../sdlc/09-10-part-iii-preface-and-practitioners-mindset.md](../sdlc/09-10-part-iii-preface-and-practitioners-mindset.md))
+#### Module: The practitioner's mindset ([../sdlc/09-10-part-iii-preface-and-practitioners-mindset.md](../../references/sdlc/09-10-part-iii-preface-and-practitioners-mindset.md))
 
 **Key concepts:** the eight terms practitioners cannot avoid (Primitive,
 Manifest, Lockfile, CODEOWNERS, Harness, Subagent, Recursion bound, MCP);
@@ -1743,7 +1761,7 @@ instance.
 Transition 1's own capstone required, now applied to SDLC vocabulary
 instead of agent-loop vocabulary.
 
-#### Module: The PROSE framework ([../sdlc/prose-framework.md](../sdlc/prose-framework.md))
+#### Module: The PROSE framework ([../sdlc/prose-framework.md](../../references/sdlc/prose-framework.md))
 
 **Key concepts:** the five constraints (Progressive Disclosure, Reduced
 Scope, Orchestrated Composition, Safety Boundaries, Explicit Hierarchy)
@@ -1756,11 +1774,11 @@ for satisfying the constraint.
 
 **Exercise:** Critique PROSE's five constraints against this book's own
 [System-prompt / agent-instruction design as a
-craft](system-prompt-design-as-craft.md), naming one point where the two
+craft](../../references/harnesses/system-prompt-design-as-craft.md), naming one point where the two
 converge on the same underlying practice under different names, and one
 point where they diverge.
 
-#### Module: The deterministic/probabilistic boundary ([../sdlc/16-deterministic-probabilistic-boundary.md](../sdlc/16-deterministic-probabilistic-boundary.md))
+#### Module: The deterministic/probabilistic boundary ([../sdlc/16-deterministic-probabilistic-boundary.md](../../references/sdlc/16-deterministic-probabilistic-boundary.md))
 
 **Key concepts:** the "two computers, one program" framing; the seam
 where "the model proposes; the gate disposes"; strong-form vs. weak-form
@@ -1777,7 +1795,7 @@ and specify exactly where its seam sits -- which actions the
 probabilistic side may only propose, and what deterministic gate must
 approve them before they take effect.
 
-#### Module: Multi-agent orchestration ([../sdlc/17-multi-agent-orchestration.md](../sdlc/17-multi-agent-orchestration.md))
+#### Module: Multi-agent orchestration ([../sdlc/17-multi-agent-orchestration.md](../../references/sdlc/17-multi-agent-orchestration.md))
 
 **Key concepts:** the single- vs. multi-agent decision matrix (files
 changed, concerns, dependency shape, expertise, time pressure, context
@@ -1791,12 +1809,12 @@ its own caveat about that boundary's precision).
 
 **Exercise:** Critique this page's composition patterns against this
 book's own [The multi-agent coordination design
-space](multi-agent-coordination-design-space.md), naming which of that
+space](../../references/harnesses/multi-agent-coordination-design-space.md), naming which of that
 page's topology categories (centralized/decentralized/layered/
 blackboard/consensus/market-based) each of Panel/Wave/Scatter-Gather
 /Subagent most closely maps to.
 
-#### Module: The execution meta-process ([../sdlc/18-the-execution-meta-process.md](../sdlc/18-the-execution-meta-process.md))
+#### Module: The execution meta-process ([../sdlc/18-the-execution-meta-process.md](../../references/sdlc/18-the-execution-meta-process.md))
 
 **Key concepts:** the five-phase AUDIT/PLAN/WAVE/VALIDATE/SHIP
 methodology; the plan-approval gate described as "the single most
@@ -1812,7 +1830,7 @@ hypothetical 40-file change of your own choosing -- naming what an
 AUDIT pass would need to look for, how you would decompose the work
 into waves, and what a VALIDATE pass would run after each wave.
 
-#### Module: Architectural patterns, a Rosetta Stone ([../sdlc/19-architectural-patterns-rosetta-stone.md](../sdlc/19-architectural-patterns-rosetta-stone.md))
+#### Module: Architectural patterns, a Rosetta Stone ([../sdlc/19-architectural-patterns-rosetta-stone.md](../../references/sdlc/19-architectural-patterns-rosetta-stone.md))
 
 **Key concepts:** the four-layer substrate (Foundation/Assembly
 /Composition/Execution); the precise/partial/weak-or-none classical
@@ -1828,7 +1846,7 @@ order, and state which one Ch. 14's load lifecycle belongs to.
 -grounded pages as evidence, whether a cleaner classical analogue exists
 than the one this page settles on.
 
-#### Module: Anti-patterns and failure modes ([../sdlc/20-anti-patterns-and-failure-modes.md](../sdlc/20-anti-patterns-and-failure-modes.md))
+#### Module: Anti-patterns and failure modes ([../sdlc/20-anti-patterns-and-failure-modes.md](../../references/sdlc/20-anti-patterns-and-failure-modes.md))
 
 **Key concepts:** the 19-anti-pattern taxonomy, each mapped to one of
 PROSE's five constraints; the governing claim that "AI failures don't
@@ -1844,7 +1862,7 @@ construct) a real transcript exhibiting its symptom, and write a
 one-paragraph root-cause diagnosis and fix in this page's own
 symptom/root-cause/fix/recovery format.
 
-#### Module: The reference architecture, earned ([../sdlc/22-the-reference-architecture-earned.md](../sdlc/22-the-reference-architecture-earned.md))
+#### Module: The reference architecture, earned ([../sdlc/22-the-reference-architecture-earned.md](../../references/sdlc/22-the-reference-architecture-earned.md))
 
 **Key concepts:** composition as a recursive Skill-Persona-Persona
 -Skill triplet applied at every depth; the Maya's-PR-#4711 worked
@@ -1860,7 +1878,7 @@ applies this page's "one composition rule, applied many times" claim to
 at least three levels of recursive depth, naming what dispatches what
 at each level.
 
-#### Module: Case studies and the Genesis worked example ([../sdlc/23-case-study-apm-overhaul.md](../sdlc/23-case-study-apm-overhaul.md), [../sdlc/24-case-study-handbook-writing.md](../sdlc/24-case-study-handbook-writing.md), [../sdlc/25-case-study-publishing-pipeline.md](../sdlc/25-case-study-publishing-pipeline.md), [../sdlc/26-case-study-growth-engine.md](../sdlc/26-case-study-growth-engine.md), [../sdlc/appendix-b-genesis-worked-example.md](../sdlc/appendix-b-genesis-worked-example.md))
+#### Module: Case studies and the Genesis worked example ([../sdlc/23-case-study-apm-overhaul.md](../../references/sdlc/23-case-study-apm-overhaul.md), [../sdlc/24-case-study-handbook-writing.md](../../references/sdlc/24-case-study-handbook-writing.md), [../sdlc/25-case-study-publishing-pipeline.md](../../references/sdlc/25-case-study-publishing-pipeline.md), [../sdlc/26-case-study-growth-engine.md](../../references/sdlc/26-case-study-growth-engine.md), [../sdlc/appendix-b-genesis-worked-example.md](../../references/sdlc/appendix-b-genesis-worked-example.md))
 
 **Key concepts:** PR #394's 75-file/6-agent-panel/8-plan-iteration/5
 -wave overhaul and its "context remains finite, output remains
