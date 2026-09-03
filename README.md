@@ -52,26 +52,30 @@ expensive -- e.g. not knowing your harness already ships a built-in
 capability and reaching for an unnecessary third-party tool with its
 own security exposure instead.
 
-**What this is not:** a way to become a better software engineer in
-the fully general sense -- it won't teach you algorithms, data
-structures, or how to design a database schema. What it does teach,
-across all five domains, is real engineering discipline specifically
-as it applies to building and operating agentic systems: a 19-item
-anti-pattern taxonomy for failures that "don't crash, they produce
-plausible wrong output" (SDLC), the package/lockfile model and
-dependency-pinning discipline behind a set of agentic primitives
-(SDLC), building and scoring a RAG evaluation pipeline with
-critique-agent filtering and LLM-as-judge comparison (RAG), and
-capstones graded specifically on whether the artifact you produced
-actually runs and does what you claimed, not on how well you described
-it (every domain). That's genuine testing and debugging methodology --
-just scoped to agentic-system engineering, not to arbitrary application
-code. Someone can go through all of it and still ship unrelated
-business logic they never reviewed; harness/agentic-systems fluency
-and general engineering discipline overlap but aren't the same thing.
-The tier system's own top-tier note already says as much: Archon tier
-is *necessary but not sufficient* for actually building something
-better than what exists.
+**What this builds: AI-engineer fluency, specifically.** Across all
+five domains, this is the actual working knowledge of someone building
+and operating agentic systems, not an approximation of it: a harness's
+real control loop, memory, tools, permissions, and orchestration
+mechanics, traced through actual config keys rather than described
+abstractly; a 19-item anti-pattern taxonomy for the failures that
+"don't crash, they produce plausible wrong output," plus the
+load-lifecycle and lockfile/dependency-pinning discipline that
+prevents them; building and scoring a RAG evaluation pipeline with
+critique-agent filtering and LLM-as-judge comparison; classifying and
+choosing a model by parameter scale, MoE architecture, and
+quantization scheme for a deployment target; and operating a real
+local inference engine. Every capstone is graded on whether the
+artifact you produced actually runs and does what you claimed, not on
+how well you described it -- that's testing and debugging discipline,
+exercised on the actual object of AI engineering. It is not generic
+computer science (algorithms, data structures, database design) --
+those were never the claim, and this project doesn't need to reach
+for them to teach what an AI engineer actually needs. The tier
+system's own top-tier note is the one honest ceiling worth stating:
+Archon tier is *necessary but not sufficient* for building something
+better than what exists -- fluency with the current state of the art
+is the floor a real contribution stands on, not the contribution
+itself.
 
 **What's still unproven:** the tier rubric and the multi-session
 courses under it are original pedagogical design, authored and graded
