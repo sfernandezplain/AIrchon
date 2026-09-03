@@ -225,8 +225,11 @@ single named source instead.
 ## 🚀 How to use it
 
 ```bash
-apm install
+apm install https://github.com/sfernandezplain/AIrchon --target <harness>
 ```
+
+Where `<harness>` is `claude`, `copilot`, or `opencode`. You can repeat
+`--target` for multiple harnesses in one command.
 
 This deploys all three agents -- `airchon-mentor`, `airchon-author`,
 `airchon-teacher` -- to Claude Code, Copilot CLI, and OpenCode, and both
