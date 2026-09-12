@@ -7,15 +7,17 @@ allowed-tools:
   - Agent(airchon-mentor)
   - Agent(airchon-author)
   - Agent(airchon-teacher)
+  - Agent(airchon-communicator)
   - TaskCreate
   - TodoWrite
 ---
 
 Thin router. Classifies the request, dispatches to exactly one of
-`airchon-mentor`, `airchon-author`, or `airchon-teacher` via the host's
-agent-spawning primitive (`Agent(...)` when available, `TaskCreate`
-otherwise), and relays the agent's response verbatim -- no added
-judgment, editing, or framing of its own.
+`airchon-mentor`, `airchon-author`, `airchon-teacher`, or
+`airchon-communicator` via the host's agent-spawning primitive
+(`Agent(...)` when available, `TaskCreate` otherwise), and relays the
+agent's response verbatim -- no added judgment, editing, or framing of
+its own.
 
 **Step 0 -- Dispatch capability check (run before anything else):**
 Check whether `Agent(...)` appears in the active tool list for this
@@ -33,6 +35,13 @@ when the host gives it one.
      call `airchon-teacher`. See **Exam Administration** below for the
      one sub-flow ("take/retake the exam") that is a multi-call
      pipeline rather than a single call.
+   - BOOK intent -- the user asks to generate, build, update, expand,
+     or revise the didactic book at `/book` ("make the book", "write
+     the book", "distill the wiki", "road to archon", "add a chapter",
+     "update the foreword/index/glossary", "harness-by-harness synthesis
+     for the book", "explain X with a diagram for the book") -> call
+     `airchon-communicator`. This branch owns only `/book/**` and never
+     touches `references/**`.
    - AUTHORING intent -- the user asks to write up, add, document,
      update, or persist a topic into any wiki-book ("write this up",
      "add this to references/harnesses" (or references/models,

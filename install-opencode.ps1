@@ -12,17 +12,22 @@ function Log {
 
 Log "Repo root: $RepoRoot"
 
-# 1. Run apm install --target opencode
+# 1. Run apm install --target opencode (must run from repo root so apm finds apm.yml)
 Log "Running: apm install --target opencode"
-apm install --target opencode
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "apm install --target opencode failed with exit code $LASTEXITCODE"
-    exit $LASTEXITCODE
+Push-Location -LiteralPath $RepoRoot
+try {
+    apm install --target opencode
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "apm install --target opencode failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+} finally {
+    Pop-Location
 }
 
 # 2. Copy skills from .agents/skills/ to .opencode/skills/
-$SrcSkillsDir = Join-Path $RepoRoot '.agents' 'skills'
-$DstSkillsDir = Join-Path $RepoRoot '.opencode' 'skills'
+$SrcSkillsDir = Join-Path (Join-Path $RepoRoot '.agents') 'skills'
+$DstSkillsDir = Join-Path (Join-Path $RepoRoot '.opencode') 'skills'
 
 if (-not (Test-Path -LiteralPath $SrcSkillsDir)) {
     Write-Error "Source skills directory not found: $SrcSkillsDir"
@@ -45,7 +50,7 @@ Get-ChildItem -LiteralPath $SrcSkillsDir -Directory | ForEach-Object {
     }
     New-Item -ItemType Directory -Path $DstSkillDir -Force | Out-Null
 
-    Copy-Item -LiteralPath $_.FullName -Destination $DstSkillsDir -Recurse -Force
+    Copy-Item -Path (Join-Path $_.FullName '*') -Destination $DstSkillDir -Recurse -Force
     Log "Copied skill: $SkillName"
 }
 
@@ -285,6 +290,15 @@ function Fix-AgentFrontmatter {
         $filtered.RemoveAt($filtered.Count - 1)
     }
 
+    # Ensure mode is set (OpenCode defaults to primary if omitted; these are subagents)
+    $hasMode = $false
+    foreach ($l in $filtered) {
+        if ($l.Trim() -match '^mode:\s*') { $hasMode = $true; break }
+    }
+    if (-not $hasMode) {
+        $filtered.Insert(1, 'mode: subagent') | Out-Null
+    }
+
     $newContent = "---`n" + ($filtered -join "`n") + "`n---" + $body
     Set-Content -LiteralPath $FilePath -Value $newContent -NoNewline
     Log "Fixed agent frontmatter: $FilePath"
@@ -296,7 +310,7 @@ Get-ChildItem -LiteralPath $DstSkillsDir -Recurse -Filter 'SKILL.md' -File | For
 }
 
 # Fix all agent .md files under .opencode/agents/
-$AgentsDir = Join-Path $RepoRoot '.opencode' 'agents'
+$AgentsDir = Join-Path (Join-Path $RepoRoot '.opencode') 'agents'
 if (Test-Path -LiteralPath $AgentsDir) {
     Get-ChildItem -LiteralPath $AgentsDir -Filter '*.md' -File | ForEach-Object {
         Fix-AgentFrontmatter $_.FullName
