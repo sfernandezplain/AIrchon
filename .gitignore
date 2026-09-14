@@ -9,3 +9,12 @@ apm_modules/
 .vscode/
 .mcp.json
 .opencode/
+
+# local Python venv for the RAG MCP server (fastembed + onnxruntime)
+resources/scripts/.venv/
+
+# Python bytecode cache
+resources/scripts/__pycache__/
+
+# generated semantic vector index (rebuilt via rag_mcp_server.py build)
+resources/vector-index.db

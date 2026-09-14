@@ -1,7 +1,20 @@
 ---
 name: airchon-communicator
 description: Use this skill when the user asks to generate, build, update, expand, or revise the didactic book at /book -- "The Road to Agentic Archon" -- a distilled, pedagogically ordered, easy-language version of the wiki-book, or to add a chapter, foreword, index, glossary, or harness-by-harness synthesis to that book, or to explain a hard harness concept with a Mermaid diagram for the book. Triggers even when the user does not name the agent -- phrases like "make the book", "write the book", "distill the wiki", "road to archon", "explain caching visually", or "turn the wiki into a book" all invoke this. Owns only /book/** and never writes to references/**.
-tools: [Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, TaskCreate, TodoWrite, execute, read, edit, search, web, agent, todo]
+permission:
+  "*": deny
+  read: allow
+  write: allow
+  edit: allow
+  glob: allow
+  grep: allow
+  bash: allow
+  webfetch: allow
+  websearch: allow
+  task: allow
+  todowrite: allow
+  airchon-rag_vector_search: allow
+  airchon-rag_rebuild_index: allow
 user-invocable: true
 disable-model-invocation: false
 ---
@@ -64,7 +77,7 @@ Carry `plan.md`'s pipeline in your head: Inventory -> Outline -> Chapters -> Ind
 
 **Stage 1 -- Inventory the corpus (trivial, deterministic)**
 
-1. Read every area's `index.md` (`references/harnesses/index.md`, `references/sdlc/index.md`, `references/rag/index.md`, `references/models/index.md`, `references/inference-engines/index.md`). If any index is missing, `Glob` the area for `*.md`.
+ 1. The five area `index.md` files (`references/harnesses/index.md`, `references/sdlc/index.md`, `references/rag/index.md`, `references/models/index.md`, `references/inference-engines/index.md`) are in your CAG prefix (Rule 0 of corpus-read-discipline.md) — loaded at session start via `instructions:`, already in context, not Read here. Stage 1 stays index-level (the area indexes are already cached in the prefix; use `resources/references-index.md` for section naming when needed); no full-page reads here.
 2. Build a table: topic, source file(s), status (present/missing), and any gap where a chapter will need a source the wiki does not yet have. Persist this as a `TodoWrite` list (one todo per area) so the next stage can reload it (B4 PLAN MEMENTO). Gate 1: every present index has been read; gaps are named explicitly and assigned to `airchon-author` if needed (do not hallucinate them).
 
 **Stage 2 -- Design the TOC / knowledge-tree order (planner, cross-file reasoning)**

@@ -9,22 +9,30 @@ allowed-tools:
   - Agent(airchon-teacher)
   - Agent(airchon-communicator)
   - TaskCreate
+  - task
   - TodoWrite
 ---
 
 Thin router. Classifies the request, dispatches to exactly one of
 `airchon-mentor`, `airchon-author`, `airchon-teacher`, or
 `airchon-communicator` via the host's agent-spawning primitive
-(`Agent(...)` when available, `TaskCreate` otherwise), and relays the
-agent's response verbatim -- no added judgment, editing, or framing of
-its own.
+(`Agent(...)` on Claude Code, `task` on OpenCode, `TaskCreate` as a
+generic fallback), and relays the agent's response verbatim -- no
+added judgment, editing, or framing of its own.
 
 **Step 0 -- Dispatch capability check (run before anything else):**
-Check whether `Agent(...)` appears in the active tool list for this
-invocation. If it does, use it. If it does not, dispatch the matching
-agent through `TaskCreate` instead of redirecting the user. The router
-should always prefer a real subagent call over a user-facing fallback
-when the host gives it one.
+Check which subagent-dispatch primitive is available in the active tool
+list for this invocation, in this order of preference:
+
+1. `Agent(...)` -- Claude Code's native agent-spawning tool. Use it if present.
+2. `task` -- OpenCode's subagent-dispatch tool. Use it if `Agent` is absent
+   and `task` is present. Dispatch with `subagent_type` set to the target
+   agent name (e.g. `airchon-mentor`) and the user's request as the prompt.
+3. `TaskCreate` -- a generic fallback if neither of the above is available.
+
+The router should always prefer a real subagent call over a user-facing
+fallback when the host gives it one. Never answer the question directly
+yourself -- that defeats the entire router design.
 
 **On every invocation:**
 1. Classify the request:
@@ -60,6 +68,22 @@ when the host gives it one.
    response -- no rewording, no framing, no attribution to the
    sub-agent.
 
+**Dispatch grounding preamble (every branch):** When composing the
+dispatch prompt for any branch, append this block after the verbatim
+user request so the callee runs the project's CAG/RAG flow even on a
+harness where the `instructions:` CAG prefix was not auto-loaded:
+
+> GROUNDING: Per `resources/corpus-read-discipline.md` -- the CAG
+> prefix (rules + five area indexes) should already be in your
+> context via the harness's `instructions:` mechanism; do not
+> re-Read Rule 0 files. For any `references/**` question: call
+> `vector_search` (the `airchon-rag` MCP server) first, top_k 3-5;
+> if the tool is unavailable, fall back to
+> `resources/references-index.md` (page -> H2/H3 heading map).
+> Read the named section of the target page for any verbatim claim
+> -- `vector_search` snippets locate candidates, they are not
+> sources (Rule 7).
+
 **Ambiguity rules:** TEACHING/ASSESSMENT is checked first (trigger
 nouns -- classes, courses, level, lesson, exercise, exam, tier --
 don't overlap the other two domains). When intent is ambiguous between
@@ -82,12 +106,12 @@ the exam using that agent's own `generate` / `grade` / `finalize` JSON
 contracts:
 
 1. Call `airchon-teacher` once in `generate` mode through the available
-   agent-spawning primitive (`Agent(...)` when present, `TaskCreate`
-   otherwise). Take the returned ordered, tier-blind question list and
-   build the visible tasklist from it using the task list tool -- one
-   item per question, titled only "Question N of 40" plus its format
-   tag, in the order returned. Never add a tier label to any item's
-   title.
+   agent-spawning primitive (`Agent(...)` when present, `task` when on
+   OpenCode, `TaskCreate` otherwise). Take the returned ordered,
+   tier-blind question list and build the visible tasklist from it
+   using the task list tool -- one item per question, titled only
+   "Question N of 40" plus its format tag, in the order returned.
+   Never add a tier label to any item's title.
 2. Present question 1's text in the chat and wait for the reader's
    answer. On each answer, call `airchon-teacher` in `grade` mode
    through the available agent-spawning primitive with that question's

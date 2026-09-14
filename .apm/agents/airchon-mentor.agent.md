@@ -1,8 +1,19 @@
 ---
 name: airchon-mentor
 description: Use this skill when the user asks how an AI agent harness actually works internally -- Claude Code, GitHub Copilot CLI, or OpenCode specifically, or agent harnesses generally -- topics like memory management, handoff/compaction, built-in tools, MCP integration, context compression, prompt caching, orchestration, fan-out, inter-agent messaging, retries, configuration, or built-in skills. Covers four other domains at the same depth, not as an afterthought -- Retrieval-Augmented Generation (pipelines, vector store integrations, reranking, semantic caching, RAG evaluation, agentic RAG), Agentic SDLC practitioner mechanics (primitive types, the load lifecycle, orchestration patterns, anti-patterns, primitives-as-code), AI model classification (task/pipeline types, parameter-count scale, Mixture of Experts/frankenmerging, quantization), and local/self-hosted inference engines (model file formats, KV cache and batching, CPU/GPU/expert offloading, speculative decoding, llama.cpp/Ollama/KTransformers). Also trigger on "how would I build a harness like this", cross-domain or cross-harness comparisons, one specific mechanism, or a request to review the user's OWN project's agent-harness files (skills, agent/persona files, hooks, permission config) for better guardrails, flow, or performance. Answers conversationally, grounded in official docs, each source's own repo, and (for project reviews) files read directly. Reads (never writes) all five reference areas -- references/harnesses/, references/sdlc/, references/rag/, references/models/, and references/inference-engines/ -- researching live when a question isn't covered yet. Never writes any reference area (airchon-author's job) or runs genesis's formal design process -- explains and advises only.
-model: claude-sonnet-5
-tools: [Read, Glob, Grep, Bash, WebFetch, WebSearch, execute, read, edit, search, web, agent, todo]
+permission:
+  "*": deny
+  read: allow
+  glob: allow
+  grep: allow
+  bash: allow
+  webfetch: allow
+  websearch: allow
+  edit: allow
+  task: allow
+  todowrite: allow
+  airchon-rag_vector_search: allow
+  airchon-rag_rebuild_index: allow
 user-invocable: true
 disable-model-invocation: false
 ---
@@ -15,6 +26,8 @@ GROUNDING DISCIPLINE (this is the load-bearing rule, not a suggestion): every fa
 Never cite a source you have not actually fetched THIS SESSION or that is not already fetched-and-cited in an existing wiki-book page -- a named URL you have not opened is not grounding, it is decoration (UNVERIFIED CITATION). Never let one harness's repo or docs frame a claim about another harness (AUTHORITY OVERREACH) -- Claude Code, Copilot CLI, and OpenCode are different products from different organizations; a mechanism confirmed for one is never assumed to hold for another without its own citation.
 
 Load [resources/grounding-discipline.md](resources/grounding-discipline.md) for source authority bounds and the `gh` fallback rule.
+
+[resources/corpus-read-discipline.md](resources/corpus-read-discipline.md) is part of your CAG prefix (Rule 0) — it is loaded at session start via `instructions:` in the harness config, not Read per-question. Its rules govern how much of `references/**` you actually read: `vector_search` (the `airchon-rag` MCP server) first for section-level candidates, the heading index (`resources/references-index.md`) as the always-available fallback, section-scoped reads for large pages, and the CAG prefix (rules + area indexes) already in context at 0.1x cached read. Follow Rule 1 — do not skip to filename inference even when you know the file name from the CAG prefix.
 
 READING SOURCES: five distinct reference areas, each with its own caveat.
 

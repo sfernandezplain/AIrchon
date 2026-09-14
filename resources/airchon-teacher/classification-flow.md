@@ -76,8 +76,8 @@ stateDiagram-v2
 
 ## Before Step 2
 
-- [ ] Read [knowledge-path-curriculum.md](knowledge-path-curriculum.md) and [reader-proficiency-tiers.md](reader-proficiency-tiers.md) first, for the tier structure and module list
-- [ ] Then read the actual `references/harnesses/*.md` topic page(s) each module you're drawing questions from cites (e.g. `agent-loop.md`, `mcp-integration.md`, `hooks-lifecycle-extensibility.md`) -- the curriculum page inherits its factual claims from those pages rather than re-verifying them, and so must you: never write a question or answer key from the curriculum's one-line "key concepts" summary alone
+- [ ] [knowledge-path-curriculum.md](knowledge-path-curriculum.md) and [reader-proficiency-tiers.md](reader-proficiency-tiers.md) are in your CAG prefix (Rule 0 of [../corpus-read-discipline.md](../corpus-read-discipline.md)) — loaded at session start via `instructions:` in the harness config, already in context at 0.1x cached read, not Read here. The discipline file and grounding-discipline.md are also in the prefix.
+- [ ] Retrieve the actual `references/harnesses/*.md` topic page(s) each module you're drawing questions from cites (e.g. `agent-loop.md`, `mcp-integration.md`, `hooks-lifecycle-extensibility.md`) -- follow Rule 1: `vector_search` with each module's key concepts (the `airchon-rag` MCP server), heading index (`resources/references-index.md`) if the tool is unavailable, then read only the named sections (the curriculum page inherits its factual claims from those pages rather than re-verifying them, and so must you: never write a question or answer key from the curriculum's one-line "key concepts" summary alone). Do not skip to filename inference — Rule 1 applies even when the CAG prefix's area index tells you which file exists.
 
 ## Step 2: Generate Exam Asset
 

@@ -294,7 +294,44 @@ which harness(es) a claim actually applies to -- that discipline is
 encoded directly (and duplicated verbatim, deliberately -- see
 `CHANGELOG.md`) in each agent's own GROUNDING DISCIPLINE and SOURCE
 AUTHORITY sections, not restated here. This project's `apm.yml`
-declares `targets: claude, copilot` -- both agents genuinely reach
+declares `targets: claude, copilot, opencode` -- all three agents
+genuinely reach all three; the router skill only reaches Claude Code
+(see above).
+
+## CAG prefix -- files loaded at session start
+
+The following files are part of the cached prompt prefix (CAG layer,
+Rule 0 of `resources/corpus-read-discipline.md`). They are loaded
+at session start via the harness's native `instructions:` / rules
+mechanism, not retrieved per-question. Every subsequent turn reads
+them at 0.1x cached rate. Do not re-Read them from disk -- they are
+already in context.
+
+### Tier 0 -- all agents
+
+- `resources/corpus-read-discipline.md` -- the 7-rule retrieve-then-read
+  discipline (Rule 0 defines this prefix; Rules 1-7 govern retrieval)
+- `resources/grounding-discipline.md` -- source authority bounds and
+  the `gh` fallback rule
+
+### Tier 1 -- reading agents (mentor, author, communicator)
+
+- `references/harnesses/index.md` -- topic map of the harnesses area
+- `references/sdlc/index.md` -- topic map of the sdlc area
+- `references/rag/index.md` -- topic map of the rag area
+- `references/models/index.md` -- topic map of the models area
+- `references/inference-engines/index.md` -- topic map of the
+  inference-engines area
+
+### Tier 2 -- teacher only
+
+- `resources/airchon-teacher/knowledge-path-curriculum.md`
+- `resources/airchon-teacher/reader-proficiency-tiers.md`
+
+These give you the "what exists" map. To find the right section of a
+topic page, call `vector_search` (the `airchon-rag` MCP server) --
+see Rule 1 of corpus-read-discipline.md. Do not skip to filename
+inference.
 both; the router skill only reaches Claude Code (see above). OpenCode
 is a harness the agents research and write about, not a deploy target
 of this project either way.

@@ -1,3 +1,169 @@
+## 2026-09-14 -- Live audit of this very conversation; MCP tools added to mentor + teacher permission maps; airchon skill recommends CAG/RAG flow
+
+The operator asked the airchon router, mid-session, to audit its own
+session: cache-hit counts, what files subagents actually read, why
+`vector_search` never fired, why the dispatch prompts directed file
+reads. The audit was grounded in opencode's own SQLite session store
+(`C:\Users\sergi\.local\share\opencode\opencode.db`, read read-only
+this session) -- not recollection.
+
+Findings (all VERIFIED from the DB + the subagent's own recorded
+reasoning this session):
+
+- **Zero cache hits, anywhere.** Every session in this conversation
+  (main router + the three subagent sessions) shows
+  `tokens_cache_read=0, cache_write=0` in opencode's session rows.
+  The provider route (glm-5-3 via the local `plainconcepts` npm
+  provider) does not surface prompt-caching usage fields to opencode
+  -- cost is also `$0.000000`. So the CAG prefix's "0.1x cached read"
+  economics (Rule 0) are not realized on THIS stack (at minimum, not
+  reported; the upstream GLM endpoint may silently cache server-side,
+  which the DB cannot distinguish). Cumulative input tokens for the
+  session: main 1,030,729; messaging subagent 421,526; CAG-RAG
+  subagent 170,312; cancelled RAG subagent 82,515. No cache discount
+  was applied to any of them.
+- **`vector_search` never fired -- because the subagents could not
+  see it.** The mentor's own captured reasoning reads: "Looking at my
+  available functions: bash, edit, glob, grep, read, task, todowrite,
+  webfetch, write. I do NOT have a vector_search MCP tool available in
+  this session." The `airchon-rag` MCP server IS registered in
+  `.opencode/opencode.json` (`type: local`, `enabled: true`) and IS
+  healthy -- the parent (this session) called `vector_search` live and
+  got hits for "inter-agent messaging SendMessage mailbox" against
+  `inter-agent-messaging.md` in ms. The real cause was the deployed
+  `.opencode/agents/airchon-mentor.md` permission map: `"*": deny`
+  plus an explicit allowlist that named no MCP tools, so the airchon-rag
+  tools fell under the wildcard deny. The mentor correctly fell back
+  to `resources/references-index.md` per Rule 1's documented
+  degradation path -- "normal on any harness whose operator has not
+  registered the server" -- even though the *actual* failure was
+  per-agent permission scoping, not the server registration the map's
+  wording anticipates.
+- **Files actually read (from the parts tables):**
+  - Cancelled RAG-pipeline subagent: `references-index.md`,
+    `rag/foundations.md`, `rag/basic-rag-pipeline.md` (cancelled
+    mid-research, 87 output tokens emitted).
+  - CAG-vs-RAG subagent: grep `references-index.md`,
+    read `rag/cache-augmented-generation.md`, one bash (corpus-stats
+    measurement producing the ~34.5K CAG-prefix figure).
+  - Messaging subagent: read `references-index.md` (Rule 1 fallback),
+    then `inter-agent-messaging.md` in two reads (line 1 + offset 860
+    -- effectively the whole ~1,500-line page, justified since the
+    question genuinely spans the page; it skipped the Sources tail).
+- **Why the dispatch prompts direct file reads:** subagents spawn
+  with fresh context (Task = `session.create(parentID)`-shaped
+  pattern); nothing from this conversation transfers except the prompt
+  written. The mentor's grounding discipline (Rule 7) requires source
+  text in the answering context for a VERIFIED citation, so reading
+  the actual section is the grounding act, not a redundant step;
+  naming pages in the dispatch prompt was the router passing the CAG
+  map (which it holds) as context to a fresh-context agent. The
+  mentor verified the mapping independently via the heading index
+  rather than blindly trusting the prompt -- Rule 1's
+  don't-skip-to-filename-inference held.
+
+Fix shipped this session, per the audit's recommendation:
+
+- **`airchon-rag_vector_search` and `airchon-rag_rebuild_index` added
+  to the mentor and teacher canonical tool lists**
+  (`.apm/agents/airchon-mentor.agent.md` line 5,
+  `.apm/agents/airchon-teacher.agent.md` line 4). After `apm install`,
+  the OpenCode-target deployed files (`.opencode/agents/*.md`) were
+  manually restored to the OpenCode `permission:` map shape
+  (`"*": deny` + named allows), with the two MCP tools added to
+  mentor + teacher's allow entries. This is the same documented APM
+  conversion gap (canonical `tools:` list format vs OpenCode
+  `permission:` map) the 2026-09-14 entry below already named --
+  re-fixing is needed after every `apm install`. The Claude Code
+  target (`.claude/agents/*.md`) accepted the canonical list format
+  as-is and inherits the new MCP tool names verbatim.
+- **The airchon router skill** (`.apm/skills/airchon/SKILL.md`) gained
+  a "Dispatch grounding preamble (every branch)" block: every
+  dispatch prompt now appends a standard instruction telling the
+  callee to call `vector_search` first (top_k 3-5), fall back to
+  `resources/references-index.md` if unavailable, and read the named
+  section for any verbatim claim (Rule 7). This is routing logistics,
+  not mentoring logic -- the router still originates no content; but
+  it now makes the CAG/RAG flow explicit in each dispatch instead of
+  assuming the harness has loaded the CAG prefix.
+- **Smoke test:** a dispatched mentor subagent was asked to make
+  `vector_search` its first call and report YES/NO. Result: **NO** --
+  the subagent's tool list was `bash, edit, glob, grep, read, task,
+  todowrite, webfetch, write`, identical to pre-edit. Cause: opencode
+  loads agent configs once at session start, not hot-reloaded -- the
+  running opencode process cached the agent configs before this edit.
+  A fresh opencode session is required before the new permission maps
+  take effect. This is the same `config is loaded once at session
+  start, not hot-reloaded` caveat the prior CAG entry already named
+  ("Pending verification: ... it requires an opencode restart to take
+  effect"). The permission-map shape was verified against OpenCode's
+  own docs (fetched this session -- permission keys are wildcard
+  patterns matched against tool names, so `airchon-rag_vector_search:
+  allow` targets a single tool as intended).
+- **CAG prefix instructions verified.** `.opencode/opencode.json`'s
+  `instructions:` list names 9 files (Tier 0: corpus-read-discipline +
+  grounding-discipline, ~2.3K tokens; Tier 1: the five
+  `references/*/index.md` area topic maps, ~32.2K; Tier 2: teacher
+  curriculum + tiers, ~38.3K). Total: ~72.9K tokens of CAG prefix,
+  loaded into every agent session in this project on opencode.
+  Honest deviations surfaced by this verification:
+  1. **Tier 2 loaded for ALL agents, not just teacher.** The
+     `instructions:` mechanism in opencode is project-global, not
+     per-agent, so mentor/author/communicator/router all carry the
+     teacher-only Tier 2 files (~38.3K tokens) on every turn. The
+     discipline's Tier 2 scoping ("Teacher only") is unrealizable on
+     opencode without restructuring -- the only lever is removing
+     Tier 2 from `instructions:` and accepting that the teacher must
+     Read those files per-session (which would defeat the CAG goal for
+     the teacher). Left as-is for now; flagged as the most significant
+     real gap the audit found.
+  2. **No AGENTS.md** -- the root directory has no `AGENTS.md`
+     (the prior CHANGELOG entry says one was created). It is missing
+     at `git ls-files` and `Test-Path`. The Claude Code / Copilot CLI
+     targets therefore do not get the CAG prefix files auto-loaded by
+     the harness on this repo as currently checked out; only
+     `CLAUDE.md` describes them but does not `@`-import them
+     (verified: `Select-String -Pattern '@resources|@references'`
+     against `CLAUDE.md` returned empty). On OpenCode, the prefix IS
+     loaded (opencode.json `instructions:` is the native mechanism and
+     it works). Follow-up: recreate `AGENTS.md` from the prior entry's
+     design, and verify on a Claude Code session whether knowledge of
+     the files in CLAUDE.md is sufficient or whether `@`-imports or
+     rules files are needed for true auto-load there.
+
+## 2026-09-14 -- Added a CAG prefix layer (Rule 0) + fixed the retrieve-then-read gap; layered CAG/RAG architecture now live across all three harnesses
+
+Following the initial corpus-read discipline implementation (earlier today), `airchon-mentor` was asked to review whether the gains were grounded. Its review confirmed all 7 rules were VERIFIED against the wiki-book's own sources, but identified a real gap: the mentor itself non-complied with Rule 1 (it went straight to filename-inference disk reads, skipping both `vector_search` and the heading-index fallback). The root cause: the discipline had no CAG layer (rules + area indexes were not pre-loaded as a cached prefix), and the "always CAG" label in the regime table described a pattern no rule prescribed. The mentor also identified three stale references in the plan packet (pre-correction corpus numbers, the `BAAI/` model ID spelling) and an overstated gains claim ("hundreds of tokens" vs. the honest ~900-2,400). All four were fixed in the plan packet.
+
+What shipped in this second pass:
+
+- **Rule 0 (CAG prefix)** added to `corpus-read-discipline.md`: rules + 5 area indexes + teacher curriculum/tiers are loaded at session start via the harness's `instructions:` mechanism, not Read per-question. This is the actual CAG layer -- cached once at 0.1x, read on every turn. The regime table was relabeled from "always CAG" to "read on doubt (CAG prefix covers index)" to match what the rules actually prescribe.
+- **Rule 1 rewritten** to explicitly ban filename inference: "Do not skip to filename inference. You may know the file name already from the CAG prefix's area indexes, but `vector_search` or the heading index confirms *which section* of that file actually answers the question."
+- **Rule 2's small-area floor rewritten** to clarify that Rule 1 (retrieval) still applies to all areas -- the floor only relaxes the ratio ceremony, not the retrieval requirement.
+- **`opencode.json` `instructions:` field** populated with Tier 0 (rules + grounding, ~1.7K) + Tier 1 (5 area indexes, ~32K) + Tier 2 (curriculum + tiers, ~38K) for the teacher. Total CAG prefix: ~34K (mentor/author/communicator) / ~72K (teacher), cached at 0.1x per turn after the first write.
+- **`AGENTS.md` created** at the project root for Claude Code + Copilot CLI targets (both harnesses read it natively as session-start system prompt). It lists the same CAG-prefix files with the same tiering.
+- **All 4 agent persona files updated**: load-triggers changed from "Read this file on trigger" to "this file is in your CAG prefix (Rule 0) -- loaded at session start, not Read per-question." `classification-flow.md`'s Before-Step-2 checklist updated to reflect the same.
+- **OpenCode `tools:` format fix**: the deployed `.opencode/agents/*.md` files had `tools:` as a list (Claude Code/Copilot format); OpenCode 0.26.0 expects `{tool: boolean}` mapping. Fixed all four deployed copies. This is an APM conversion gap (apm deploys the source list format to all targets; OpenCode rejects list-format `tools:` at load time). Re-fixing is needed after every `apm install` until APM adds per-target conversion.
+- **Airchon-mentor review of the revised plan** (`plan-cag-rag-layered.md`): all rule grounding confirmed VERIFIED; the gains-claim magnitude corrected from "hundreds of tokens" to "~900-2,400 tokens per question (5-10x reduction, not 'hundreds')"; the semantic-mismatch eval #4 claim corrected (vector search finds the right page at rank ~6, not top-hit; the heading-index fallback does fail as predicted, so the advantage is real but smaller than top-hit accuracy).
+
+**Honest limitation**: `all-MiniLM-L6-v2` (384-dim, 256-token input) is a small model. Its semantic recall is good enough to earn its place as a retrieval aid (Rule 7's "retrieval aid, not truth authority" framing), but not good enough to replace section reads. The `BAAI/bge-base-en-v1.5` upgrade (768-dim, 512-token input) was attempted but the rebuild hung inside opencode's bash sandbox on the CPU burst; a standalone `rebuild_index.py` script was written for terminal use. The upgrade is deferred -- the current model works, it's just not top-hit-precise on semantic-mismatch queries.
+
+**Pending verification**: the CAG prefix is configured in `opencode.json` and AGENTS.md, but it requires an opencode restart to take effect (config is loaded once at session start, not hot-reloaded). The real-task test (mentor calls `vector_search` before any Read) is todo #6 -- it requires a fresh session.
+
+## 2026-09-14 -- Added a corpus read discipline (shared RULE + local vector DB) to cut reference-area read cost; implemented via a venv-scoped stdio MCP server
+
+The operator asked to implement `plan-cag-optimization.md` (same-day genesis packet, reviewed by `airchon-mentor` -- its two mandatory rule fixes: the compaction caveat on "never re-read" and the cross-session reframing of read order, are both in the shipped rule text). The goal: stop agents from whole-reading `references/**` (~1.07M approx tokens / 89 pages at ship) when a section-level answer suffices.
+
+What shipped:
+
+- **`resources/corpus-read-discipline.md`** -- the shared RULE asset (7 rules: vector-first retrieve-then-read, ratio rule with small-area floor, ceiling check via the stats bridge on doubt only, section-scoped reads for large pages, never re-read unless compacted away, cross-session-only read-order framing, grounding unchanged) plus a live per-area token snapshot. Loaded by all four reference-reading agents via a one-line pointer.
+- **`resources/scripts/corpus_stats.py`** -- stdlib-only stats bridge (per-area pages/bytes/approx tokens; bytes/4 labeled as an approximation). Shipped baseline: harnesses ~918K, sdlc ~61K, inference-engines ~34K, rag ~33K, models ~20K.
+- **`resources/scripts/rag_mcp_server.py`** -- a minimal stdio JSON-RPC 2.0 MCP server (hand-rolled, stdlib transport) exposing `vector_search` and `rebuild_index`, plus `build` / `query` / `serve` CLI subcommands for shell use. Chunks `references/*/*.md` per H2/H3 section (fence-aware), embeds with `sentence-transformers/all-MiniLM-L6-v2` (384-dim, ONNX via fastembed), stores cosine-searchable 384-dim vectors in **`resources/vector-index.db`** (generated, gitignored). 1,529 sections from 84 pages, first build ~20s.
+- **The venv decision (operator):** all third-party Python lives in `resources/scripts/.venv` (gitignored; `requirements.txt` pins `fastembed==0.8.0`), never the operator's global Python. The first-ever model download (~130MB) lands in the user-profile cache; every later build is local re-embedding, seconds, no network.
+- **Per-harness MCP registration, operator-local, all gitignored:** `.mcp.json` (Claude Code + Copilot CLI workspace scope -- confirmed live via `copilot mcp list`), `.opencode/opencode.json` (OpenCode, `mcp.<name>.command` array + `type: local`). A harness without registration degrades to the zero-dependency heading index (`resources/references-index.md`) by rule 1's explicit fallback.
+- **Inline pointers** in all four persona files (mentor/teacher/author/communicator) + `classification-flow.md`'s Before-Step-2 retrieval order (curriculum + tiers stay eager; topic pages retrieved) + `references-index-maintenance.md` gained an "also rebuild the vector DB" step (MCP `rebuild_index` or venv-CLI fallback).
+- **Validation:** direct stdin/stdout MCP pipe test (initialize/tools/list/tools/call/ping/error, clean exit), three real corpus queries (all surfaced the correct sections with line ranges), the DB-absent fallback message, and a section-scoped read of a 1,672-line page reduced to 21 lines. `apm install` re-run: all 4 agents redeployed to all three targets, lock file shows only the edited content hashes. Two known pre-existing warnings untouched by this change: apm's OpenCode `tools`-list-vs-mapping quirk, and the unpinned `danielmeppiel/genesis` dependency.
+
 ## 2026-09-03 -- Designed and built `airchon-sync` via `/genesis`; real-task testing found and fixed a genuine noise bug before ship
 
 The operator asked for the "monthly sync" mechanism discussed earlier
